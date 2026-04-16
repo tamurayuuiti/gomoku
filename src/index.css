@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+@layer components {
+  /* 盤面の背景色など、特定のドメインに関連するスタイルを分離 */
+  .gomoku-board {
+    background-color: #eab308;
+  }
+}

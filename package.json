@@ -1,5 +1,5 @@
 {
-  "name": "my-universal-template",
+  "name": "gomoku",
   "private": true,
   "version": "0.0.0",
   "type": "module",
