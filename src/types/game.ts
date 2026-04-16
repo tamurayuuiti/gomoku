@@ -1,3 +1,6 @@
+// src/types/game.ts
+// ゲームの状態を表す型定義ファイル
+
 // プレイヤーの型定義（黒番が先手）
 export type Player = 'Black' | 'White';
 

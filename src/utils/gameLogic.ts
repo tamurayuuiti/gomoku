@@ -1,3 +1,6 @@
+// src/utils/gameLogic.ts
+// ゲームのロジックを担当する純粋関数を定義するファイル
+
 import type { BoardState, Player, Position } from '../types/game';
 
 // 盤面のサイズ（一般的な五目並べは15x15）
