@@ -1,13 +1,14 @@
 // src/App.tsx
 
 import { useState, useCallback, useEffect } from 'react';
-import type { Player, BoardState, GameStatus, Position } from './types/game';
+import type { Player, BoardState, GameStatus, Position, GameMode } from './types/game';
 import { checkWin, checkDraw, createEmptyBoard } from './utils/gameLogic';
 import { calculateNextMove } from './utils/aiLogic';
 import Board from './components/Board';
+import StatusMessage from './components/StatusMessage';
+import ModeSelector from './components/ModeSelector';
+import ColorSelector from './components/ColorSelector';
 import './index.css';
-
-type GameMode = 'PvP' | 'PvE';
 
 const App = () => {
   // --- 状態管理 ---
@@ -61,6 +62,8 @@ const App = () => {
   // --- CPU自動実行パイプライン ---
   useEffect(() => {
     let isMounted = true;
+    
+    // すでに思考中なら何もしない（ガード）
     if (isAiThinking) return;
 
     if (gameMode === 'PvE' && currentPlayer !== playerColor && gameStatus === 'Playing') {
@@ -69,7 +72,6 @@ const App = () => {
       const timerId = setTimeout(() => {
         if (!isMounted) return;
 
-        // ここで board を直接参照して計算する
         const nextMove = calculateNextMove(board);
         
         if (nextMove) {
@@ -77,14 +79,14 @@ const App = () => {
         }
         
         setIsAiThinking(false);
-      }, 600); // 0.6秒くらいがテンポ良く快適です
+      }, 600);
 
       return () => {
         isMounted = false;
         clearTimeout(timerId);
       };
     }
-    // 【重要】依存配列を最小限にする。これらが変わった時だけ「AIの番か？」をチェックする
+    // 【修正】isAiThinking を依存配列から削除
   }, [currentPlayer, gameMode, playerColor, gameStatus]);
 
   // --- UIヘルパー ---
@@ -106,37 +108,7 @@ const App = () => {
   const handleColorChange = (color: Player) => {
     if (color !== playerColor) {
       setPlayerColor(color);
-      resetGame(); // 色を変更したら対局をリセット
-    }
-  };
-
-  const getStatusMessage = () => {
-    if (isAiThinking) {
-      return (
-        <span className="flex items-center gap-2 text-amber-700">
-          <svg className="h-5 w-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          CPUが思考中...
-        </span>
-      );
-    }
-
-    switch (gameStatus) {
-      case 'Playing':
-        return (
-          <span className="flex items-center gap-2">
-            手番: 
-            <span className={`inline-block h-4 w-4 rounded-full border border-gray-400 ${currentPlayer === 'Black' ? 'bg-zinc-900' : 'bg-white'}`} />
-            {currentPlayer === 'Black' ? '黒' : '白'}
-            {gameMode === 'PvE' && (currentPlayer === playerColor ? ' (あなた)' : ' (CPU)')}
-          </span>
-        );
-      case 'BlackWins': return '黒の勝利';
-      case 'WhiteWins': return '白の勝利';
-      case 'Draw': return '引き分け';
-      default: return '';
+      resetGame();
     }
   };
 
@@ -150,53 +122,28 @@ const App = () => {
       </header>
 
       <div className="flex flex-col gap-4 mb-8 items-center">
-        {/* モード切替 */}
-        <div className="flex rounded-full bg-slate-300/60 p-1 shadow-inner">
-          {(['PvP', 'PvE'] as const).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => handleModeChange(mode)}
-              className={`rounded-full px-6 py-2 text-sm font-bold transition-all ${
-                gameMode === mode ? 'bg-white text-amber-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {mode === 'PvP' ? '対人戦' : 'CPU戦'}
-            </button>
-          ))}
-        </div>
-
-        {/* プレイヤーの色選択（PvEモード時のみ有効） */}
-        {gameMode === 'PvE' && (
-          <div className="flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Your Color:</span>
-            <div className="flex rounded-lg bg-slate-300/60 p-1 shadow-inner">
-              <button
-                disabled={gameStatus !== 'Playing' || !isBoardEmpty}
-                onClick={() => handleColorChange('Black')}
-                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-bold transition-all ${
-                  playerColor === 'Black' ? 'bg-zinc-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                <span className="h-3 w-3 rounded-full bg-zinc-900 border border-zinc-700" />
-                先手
-              </button>
-              <button
-                disabled={gameStatus !== 'Playing' || !isBoardEmpty}
-                onClick={() => handleColorChange('White')}
-                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-bold transition-all ${
-                  playerColor === 'White' ? 'bg-white text-zinc-900 shadow-md' : 'text-slate-500 hover:text-slate-700'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                <span className="h-3 w-3 rounded-full bg-white border border-slate-300" />
-                後手
-              </button>
-            </div>
-          </div>
-        )}
+        <ModeSelector 
+          gameMode={gameMode} 
+          onModeChange={handleModeChange} 
+        />
+        
+        <ColorSelector
+          gameMode={gameMode}
+          gameStatus={gameStatus}
+          isBoardEmpty={isBoardEmpty}
+          playerColor={playerColor}
+          onColorChange={handleColorChange}
+        />
       </div>
 
       <div className="mb-6 flex min-h-12 items-center justify-center rounded-full bg-white/50 px-8 py-2 text-lg font-bold shadow-sm backdrop-blur-sm">
-        {getStatusMessage()}
+        <StatusMessage
+          isAiThinking={isAiThinking}
+          gameStatus={gameStatus}
+          currentPlayer={currentPlayer}
+          gameMode={gameMode}
+          playerColor={playerColor}
+        />
       </div>
 
       <Board 

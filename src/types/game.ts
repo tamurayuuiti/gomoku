@@ -1,6 +1,9 @@
 // src/types/game.ts
 // ゲームの状態を表す型定義ファイル
 
+// ゲームモードの定義
+export type GameMode = 'PvP' | 'PvE';
+
 // プレイヤーの型定義（黒番が先手）
 export type Player = 'Black' | 'White';
 
