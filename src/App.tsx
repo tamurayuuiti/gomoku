@@ -16,12 +16,14 @@ const App = () => {
   const [gameStatus, setGameStatus] = useState<GameStatus>('Playing');
   const [lastMove, setLastMove] = useState<Position | null>(null);
 
-  // 新規追加: モード管理とCPU思考状態
-  const [gameMode, setGameMode] = useState<GameMode>('PvE'); // デフォルトをPvEに設定
+  const [gameMode, setGameMode] = useState<GameMode>('PvE');
+  const [playerColor, setPlayerColor] = useState<Player>('Black'); // プレイヤーの色（先手/後手）
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
 
+  // 盤面が空かどうか（色変更の許可判定などに使用）
+  const isBoardEmpty = board.flat().every(cell => cell === null);
+
   // --- ロジック ---
-  // 石を置くコア処理（人間もCPUも共通で使用し、ロジックを再利用）
   const executeMove = useCallback((row: number, col: number) => {
     const newBoard = board.map((r, rIdx) =>
       rIdx === row ? r.map((c, cIdx) => (cIdx === col ? currentPlayer : c)) : r
@@ -44,60 +46,67 @@ const App = () => {
     setCurrentPlayer(prev => (prev === 'Black' ? 'White' : 'Black'));
   }, [board, currentPlayer]);
 
-  // ユーザーのクリックハンドラ（排他制御を追加）
   const handleCellClick = useCallback((row: number, col: number) => {
     if (gameStatus !== 'Playing') return;
     if (board[row][col] !== null) return;
 
-    // CPU思考中、またはPvEモードでのCPU手番（白）はユーザー入力を完全にブロック
-    if (isAiThinking || (gameMode === 'PvE' && currentPlayer === 'White')) {
+    // CPU思考中、またはPvEモードで「自分の番ではない」時はクリックを無効化
+    if (isAiThinking || (gameMode === 'PvE' && currentPlayer !== playerColor)) {
       return;
     }
 
     executeMove(row, col);
-  }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, executeMove]);
+  }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove]);
 
   // --- CPU自動実行パイプライン ---
   useEffect(() => {
     let isMounted = true;
     if (isAiThinking) return;
 
-    if (gameMode === 'PvE' && currentPlayer === 'White' && gameStatus === 'Playing') {
+    if (gameMode === 'PvE' && currentPlayer !== playerColor && gameStatus === 'Playing') {
       setIsAiThinking(true);
 
       const timerId = setTimeout(() => {
         if (!isMounted) return;
 
+        // ここで board を直接参照して計算する
         const nextMove = calculateNextMove(board);
         
         if (nextMove) {
-          console.log(`CPU Move: row ${nextMove.row}, col ${nextMove.col}`);
           executeMove(nextMove.row, nextMove.col);
         }
         
         setIsAiThinking(false);
-      }, 1000);
+      }, 600); // 0.6秒くらいがテンポ良く快適です
 
       return () => {
         isMounted = false;
         clearTimeout(timerId);
       };
     }
-  }, [currentPlayer, gameMode, gameStatus, board, executeMove]);
+    // 【重要】依存配列を最小限にする。これらが変わった時だけ「AIの番か？」をチェックする
+  }, [currentPlayer, gameMode, playerColor, gameStatus]);
 
   // --- UIヘルパー ---
-  const resetGame = () => {
+  const resetGame = useCallback(() => {
     setBoard(createEmptyBoard());
     setCurrentPlayer('Black');
     setGameStatus('Playing');
     setLastMove(null);
     setIsAiThinking(false);
-  };
+  }, []);
 
   const handleModeChange = (mode: GameMode) => {
     if (mode !== gameMode) {
       setGameMode(mode);
-      resetGame(); // モード切替時は整合性を保つためリセット
+      resetGame();
+    }
+  };
+
+  const handleColorChange = (color: Player) => {
+    if (color !== playerColor) {
+      setPlayerColor(color);
+      resetGame(); // 色を変更したら対局をリセット
     }
   };
 
@@ -121,6 +130,7 @@ const App = () => {
             手番: 
             <span className={`inline-block h-4 w-4 rounded-full border border-gray-400 ${currentPlayer === 'Black' ? 'bg-zinc-900' : 'bg-white'}`} />
             {currentPlayer === 'Black' ? '黒' : '白'}
+            {gameMode === 'PvE' && (currentPlayer === playerColor ? ' (あなた)' : ' (CPU)')}
           </span>
         );
       case 'BlackWins': return '黒の勝利';
@@ -139,24 +149,50 @@ const App = () => {
         <div className="mx-auto h-1 w-24 rounded-full bg-amber-700" />
       </header>
 
-      {/* モード切替UI */}
-      <div className="mb-6 flex rounded-full bg-slate-300/60 p-1 shadow-inner">
-        <button
-          onClick={() => handleModeChange('PvP')}
-          className={`rounded-full px-6 py-2 text-sm font-bold transition-all ${
-            gameMode === 'PvP' ? 'bg-white text-amber-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          対人戦 (PvP)
-        </button>
-        <button
-          onClick={() => handleModeChange('PvE')}
-          className={`rounded-full px-6 py-2 text-sm font-bold transition-all ${
-            gameMode === 'PvE' ? 'bg-white text-amber-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          CPU戦 (PvE)
-        </button>
+      <div className="flex flex-col gap-4 mb-8 items-center">
+        {/* モード切替 */}
+        <div className="flex rounded-full bg-slate-300/60 p-1 shadow-inner">
+          {(['PvP', 'PvE'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => handleModeChange(mode)}
+              className={`rounded-full px-6 py-2 text-sm font-bold transition-all ${
+                gameMode === mode ? 'bg-white text-amber-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {mode === 'PvP' ? '対人戦' : 'CPU戦'}
+            </button>
+          ))}
+        </div>
+
+        {/* プレイヤーの色選択（PvEモード時のみ有効） */}
+        {gameMode === 'PvE' && (
+          <div className="flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Your Color:</span>
+            <div className="flex rounded-lg bg-slate-300/60 p-1 shadow-inner">
+              <button
+                disabled={gameStatus !== 'Playing' || !isBoardEmpty}
+                onClick={() => handleColorChange('Black')}
+                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-bold transition-all ${
+                  playerColor === 'Black' ? 'bg-zinc-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <span className="h-3 w-3 rounded-full bg-zinc-900 border border-zinc-700" />
+                先手
+              </button>
+              <button
+                disabled={gameStatus !== 'Playing' || !isBoardEmpty}
+                onClick={() => handleColorChange('White')}
+                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-bold transition-all ${
+                  playerColor === 'White' ? 'bg-white text-zinc-900 shadow-md' : 'text-slate-500 hover:text-slate-700'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <span className="h-3 w-3 rounded-full bg-white border border-slate-300" />
+                後手
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mb-6 flex min-h-12 items-center justify-center rounded-full bg-white/50 px-8 py-2 text-lg font-bold shadow-sm backdrop-blur-sm">
