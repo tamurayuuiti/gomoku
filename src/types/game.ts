@@ -12,7 +12,6 @@ export interface Position {
 
 export type GameMode = 'PvP' | 'PvE';
 
-// --- 新規追加 ---
 export type ForbiddenReason = 'Three-Three' | 'Four-Four' | 'Long-Line' | null;
 
 export interface ForbiddenResult {

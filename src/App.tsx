@@ -28,11 +28,10 @@ const App = () => {
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
   // --- 禁じ手リストの事前計算 ---
-  // 盤面が更新された時だけ再計算を行う
   const forbiddenMoves = useMemo(() => {
     const matrix = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
 
-    // プレイ中以外、または禁じ手ルールOFF、白番の時は計算をスキップ
+    // ルールがOFF、または現在の手番が白（禁じ手なし）の場合は計算不要
     if (gameStatus !== 'Playing' || !useForbiddenRule || currentPlayer !== 'Black') {
       return matrix;
     }
@@ -52,7 +51,7 @@ const App = () => {
 
   // --- ロジック ---
   const executeMove = useCallback((row: number, col: number) => {
-    setForbiddenWarning(null); // メッセージをクリア
+    setForbiddenWarning(null);
 
     const newBoard = board.map((r, rIdx) =>
       rIdx === row ? r.map((c, cIdx) => (cIdx === col ? currentPlayer : c)) : r
@@ -78,12 +77,10 @@ const App = () => {
   const handleCellClick = useCallback((row: number, col: number) => {
     if (gameStatus !== 'Playing') return;
     if (board[row][col] !== null) return;
-
     if (isAiThinking || (gameMode === 'PvE' && currentPlayer !== playerColor)) {
       return;
     }
 
-    // --- 禁じ手判定チェック ---
     if (useForbiddenRule && currentPlayer === 'Black') {
       const result = checkForbiddenMove(board, { row, col }, 'Black');
       if (result.isForbidden) {
@@ -99,35 +96,23 @@ const App = () => {
   useEffect(() => {
     let isMounted = true;
 
-    if (isAiThinking) return;
-
-    if (
+    // 1. AIの番かどうかを判定
+    const isAiTurn = 
       gameMode === 'PvE' &&
       currentPlayer !== playerColor &&
-      gameStatus === 'Playing'
-    ) {
+      gameStatus === 'Playing';
+
+    // 2. AIの番、かつ、まだ考えていない（isAiThinking === false）ときだけ実行
+    if (isAiTurn && !isAiThinking) {
       setIsAiThinking(true);
 
       const timerId = setTimeout(() => {
         if (!isMounted) return;
 
-        const nextMove = calculateNextMove(board);
+        // 計算済みの情報を渡す
+        const nextMove = calculateNextMove(board, forbiddenMoves);
 
         if (nextMove) {
-          if (useForbiddenRule && currentPlayer === 'Black') {
-            const result = checkForbiddenMove(
-              board,
-              nextMove,
-              'Black'
-            );
-
-            if (result.isForbidden) {
-              console.warn("AI tried forbidden move");
-              setIsAiThinking(false);
-              return;
-            }
-          }
-
           executeMove(nextMove.row, nextMove.col);
         }
 
@@ -139,13 +124,16 @@ const App = () => {
         clearTimeout(timerId);
       };
     }
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    board,
     currentPlayer,
     gameMode,
     playerColor,
     gameStatus,
-    useForbiddenRule
+    forbiddenMoves,
+    executeMove
+    // isAiThinking を外すことで、setIsAiThinking(true) による再実行を防ぐ
   ]);
 
   // --- UIヘルパー ---
@@ -188,14 +176,12 @@ const App = () => {
             onModeChange={handleModeChange} 
           />
           
-          {/* 禁じ手トグルスイッチ */}
           <button
             onClick={() => setUseForbiddenRule(!useForbiddenRule)}
-            // 盤面が空でない（試合中）ならボタンを無効化する
             disabled={!isBoardEmpty} 
             className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all shadow-sm ${
               !isBoardEmpty 
-                ? 'opacity-50 cursor-not-allowed bg-slate-200 text-slate-400' // 無効化時のスタイル
+                ? 'opacity-50 cursor-not-allowed bg-slate-200 text-slate-400'
                 : useForbiddenRule 
                   ? 'bg-rose-100 text-rose-700 border border-rose-200' 
                   : 'bg-slate-300/60 text-slate-500 border border-transparent hover:text-slate-700'
@@ -216,7 +202,6 @@ const App = () => {
       </div>
 
       <div className="relative mb-6 flex min-h-12 items-center justify-center rounded-full bg-white/50 px-8 py-2 text-lg font-bold shadow-sm backdrop-blur-sm">
-        {/* 警告メッセージのオーバーレイ表示 */}
         {forbiddenWarning ? (
           <span className="flex items-center gap-2 text-rose-600 animate-in zoom-in duration-200">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -239,7 +224,7 @@ const App = () => {
         board={board} 
         onCellClick={handleCellClick} 
         lastMove={lastMove}
-        forbiddenMoves={forbiddenMoves} // 新規追加
+        forbiddenMoves={forbiddenMoves}
       />
 
       <button
