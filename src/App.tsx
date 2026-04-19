@@ -110,8 +110,7 @@ const App = () => {
       const timerId = setTimeout(() => {
         if (!isMounted) return;
 
-        // 計算済みの情報を渡す
-        const nextMove = calculateNextMove(board, forbiddenMoves);
+        const nextMove = calculateNextMove(board, forbiddenMoves, currentPlayer);
 
         if (nextMove) {
           executeMove(nextMove.row, nextMove.col);
