@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type { Player, BoardState, GameStatus, Position, GameMode } from './types/game';
-import { checkWin, checkDraw, createEmptyBoard } from './utils/gameLogic';
+import { checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
 import { calculateNextMove } from './utils/aiLogic';
 import Board from './components/Board';
 import StatusMessage from './components/StatusMessage';
@@ -18,14 +18,19 @@ const App = () => {
   const [lastMove, setLastMove] = useState<Position | null>(null);
 
   const [gameMode, setGameMode] = useState<GameMode>('PvE');
-  const [playerColor, setPlayerColor] = useState<Player>('Black'); // プレイヤーの色（先手/後手）
+  const [playerColor, setPlayerColor] = useState<Player>('Black');
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
 
-  // 盤面が空かどうか（色変更の許可判定などに使用）
+  // 禁じ手設定と警告メッセージ
+  const [useForbiddenRule, setUseForbiddenRule] = useState<boolean>(true);
+  const [forbiddenWarning, setForbiddenWarning] = useState<string | null>(null);
+
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
   // --- ロジック ---
   const executeMove = useCallback((row: number, col: number) => {
+    setForbiddenWarning(null); // メッセージをクリア
+
     const newBoard = board.map((r, rIdx) =>
       rIdx === row ? r.map((c, cIdx) => (cIdx === col ? currentPlayer : c)) : r
     );
@@ -51,9 +56,17 @@ const App = () => {
     if (gameStatus !== 'Playing') return;
     if (board[row][col] !== null) return;
 
-    // CPU思考中、またはPvEモードで「自分の番ではない」時はクリックを無効化
     if (isAiThinking || (gameMode === 'PvE' && currentPlayer !== playerColor)) {
       return;
+    }
+
+    // --- 禁じ手判定チェック ---
+    if (useForbiddenRule && currentPlayer === 'Black') {
+      const result = checkForbiddenMove(board, { row, col }, 'Black');
+      if (result.isForbidden) {
+        setForbiddenWarning(getForbiddenReasonMessage(result.reason));
+        return;
+      }
     }
 
     executeMove(row, col);
@@ -62,22 +75,39 @@ const App = () => {
   // --- CPU自動実行パイプライン ---
   useEffect(() => {
     let isMounted = true;
-    
-    // すでに思考中なら何もしない（ガード）
+
     if (isAiThinking) return;
 
-    if (gameMode === 'PvE' && currentPlayer !== playerColor && gameStatus === 'Playing') {
+    if (
+      gameMode === 'PvE' &&
+      currentPlayer !== playerColor &&
+      gameStatus === 'Playing'
+    ) {
       setIsAiThinking(true);
 
       const timerId = setTimeout(() => {
         if (!isMounted) return;
 
         const nextMove = calculateNextMove(board);
-        
+
         if (nextMove) {
+          if (useForbiddenRule && currentPlayer === 'Black') {
+            const result = checkForbiddenMove(
+              board,
+              nextMove,
+              'Black'
+            );
+
+            if (result.isForbidden) {
+              console.warn("AI tried forbidden move");
+              setIsAiThinking(false);
+              return;
+            }
+          }
+
           executeMove(nextMove.row, nextMove.col);
         }
-        
+
         setIsAiThinking(false);
       }, 600);
 
@@ -86,8 +116,14 @@ const App = () => {
         clearTimeout(timerId);
       };
     }
-    // 【修正】isAiThinking を依存配列から削除
-  }, [currentPlayer, gameMode, playerColor, gameStatus]);
+
+  }, [
+    currentPlayer,
+    gameMode,
+    playerColor,
+    gameStatus,
+    useForbiddenRule
+  ]);
 
   // --- UIヘルパー ---
   const resetGame = useCallback(() => {
@@ -96,6 +132,7 @@ const App = () => {
     setGameStatus('Playing');
     setLastMove(null);
     setIsAiThinking(false);
+    setForbiddenWarning(null);
   }, []);
 
   const handleModeChange = (mode: GameMode) => {
@@ -122,10 +159,29 @@ const App = () => {
       </header>
 
       <div className="flex flex-col gap-4 mb-8 items-center">
-        <ModeSelector 
-          gameMode={gameMode} 
-          onModeChange={handleModeChange} 
-        />
+        <div className="flex flex-wrap justify-center gap-4">
+          <ModeSelector 
+            gameMode={gameMode} 
+            onModeChange={handleModeChange} 
+          />
+          
+          {/* 禁じ手トグルスイッチ */}
+          <button
+            onClick={() => setUseForbiddenRule(!useForbiddenRule)}
+            // 盤面が空でない（試合中）ならボタンを無効化する
+            disabled={!isBoardEmpty} 
+            className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all shadow-sm ${
+              !isBoardEmpty 
+                ? 'opacity-50 cursor-not-allowed bg-slate-200 text-slate-400' // 無効化時のスタイル
+                : useForbiddenRule 
+                  ? 'bg-rose-100 text-rose-700 border border-rose-200' 
+                  : 'bg-slate-300/60 text-slate-500 border border-transparent hover:text-slate-700'
+            }`}
+          >
+            <div className={`h-2 w-2 rounded-full ${useForbiddenRule ? 'bg-rose-500' : 'bg-slate-400'}`} />
+            禁じ手ルール: {useForbiddenRule ? 'ON' : 'OFF'}
+          </button>
+        </div>
         
         <ColorSelector
           gameMode={gameMode}
@@ -136,14 +192,24 @@ const App = () => {
         />
       </div>
 
-      <div className="mb-6 flex min-h-12 items-center justify-center rounded-full bg-white/50 px-8 py-2 text-lg font-bold shadow-sm backdrop-blur-sm">
-        <StatusMessage
-          isAiThinking={isAiThinking}
-          gameStatus={gameStatus}
-          currentPlayer={currentPlayer}
-          gameMode={gameMode}
-          playerColor={playerColor}
-        />
+      <div className="relative mb-6 flex min-h-12 items-center justify-center rounded-full bg-white/50 px-8 py-2 text-lg font-bold shadow-sm backdrop-blur-sm">
+        {/* 警告メッセージのオーバーレイ表示 */}
+        {forbiddenWarning ? (
+          <span className="flex items-center gap-2 text-rose-600 animate-in zoom-in duration-200">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            {forbiddenWarning}
+          </span>
+        ) : (
+          <StatusMessage
+            isAiThinking={isAiThinking}
+            gameStatus={gameStatus}
+            currentPlayer={currentPlayer}
+            gameMode={gameMode}
+            playerColor={playerColor}
+          />
+        )}
       </div>
 
       <Board 
