@@ -5,9 +5,10 @@ import type { Player, BoardState, GameStatus, Position, GameMode } from './types
 import { BOARD_SIZE, checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
 import { calculateNextMove } from './utils/aiLogic';
 import Board from './components/Board';
-import StatusMessage from './components/StatusMessage';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
+import ForbiddenRuleToggle from './components/ForbiddenRuleToggle';
+import GameStatusPanel from './components/GameStatusPanel';
 import './index.css';
 
 const App = () => {
@@ -176,20 +177,11 @@ const App = () => {
             onModeChange={handleModeChange} 
           />
           
-          <button
-            onClick={() => setUseForbiddenRule(!useForbiddenRule)}
-            disabled={!isBoardEmpty} 
-            className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition-all shadow-sm ${
-              !isBoardEmpty 
-                ? 'opacity-50 cursor-not-allowed bg-slate-200 text-slate-400'
-                : useForbiddenRule 
-                  ? 'bg-rose-100 text-rose-700 border border-rose-200' 
-                  : 'bg-slate-300/60 text-slate-500 border border-transparent hover:text-slate-700'
-            }`}
-          >
-            <div className={`h-2 w-2 rounded-full ${useForbiddenRule ? 'bg-rose-500' : 'bg-slate-400'}`} />
-            禁じ手ルール: {useForbiddenRule ? 'ON' : 'OFF'}
-          </button>
+          <ForbiddenRuleToggle
+            useForbiddenRule={useForbiddenRule}
+            disabled={!isBoardEmpty}
+            onToggle={() => setUseForbiddenRule(!useForbiddenRule)}
+          />
         </div>
         
         <ColorSelector
@@ -201,24 +193,14 @@ const App = () => {
         />
       </div>
 
-      <div className="relative mb-6 flex min-h-12 items-center justify-center rounded-full bg-white/50 px-8 py-2 text-lg font-bold shadow-sm backdrop-blur-sm">
-        {forbiddenWarning ? (
-          <span className="flex items-center gap-2 text-rose-600 animate-in zoom-in duration-200">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            {forbiddenWarning}
-          </span>
-        ) : (
-          <StatusMessage
-            isAiThinking={isAiThinking}
-            gameStatus={gameStatus}
-            currentPlayer={currentPlayer}
-            gameMode={gameMode}
-            playerColor={playerColor}
-          />
-        )}
-      </div>
+      <GameStatusPanel
+        forbiddenWarning={forbiddenWarning}
+        isAiThinking={isAiThinking}
+        gameStatus={gameStatus}
+        currentPlayer={currentPlayer}
+        gameMode={gameMode}
+        playerColor={playerColor}
+      />
 
       <Board 
         board={board} 
