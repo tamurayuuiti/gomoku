@@ -1,17 +1,17 @@
 // src/utils/gameLogic.ts
 // ゲームのロジックを担当する純粋関数を定義するファイル
 
-import type { BoardState, Player, Position } from '../types/game';
+import type { BoardState, Player, Position, ForbiddenReason, ForbiddenResult } from '../types/game';
 
-// 盤面のサイズ（一般的な五目並べは15x15）
 export const BOARD_SIZE = 15;
 
-// 空の盤面を生成する純粋関数
 export const createEmptyBoard = (): BoardState => {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
 };
 
-// 指定された方向に対して連続している石の数を数える純粋関数
+/**
+ * 指定方向への石の連続数をカウント（既存関数）
+ */
 const countStonesInDirection = (
   board: BoardState,
   pos: Position,
@@ -23,7 +23,6 @@ const countStonesInDirection = (
   let r = pos.row + dRow;
   let c = pos.col + dCol;
 
-  // 盤面の範囲内であり、かつ指定されたプレイヤーの石である限りカウントを続ける
   while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
     count++;
     r += dRow;
@@ -33,9 +32,127 @@ const countStonesInDirection = (
   return count;
 };
 
-// 勝利判定を行う純粋関数（打たれた石の周囲のみをスキャンしパフォーマンスを最適化）
-export const checkWin = (board: BoardState, lastMove: Position, player: Player): boolean => {
-  // 検索する4つの方向（水平、垂直、右下がり対角線、右上がり対角線）
+// --- 禁じ手判定用ヘルパーロジック ---
+
+/**
+ * 仮想的に石を置いた後のライン上のパターンを取得
+ */
+const getLinePattern = (
+  board: BoardState,
+  pos: Position,
+  player: Player,
+  dRow: number,
+  dCol: number
+): (Player | null | undefined)[] => {
+  const line: (Player | null | undefined)[] = [];
+
+  // 五連 + 両端判定のため最大5マスずつスキャン
+  for (let i = -5; i <= 5; i++) {
+    const r = pos.row + dRow * i;
+    const c = pos.col + dCol * i;
+
+    if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
+      if (i === 0) {
+        line.push(player);
+      } else {
+        line.push(board[r][c]);
+      }
+    } else {
+      line.push(undefined); // 盤外
+    }
+  }
+
+  return line;
+};
+
+/**
+ * そのラインで「四」が形成されているか判定
+ * 四：あと1手で「五」になる状態（長連になる場合は除く）
+ */
+const countFoursInLine = (line: (Player | null | undefined)[], player: Player): number => {
+  let fours = 0;
+
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === null) {
+      const tempLine = [...line];
+      tempLine[i] = player;
+
+      if (hasExactFive(tempLine, player)) {
+        fours++;
+      }
+    }
+  }
+
+  return fours > 0 ? 1 : 0;
+};
+
+/**
+ * そのラインで「活三（オープンな三）」が形成されているか判定
+ * 活三：次の一手で「達四（両端が開いた四）」が作れる三
+ */
+const countOpenThreesInLine = (line: (Player | null | undefined)[], player: Player): number => {
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === null) {
+      const tempLine = [...line];
+      tempLine[i] = player;
+
+      if (isTatsuShi(tempLine, player)) {
+        return 1;
+      }
+    }
+  }
+
+  return 0;
+};
+
+/**
+ * ちょうど5連があるか判定（長連は除外）
+ */
+const hasExactFive = (line: (Player | null | undefined)[], player: Player): boolean => {
+  for (let i = 0; i <= line.length - 5; i++) {
+    if (
+      line[i] === player &&
+      line[i + 1] === player &&
+      line[i + 2] === player &&
+      line[i + 3] === player &&
+      line[i + 4] === player &&
+      line[i - 1] !== player &&
+      line[i + 5] !== player
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/**
+ * 達四（両端があいた四）判定
+ */
+const isTatsuShi = (line: (Player | null | undefined)[], player: Player): boolean => {
+  for (let i = 0; i <= line.length - 6; i++) {
+    if (
+      line[i] === null &&
+      line[i + 1] === player &&
+      line[i + 2] === player &&
+      line[i + 3] === player &&
+      line[i + 4] === player &&
+      line[i + 5] === null
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+// --- エクスポート関数 ---
+
+export const checkWin = (
+  board: BoardState,
+  lastMove: Position,
+  player: Player
+): boolean => {
   const directions = [
     [0, 1],
     [1, 0],
@@ -44,22 +161,111 @@ export const checkWin = (board: BoardState, lastMove: Position, player: Player):
   ];
 
   for (const [dRow, dCol] of directions) {
-    // 正の方向と負の方向の両方をカウントし、起点となる打たれた石(1)を加算
     const count =
       1 +
       countStonesInDirection(board, lastMove, player, dRow, dCol) +
       countStonesInDirection(board, lastMove, player, -dRow, -dCol);
 
-    // 5つ以上連続して並んでいれば勝利
-    if (count >= 5) {
-      return true;
+    // 黒はちょうど5連のみ勝利
+    if (player === 'Black') {
+      if (count === 5) return true;
+    } else {
+      // 白は5以上で勝利
+      if (count >= 5) return true;
     }
   }
 
   return false;
 };
 
-// 引き分け判定（盤面がすべて埋まっているか）
+export const checkForbiddenMove = (
+  board: BoardState,
+  pos: Position,
+  player: Player
+): ForbiddenResult => {
+
+  if (player !== 'Black') {
+    return { isForbidden: false, reason: null };
+  }
+
+  const directions = [
+    [0, 1],
+    [1, 0],
+    [1, 1],
+    [1, -1]
+  ];
+
+  // 1. 長連チェック
+  for (const [dRow, dCol] of directions) {
+    const count =
+      1 +
+      countStonesInDirection(board, pos, player, dRow, dCol) +
+      countStonesInDirection(board, pos, player, -dRow, -dCol);
+
+    if (count > 5) {
+      return {
+        isForbidden: true,
+        reason: 'Long-Line'
+      };
+    }
+  }
+
+  // 五完成は勝利優先
+  if (checkWin(board, pos, player)) {
+    return { isForbidden: false, reason: null };
+  }
+
+  let totalFours = 0;
+  let totalOpenThrees = 0;
+
+  for (const [dRow, dCol] of directions) {
+    const line = getLinePattern(board, pos, player, dRow, dCol);
+
+    totalFours += countFoursInLine(line, player);
+    totalOpenThrees += countOpenThreesInLine(line, player);
+  }
+
+  // 2. 四四
+  if (totalFours >= 2) {
+    return {
+      isForbidden: true,
+      reason: 'Four-Four'
+    };
+  }
+
+  // 3. 三三
+  if (totalOpenThrees >= 2) {
+    return {
+      isForbidden: true,
+      reason: 'Three-Three'
+    };
+  }
+
+  return {
+    isForbidden: false,
+    reason: null
+  };
+};
+
 export const checkDraw = (board: BoardState): boolean => {
   return board.every(row => row.every(cell => cell !== null));
+};
+
+export const getForbiddenReasonMessage = (
+  reason: ForbiddenReason
+): string => {
+
+  switch (reason) {
+    case 'Three-Three':
+      return '三三は禁じ手です';
+
+    case 'Four-Four':
+      return '四四は禁じ手です';
+
+    case 'Long-Line':
+      return '長連は禁じ手です';
+
+    default:
+      return 'それは禁じ手です';
+  }
 };
