@@ -1,8 +1,8 @@
 // src/App.tsx
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Player, BoardState, GameStatus, Position, GameMode } from './types/game';
-import { checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
+import { BOARD_SIZE, checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
 import { calculateNextMove } from './utils/aiLogic';
 import Board from './components/Board';
 import StatusMessage from './components/StatusMessage';
@@ -26,6 +26,29 @@ const App = () => {
   const [forbiddenWarning, setForbiddenWarning] = useState<string | null>(null);
 
   const isBoardEmpty = board.flat().every(cell => cell === null);
+
+  // --- 禁じ手リストの事前計算 ---
+  // 盤面が更新された時だけ再計算を行う
+  const forbiddenMoves = useMemo(() => {
+    const matrix = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
+
+    // プレイ中以外、または禁じ手ルールOFF、白番の時は計算をスキップ
+    if (gameStatus !== 'Playing' || !useForbiddenRule || currentPlayer !== 'Black') {
+      return matrix;
+    }
+
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (board[r][c] === null) {
+          const result = checkForbiddenMove(board, { row: r, col: c }, 'Black');
+          if (result.isForbidden) {
+            matrix[r][c] = true;
+          }
+        }
+      }
+    }
+    return matrix;
+  }, [board, currentPlayer, gameStatus, useForbiddenRule]);
 
   // --- ロジック ---
   const executeMove = useCallback((row: number, col: number) => {
@@ -70,7 +93,7 @@ const App = () => {
     }
 
     executeMove(row, col);
-  }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove]);
+  }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove, useForbiddenRule]);
 
   // --- CPU自動実行パイプライン ---
   useEffect(() => {
@@ -215,7 +238,8 @@ const App = () => {
       <Board 
         board={board} 
         onCellClick={handleCellClick} 
-        lastMove={lastMove} 
+        lastMove={lastMove}
+        forbiddenMoves={forbiddenMoves} // 新規追加
       />
 
       <button

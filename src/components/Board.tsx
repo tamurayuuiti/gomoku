@@ -9,9 +9,10 @@ interface BoardProps {
   board: BoardState;
   onCellClick: (row: number, col: number) => void;
   lastMove: Position | null;
+  forbiddenMoves: boolean[][]; // 新規追加
 }
 
-const Board = ({ board, onCellClick, lastMove }: BoardProps) => {
+const Board = ({ board, onCellClick, lastMove, forbiddenMoves }: BoardProps) => {
   // 星（Hoshi）の位置を判定（15x15、または19x19を想定した一般的な位置）
   const isHoshiPos = (r: number, c: number) => {
     const starIndices = [3, 7, 11]; // 0-indexed
@@ -34,6 +35,7 @@ const Board = ({ board, onCellClick, lastMove }: BoardProps) => {
               boardSize={BOARD_SIZE}
               isHoshi={isHoshiPos(rowIndex, colIndex)}
               isLastMove={lastMove?.row === rowIndex && lastMove?.col === colIndex}
+              isForbidden={forbiddenMoves[rowIndex][colIndex]} // 新規追加
               onClick={() => onCellClick(rowIndex, colIndex)}
             />
           ))

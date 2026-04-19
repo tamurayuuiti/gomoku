@@ -11,9 +11,10 @@ interface CellProps {
   row: number;
   col: number;
   boardSize: number;
+  isForbidden: boolean; // 新規追加
 }
 
-const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize }: CellProps) => {
+const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForbidden }: CellProps) => {
   // 線の表示条件
   const isTop = row === 0;
   const isBottom = row === boardSize - 1;
@@ -22,7 +23,9 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize }: Cell
 
   return (
     <div
-      className="relative flex aspect-square cursor-pointer items-center justify-center sm:h-auto"
+      className={`relative flex aspect-square items-center justify-center sm:h-auto group ${
+        isForbidden ? 'cursor-not-allowed' : 'cursor-pointer'
+      }`}
       onClick={onClick}
     >
       {/* 十字線の描画ロジック */}
@@ -42,6 +45,17 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize }: Cell
       {/* 星（目印）の描画 */}
       {isHoshi && !value && (
         <div className="z-0 h-1.5 w-1.5 rounded-full bg-amber-950/40" />
+      )}
+
+      {/* 禁じ手の視覚的エフェクト (ホバー時に赤いバツ印を表示) */}
+      {isForbidden && !value && (
+        <div className="absolute z-20 flex h-1/2 w-1/2 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="flex h-full w-full items-center justify-center rounded-full bg-rose-500/20 backdrop-blur-xs">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="h-3/4 w-3/4 text-rose-600">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+        </div>
       )}
 
       {/* 石の描画 */}
