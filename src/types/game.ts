@@ -10,6 +10,11 @@ export interface Position {
   col: number;
 }
 
+// AI関連の型定義
+export interface AICandidate extends Position {
+  score: number;
+}
+
 export type GameMode = 'PvP' | 'PvE';
 
 export type ForbiddenReason = 'Three-Three' | 'Four-Four' | 'Long-Line' | null;

@@ -1,6 +1,6 @@
 // src/utils/ai/search.ts
 
-import type { BoardState, Position, Player } from '../../types/game';
+import type { BoardState, Position, Player, AICandidate } from '../../types/game';
 import { BOARD_SIZE } from '../gameLogic';
 import { AI_CONFIG } from './constants';
 import { evaluatePosition } from './evaluator';
@@ -35,7 +35,7 @@ export const calculateNextMove = (
     return { row: center, col: center };
   }
 
-  // 1. 候補手の抽出（石の周辺 かつ 空きマス かつ 禁じ手でない）
+  // 1. 候補手の抽出（空きマス かつ 禁じ手でない かつ 石の周辺）
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (
@@ -61,22 +61,31 @@ export const calculateNextMove = (
 
   if (candidates.length === 0) return null;
 
-  // 2. 評価（現在は1手読み。将来的にここでMinimaxを呼び出すことが可能）
-  let maxScore = -Infinity;
-  let bestCandidates: Position[] = [];
+  // 2. すべての候補手を評価し、スコア順にソート
+  const scoredCandidates: AICandidate[] = candidates
+    .map((pos) => ({
+      ...pos,
+      score: evaluatePosition(board, pos.row, pos.col, currentTurn),
+    }))
+    .sort((a, b) => b.score - a.score);
 
-  for (const pos of candidates) {
-    const score = evaluatePosition(board, pos.row, pos.col, currentTurn);
-    
-    if (score > maxScore) {
-      maxScore = score;
-      bestCandidates = [pos];
-    } else if (score === maxScore) {
-      bestCandidates.push(pos);
-    }
+  // --- コンソールログへのテーブル出力 (上位3手) ---
+  if (scoredCandidates.length > 0) {
+    console.log(`AI Candidate Moves (Turn: ${currentTurn})`);
+    const tableData = scoredCandidates.slice(0, 3).map((c, i) => ({
+      Rank: i + 1,
+      'Row(Y)': c.row,
+      'Col(X)': c.col,
+      Score: c.score,
+    }));
+    console.table(tableData);
   }
 
-  // スコアが同じ場合はランダムに選択
+  // 3. 最高スコアのものを取得（同率がある場合はランダムに選択）
+  const maxScore = scoredCandidates[0].score;
+  const bestCandidates = scoredCandidates.filter((c) => c.score === maxScore);
   const randomIndex = Math.floor(Math.random() * bestCandidates.length);
-  return bestCandidates[randomIndex];
+
+  const selected = bestCandidates[randomIndex];
+  return { row: selected.row, col: selected.col };
 };
