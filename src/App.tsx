@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Player, BoardState, GameStatus, Position, GameMode } from './types/game';
 import { BOARD_SIZE, checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
-import { calculateNextMove } from './utils/aiLogic';
+import { calculateNextMove } from './utils/ai/search';
 import Board from './components/Board';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
