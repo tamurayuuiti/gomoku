@@ -1,4 +1,5 @@
 // src/components/GameStatusPanel.tsx
+// ゲームの状態を表示するコンポーネント
 
 import React from 'react';
 import StatusMessage from './StatusMessage';

@@ -1,9 +1,10 @@
 // src/App.tsx
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Player, BoardState, GameStatus, Position, GameMode } from './types/game';
-import { BOARD_SIZE, checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
+import { checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
 import { calculateNextMove } from './utils/ai/search';
+import { useForbiddenMoves } from './hooks/useForbiddenMoves'; // 追加
 import Board from './components/Board';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
@@ -29,26 +30,7 @@ const App = () => {
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
   // --- 禁じ手リストの事前計算 ---
-  const forbiddenMoves = useMemo(() => {
-    const matrix = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
-
-    // ルールがOFF、または現在の手番が白（禁じ手なし）の場合は計算不要
-    if (gameStatus !== 'Playing' || !useForbiddenRule || currentPlayer !== 'Black') {
-      return matrix;
-    }
-
-    for (let r = 0; r < BOARD_SIZE; r++) {
-      for (let c = 0; c < BOARD_SIZE; c++) {
-        if (board[r][c] === null) {
-          const result = checkForbiddenMove(board, { row: r, col: c }, 'Black');
-          if (result.isForbidden) {
-            matrix[r][c] = true;
-          }
-        }
-      }
-    }
-    return matrix;
-  }, [board, currentPlayer, gameStatus, useForbiddenRule]);
+  const forbiddenMoves = useForbiddenMoves(board, currentPlayer, gameStatus, useForbiddenRule);
 
   // --- ロジック ---
   const executeMove = useCallback((row: number, col: number) => {

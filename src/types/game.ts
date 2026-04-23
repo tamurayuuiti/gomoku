@@ -1,4 +1,5 @@
 // src/types/game.ts
+// ゲーム全体で使用する型定義をまとめるファイル
 
 export type Player = 'Black' | 'White';
 export type Cell = Player | null;

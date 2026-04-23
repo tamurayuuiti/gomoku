@@ -1,8 +1,7 @@
 // src/utils/ai/constants.ts
+// AIの評価関数や探索ロジックで使用する定数を定義するファイル
 
-/**
- * 五目並べパターンの評価スコア
- */
+// スコア定数
 export const AI_SCORES = {
   FIVE: 100000,         // 五（5連）
   OPEN_FOUR: 10000,     // 活四
@@ -15,17 +14,13 @@ export const AI_SCORES = {
   NONE: 0,
 } as const;
 
-/**
- * AIの基本設定
- */
+// AIの探索に関する設定
 export const AI_CONFIG = {
   ATTACK_WEIGHT: 1.1,   // 攻撃の重み（防御に対する倍率）
   SEARCH_RANGE: 2,      // 探索時に既存の石から離れる範囲
 };
 
-/**
- * 方向ベクトル（縦、横、右下斜め、左下斜め）
- */
+// AIが盤面を評価する際の方向ベクトル
 export const DIRECTIONS = [
   [1, 0],  // 縦
   [0, 1],  // 横

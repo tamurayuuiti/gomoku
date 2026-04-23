@@ -1,13 +1,12 @@
 // src/utils/ai/search.ts
+// AIの次の一手を計算するロジックを定義するファイル
 
 import type { BoardState, Position, Player, AICandidate } from '../../types/game';
 import { BOARD_SIZE } from '../gameLogic';
 import { AI_CONFIG } from './constants';
 import { evaluatePosition } from './evaluator';
 
-/**
- * 指定した座標の周辺に石があるかどうかを判定（探索範囲の限定）
- */
+// 周辺に石があるか判定
 const hasStoneNearby = (board: BoardState, row: number, col: number): boolean => {
   const range = AI_CONFIG.SEARCH_RANGE;
   for (let r = Math.max(0, row - range); r <= Math.min(BOARD_SIZE - 1, row + range); r++) {
@@ -18,9 +17,7 @@ const hasStoneNearby = (board: BoardState, row: number, col: number): boolean =>
   return false;
 };
 
-/**
- * AIの次の一手を計算する（エントリーポイント）
- */
+// AIの次の一手を計算する関数
 export const calculateNextMove = (
   board: BoardState,
   forbiddenMoves: boolean[][],

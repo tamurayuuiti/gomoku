@@ -9,9 +9,7 @@ export const createEmptyBoard = (): BoardState => {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
 };
 
-/**
- * 指定方向への石の連続数をカウント（既存関数）
- */
+// 指定方向への石の連続数をカウント
 const countStonesInDirection = (
   board: BoardState,
   pos: Position,
@@ -34,9 +32,7 @@ const countStonesInDirection = (
 
 // --- 禁じ手判定用ヘルパーロジック ---
 
-/**
- * 仮想的に石を置いた後のライン上のパターンを取得
- */
+// 指定方向のラインパターンを取得
 const getLinePattern = (
   board: BoardState,
   pos: Position,
@@ -65,10 +61,7 @@ const getLinePattern = (
   return line;
 };
 
-/**
- * そのラインで「四」が形成されているか判定
- * 四：あと1手で「五」になる状態（長連になる場合は除く）
- */
+// そのラインで「四」が形成されているか判定（長連は除外）
 const countFoursInLine = (line: (Player | null | undefined)[], player: Player): number => {
   let fours = 0;
 
@@ -86,10 +79,7 @@ const countFoursInLine = (line: (Player | null | undefined)[], player: Player): 
   return fours > 0 ? 1 : 0;
 };
 
-/**
- * そのラインで「活三（オープンな三）」が形成されているか判定
- * 活三：次の一手で「達四（両端が開いた四）」が作れる三
- */
+// そのラインで「活三」が形成されているか判定
 const countOpenThreesInLine = (line: (Player | null | undefined)[], player: Player): number => {
   for (let i = 0; i < line.length; i++) {
     if (line[i] === null) {
@@ -105,9 +95,7 @@ const countOpenThreesInLine = (line: (Player | null | undefined)[], player: Play
   return 0;
 };
 
-/**
- * ちょうど5連があるか判定（長連は除外）
- */
+// ちょうど五連があるか判定（長連は除外）
 const hasExactFive = (line: (Player | null | undefined)[], player: Player): boolean => {
   for (let i = 0; i <= line.length - 5; i++) {
     if (
@@ -126,9 +114,7 @@ const hasExactFive = (line: (Player | null | undefined)[], player: Player): bool
   return false;
 };
 
-/**
- * 達四（両端があいた四）判定
- */
+// 達四（両端が開いた四）を形成する三のパターンを判定
 const isTatsuShi = (line: (Player | null | undefined)[], player: Player): boolean => {
   for (let i = 0; i <= line.length - 6; i++) {
     if (

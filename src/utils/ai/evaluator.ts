@@ -1,12 +1,11 @@
 // src/utils/ai/evaluator.ts
+// AIが盤面を評価するロジックを定義するファイル
 
 import type { BoardState, Player } from '../../types/game';
 import { BOARD_SIZE } from '../gameLogic';
 import { AI_SCORES, AI_CONFIG, DIRECTIONS } from './constants';
 
-/**
- * 指定された方向の連続数とブロック状態をスキャンする
- */
+// 指定座標から特定の方向に連続する石の数とブロック数をカウントする関数
 export const scanLine = (
   board: BoardState,
   row: number,
@@ -55,9 +54,7 @@ export const scanLine = (
   return { consecutive, block };
 };
 
-/**
- * スキャン結果に基づき、定数からスコアを割り当てる
- */
+// パターンに応じたスコアを返す関数
 export const getPatternScore = (consecutive: number, block: number): number => {
   if (consecutive >= 5) return AI_SCORES.FIVE;
 
@@ -75,9 +72,7 @@ export const getPatternScore = (consecutive: number, block: number): number => {
   }
 };
 
-/**
- * 指定座標（row, col）に石を置いた場合の評価値を算出する
- */
+// AIが指定座標に石を置いた場合の総合評価値を算出する関数
 export const evaluatePosition = (
   board: BoardState,
   row: number,

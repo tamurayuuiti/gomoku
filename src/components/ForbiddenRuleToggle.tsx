@@ -1,4 +1,5 @@
 // src/components/ForbiddenRuleToggle.tsx
+// 禁じ手ルールのON/OFFを切り替えるトグルボタンコンポーネント
 
 import React from 'react';
 
