@@ -1,11 +1,12 @@
 // src/App.tsx
+// アプリ全体のエントリーポイント
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Player, GameMode } from './types/game';
 import { checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
 import { calculateNextMove } from './utils/ai/search';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
-import { useGameLogic } from './hooks/useGameLogic'; // 追加
+import { useGameLogic } from './hooks/useGameLogic';
 import Board from './components/Board';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
@@ -64,7 +65,7 @@ const App = () => {
   }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove, useForbiddenRule]);
 
   // --- CPU自動実行パイプライン ---
-  const isComputingRef = useRef(false);
+  const lastProcessedTurnRef = useRef<string>('');
 
   useEffect(() => {
     let isMounted = true;
@@ -74,11 +75,16 @@ const App = () => {
       currentPlayer !== playerColor &&
       gameStatus === 'Playing';
 
-    if (!isAiTurn || isComputingRef.current) {
+    // 現在のターンを一意に識別（盤面の石数）
+    const turnId = board.map(r => r.join(',')).join('|');
+
+    // AIのターンでない or すでにこのターンを処理済みなら何もしない
+    if (!isAiTurn || lastProcessedTurnRef.current === turnId) {
       return;
     }
 
-    isComputingRef.current = true;
+    // このターンは処理済みにする
+    lastProcessedTurnRef.current = turnId;
     setIsAiThinking(true);
 
     const timerId = setTimeout(() => {
@@ -90,7 +96,6 @@ const App = () => {
         executeMove(nextMove.row, nextMove.col);
       }
 
-      isComputingRef.current = false;
       setIsAiThinking(false);
     }, 600);
 
