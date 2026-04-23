@@ -1,10 +1,11 @@
 // src/App.tsx
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Player, BoardState, GameStatus, Position, GameMode } from './types/game';
-import { checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
+import type { Player, GameMode } from './types/game';
+import { checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
 import { calculateNextMove } from './utils/ai/search';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
+import { useGameLogic } from './hooks/useGameLogic'; // 追加
 import Board from './components/Board';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
@@ -13,12 +14,17 @@ import GameStatusPanel from './components/GameStatusPanel';
 import './index.css';
 
 const App = () => {
-  // --- 状態管理 ---
-  const [board, setBoard] = useState<BoardState>(createEmptyBoard());
-  const [currentPlayer, setCurrentPlayer] = useState<Player>('Black');
-  const [gameStatus, setGameStatus] = useState<GameStatus>('Playing');
-  const [lastMove, setLastMove] = useState<Position | null>(null);
+  // --- コアロジックの導入 ---
+  const {
+    board,
+    currentPlayer,
+    gameStatus,
+    lastMove,
+    executeMove: coreExecuteMove,
+    resetGameLogic,
+  } = useGameLogic();
 
+  // --- UI・インタラクション状態 ---
   const [gameMode, setGameMode] = useState<GameMode>('PvE');
   const [playerColor, setPlayerColor] = useState<Player>('Black');
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
@@ -32,30 +38,12 @@ const App = () => {
   // --- 禁じ手リストの事前計算 ---
   const forbiddenMoves = useForbiddenMoves(board, currentPlayer, gameStatus, useForbiddenRule);
 
-  // --- ロジック ---
+  // --- UI層のイベントハンドラ ---
   const executeMove = useCallback((row: number, col: number) => {
+    // UI側の警告をクリアし、コアロジックを実行
     setForbiddenWarning(null);
-
-    const newBoard = board.map((r, rIdx) =>
-      rIdx === row ? r.map((c, cIdx) => (cIdx === col ? currentPlayer : c)) : r
-    );
-
-    setBoard(newBoard);
-    setLastMove({ row, col });
-
-    const move: Position = { row, col };
-    if (checkWin(newBoard, move, currentPlayer)) {
-      setGameStatus(currentPlayer === 'Black' ? 'BlackWins' : 'WhiteWins');
-      return;
-    }
-
-    if (checkDraw(newBoard)) {
-      setGameStatus('Draw');
-      return;
-    }
-
-    setCurrentPlayer(prev => (prev === 'Black' ? 'White' : 'Black'));
-  }, [board, currentPlayer]);
+    coreExecuteMove(row, col);
+  }, [coreExecuteMove]);
 
   const handleCellClick = useCallback((row: number, col: number) => {
     if (gameStatus !== 'Playing') return;
@@ -122,13 +110,10 @@ const App = () => {
 
   // --- UIヘルパー ---
   const resetGame = useCallback(() => {
-    setBoard(createEmptyBoard());
-    setCurrentPlayer('Black');
-    setGameStatus('Playing');
-    setLastMove(null);
+    resetGameLogic();
     setIsAiThinking(false);
     setForbiddenWarning(null);
-  }, []);
+  }, [resetGameLogic]);
 
   const handleModeChange = (mode: GameMode) => {
     if (mode !== gameMode) {
