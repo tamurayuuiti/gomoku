@@ -1,10 +1,10 @@
 // src/App.tsx
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Player, BoardState, GameStatus, Position, GameMode } from './types/game';
 import { checkWin, checkDraw, createEmptyBoard, checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
 import { calculateNextMove } from './utils/ai/search';
-import { useForbiddenMoves } from './hooks/useForbiddenMoves'; // 追加
+import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import Board from './components/Board';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
@@ -76,37 +76,40 @@ const App = () => {
   }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove, useForbiddenRule]);
 
   // --- CPU自動実行パイプライン ---
+  const isComputingRef = useRef(false);
+
   useEffect(() => {
     let isMounted = true;
 
-    // 1. AIの番かどうかを判定
-    const isAiTurn = 
+    const isAiTurn =
       gameMode === 'PvE' &&
       currentPlayer !== playerColor &&
       gameStatus === 'Playing';
 
-    // 2. AIの番、かつ、まだ考えていない（isAiThinking === false）ときだけ実行
-    if (isAiTurn && !isAiThinking) {
-      setIsAiThinking(true);
-
-      const timerId = setTimeout(() => {
-        if (!isMounted) return;
-
-        const nextMove = calculateNextMove(board, forbiddenMoves, currentPlayer);
-
-        if (nextMove) {
-          executeMove(nextMove.row, nextMove.col);
-        }
-
-        setIsAiThinking(false);
-      }, 600);
-
-      return () => {
-        isMounted = false;
-        clearTimeout(timerId);
-      };
+    if (!isAiTurn || isComputingRef.current) {
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    isComputingRef.current = true;
+    setIsAiThinking(true);
+
+    const timerId = setTimeout(() => {
+      if (!isMounted) return;
+
+      const nextMove = calculateNextMove(board, forbiddenMoves, currentPlayer);
+
+      if (nextMove) {
+        executeMove(nextMove.row, nextMove.col);
+      }
+
+      isComputingRef.current = false;
+      setIsAiThinking(false);
+    }, 600);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timerId);
+    };
   }, [
     board,
     currentPlayer,
@@ -115,7 +118,6 @@ const App = () => {
     gameStatus,
     forbiddenMoves,
     executeMove
-    // isAiThinking を外すことで、setIsAiThinking(true) による再実行を防ぐ
   ]);
 
   // --- UIヘルパー ---
