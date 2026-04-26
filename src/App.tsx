@@ -1,12 +1,12 @@
 // src/App.tsx
-// アプリ全体のエントリーポイント
+// アプリ全体の構成と主要な状態管理を担当するコンテナコンポーネント
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import type { Player, GameMode } from './types/game';
 import { checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
-import { calculateNextMove } from './utils/ai/search';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import { useGameLogic } from './hooks/useGameLogic';
+import { useAiPlayer } from './hooks/useAiPlayer';
 import Board from './components/Board';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
@@ -15,7 +15,7 @@ import GameStatusPanel from './components/GameStatusPanel';
 import './index.css';
 
 const App = () => {
-  // --- コアロジックの導入 ---
+  // --- コアロジック ---
   const {
     board,
     currentPlayer,
@@ -25,34 +25,45 @@ const App = () => {
     resetGameLogic,
   } = useGameLogic();
 
-  // --- UI・インタラクション状態 ---
+  // --- UI固有の状態 ---
   const [gameMode, setGameMode] = useState<GameMode>('PvE');
   const [playerColor, setPlayerColor] = useState<Player>('Black');
-  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
-
-  // 禁じ手設定と警告メッセージ
   const [useForbiddenRule, setUseForbiddenRule] = useState<boolean>(true);
   const [forbiddenWarning, setForbiddenWarning] = useState<string | null>(null);
 
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
-  // --- 禁じ手リストの事前計算 ---
+  // --- 禁じ手計算 ---
   const forbiddenMoves = useForbiddenMoves(board, currentPlayer, gameStatus, useForbiddenRule);
 
-  // --- UI層のイベントハンドラ ---
+  // --- 着手共通処理 ---
   const executeMove = useCallback((row: number, col: number) => {
-    // UI側の警告をクリアし、コアロジックを実行
     setForbiddenWarning(null);
     coreExecuteMove(row, col);
   }, [coreExecuteMove]);
 
+  // --- AI 制御 ---
+  const { isAiThinking } = useAiPlayer({
+    board,
+    currentPlayer,
+    gameStatus,
+    gameMode,
+    playerColor,
+    forbiddenMoves,
+    onMove: executeMove,
+  });
+
+  // --- ユーザー操作ハンドラ ---
   const handleCellClick = useCallback((row: number, col: number) => {
     if (gameStatus !== 'Playing') return;
     if (board[row][col] !== null) return;
+    
+    // AI思考中または対戦相手の手番時はクリックを無効化
     if (isAiThinking || (gameMode === 'PvE' && currentPlayer !== playerColor)) {
       return;
     }
 
+    // 禁じ手チェック（黒番のみ）
     if (useForbiddenRule && currentPlayer === 'Black') {
       const result = checkForbiddenMove(board, { row, col }, 'Black');
       if (result.isForbidden) {
@@ -64,60 +75,10 @@ const App = () => {
     executeMove(row, col);
   }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove, useForbiddenRule]);
 
-  // --- CPU自動実行パイプライン ---
-  const lastProcessedTurnRef = useRef<string>('');
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const isAiTurn =
-      gameMode === 'PvE' &&
-      currentPlayer !== playerColor &&
-      gameStatus === 'Playing';
-
-    // 現在のターンを一意に識別（盤面の石数）
-    const turnId = board.map(r => r.join(',')).join('|');
-
-    // AIのターンでない or すでにこのターンを処理済みなら何もしない
-    if (!isAiTurn || lastProcessedTurnRef.current === turnId) {
-      return;
-    }
-
-    // このターンは処理済みにする
-    lastProcessedTurnRef.current = turnId;
-    setIsAiThinking(true);
-
-    const timerId = setTimeout(() => {
-      if (!isMounted) return;
-
-      const nextMove = calculateNextMove(board, forbiddenMoves, currentPlayer);
-
-      if (nextMove) {
-        executeMove(nextMove.row, nextMove.col);
-      }
-
-      setIsAiThinking(false);
-    }, 600);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timerId);
-    };
-  }, [
-    board,
-    currentPlayer,
-    gameMode,
-    playerColor,
-    gameStatus,
-    forbiddenMoves,
-    executeMove
-  ]);
-
   // --- UIヘルパー ---
   const resetGame = useCallback(() => {
-    resetGameLogic();
-    setIsAiThinking(false);
-    setForbiddenWarning(null);
+    resetGameLogic(); // ゲームロジックの状態をリセット
+    setForbiddenWarning(null); // UI側の警告を消去
   }, [resetGameLogic]);
 
   const handleModeChange = (mode: GameMode) => {
