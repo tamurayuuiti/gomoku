@@ -1,29 +1,55 @@
 // src/utils/ai/constants.ts
-// AIの評価関数や探索ロジックで使用する定数を定義するファイル
+// AIの評価ロジックや定数を定義するファイル
 
-// スコア定数
+// --- パターン型定義 ---
+export type PatternType =
+  | 'WIN'
+  | 'OPEN_FOUR'
+  | 'CLOSED_FOUR'
+  | 'OPEN_THREE'
+  | 'CLOSED_THREE'
+  | 'OPEN_TWO'
+  | 'CLOSED_TWO'
+  | 'SINGLE';
+
+export type PatternCount = Record<PatternType, number>;
+
+
+// --- スコア定数（攻撃基準に統一） ---
 export const AI_SCORES = {
-  FIVE: 100000,         // 五（5連）
-  OPEN_FOUR: 10000,     // 活四
-  CLOSED_FOUR: 1000,    // 死四
-  OPEN_THREE: 1000,     // 活三
-  CLOSED_THREE: 100,    // 死三
-  OPEN_TWO: 100,        // 活二
-  CLOSED_TWO: 10,       // 死二
-  SINGLE: 10,           // 孤立石
-  NONE: 0,
+  // 最優先事項
+  WIN: 1000000,
+  DEFEND_WIN: 500000,
+
+  // 必勝パターン
+  OPEN_FOUR: 100000,
+  DOUBLE_FOUR: 90000,
+  FOUR_THREE: 90000,
+
+  // 強い脅威
+  DOUBLE_THREE: 50000,
+
+  // 通常評価
+  CLOSED_FOUR: 10000,
+  OPEN_THREE: 5000,
+  CLOSED_THREE: 500,
+  OPEN_TWO: 100,
+  CLOSED_TWO: 10,
+  SINGLE: 1,
 } as const;
 
-// AIの探索に関する設定
+
+// --- AI設定 ---
 export const AI_CONFIG = {
-  ATTACK_WEIGHT: 1.1,   // 攻撃の重み（防御に対する倍率）
-  SEARCH_RANGE: 2,      // 探索時に既存の石から離れる範囲
+  ATTACK_WEIGHT: 1.1,
+  SEARCH_RANGE: 2,
 };
 
-// AIが盤面を評価する際の方向ベクトル
+
+// --- 方向 ---
 export const DIRECTIONS = [
-  [1, 0],  // 縦
-  [0, 1],  // 横
-  [1, 1],  // 右下
-  [1, -1], // 左下
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [1, -1],
 ] as const;

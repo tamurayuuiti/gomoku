@@ -1,8 +1,8 @@
 // src/App.tsx
 // アプリ全体の構成と主要な状態管理を担当するコンテナコンポーネント
 
-import { useState, useCallback } from 'react';
 import type { Player, GameMode } from './types/game';
+import { useState, useCallback } from 'react';
 import { checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import { useGameLogic } from './hooks/useGameLogic';
