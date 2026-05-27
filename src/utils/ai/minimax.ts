@@ -4,8 +4,8 @@
 // - αβ枝刈り・move ordering・将来的なキャッシュ導入を前提とした構造
 
 import type { BoardState, Position, Player } from '../../types/game';
-import { BOARD_SIZE } from '../gameLogic';
-import { AI_CONFIG } from './constants';
+import { BOARD_SIZE, checkWin } from '../gameLogic';
+import { AI_CONFIG, AI_SCORES } from './constants';
 import { evaluatePosition } from './evaluator';
 
 // ============================================================
@@ -137,15 +137,6 @@ const evaluateLeaf = (
  * @param alpha          最大化側の現時点下限保証値（αβ枝刈り用）
  * @param beta           最小化側の現時点上限保証値（αβ枝刈り用）
  * @returns              このノードのスコア（aiPlayer 視点）
- *
- * 【αβ枝刈りについて】
- * alpha / beta は現時点で完全に機能している。
- * `if (beta <= alpha) break` がカットオフ条件であり、
- * move ordering の品質が高いほど枝刈り効率が上がる。
- *
- * 【将来拡張：置換表（Transposition Table）】
- * 関数の先頭で盤面ハッシュをキーに既探索結果を返せる構造になっている。
- * 追加する場合は引数に `cache: Map<string, number>` を加えるだけでよい。
  */
 const minimax = (
   board: BoardState,
@@ -175,6 +166,13 @@ const minimax = (
     for (const { row, col } of candidates) {
       // 手を仮置き
       board[row][col] = currentPlayer;
+
+      // 着手直後の即時勝利判定（AIの勝利）
+      if (checkWin(board, { row, col }, aiPlayer)) {
+        board[row][col] = null; // 必ず巻き戻す
+        return AI_SCORES.WIN;
+      }
+
       const score = minimax(
         board,
         depth - 1,
@@ -199,7 +197,15 @@ const minimax = (
     let minScore = Infinity;
 
     for (const { row, col } of candidates) {
+      // 手を仮置き
       board[row][col] = currentPlayer;
+
+      // 着手直後の即時勝利判定（相手の勝利 = AIにとっての最悪値）
+      if (checkWin(board, { row, col }, currentPlayer)) {
+        board[row][col] = null; // 必ず巻き戻す
+        return -AI_SCORES.WIN;
+      }
+
       const score = minimax(
         board,
         depth - 1,
@@ -210,6 +216,7 @@ const minimax = (
         alpha,
         beta
       );
+      // 手を巻き戻し
       board[row][col] = null;
 
       if (score < minScore) minScore = score;
@@ -257,6 +264,14 @@ export const findBestMove = (
 
   for (const { row, col } of candidates) {
     board[row][col] = aiPlayer;
+
+    // ルートノードでの即時勝利判定（1手詰め検出）
+    if (checkWin(board, { row, col }, aiPlayer)) {
+      board[row][col] = null;
+      console.log(`[Minimax] Immediate Win Found at (${row}, ${col})`);
+      return { row, col };
+    }
+
     const score = minimax(
       board,
       depth - 1,
