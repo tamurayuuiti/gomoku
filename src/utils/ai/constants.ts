@@ -42,7 +42,19 @@ export const AI_SCORES = {
 // --- AI設定 ---
 export const AI_CONFIG = {
   ATTACK_WEIGHT: 1.1,
+
+  /** 候補手生成時の周辺探索距離 */
   SEARCH_RANGE: 2,
+
+  /** ミニマックス探索の基本深さ（2〜3 を想定） */
+  MINIMAX_DEPTH: 2,
+
+  /**
+   * 各ノードで探索する候補手の上限数（move ordering 後に先頭から取得）
+   * 深さ 2・15手なら最大 15^2 = 225 leaf 評価に抑制できる
+   * αβ枝刈り導入後はさらに削減される
+   */
+  MAX_CANDIDATES: 15,
 };
 
 
