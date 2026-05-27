@@ -4,13 +4,15 @@
 // 責務:
 //   - パターン検出 (getLineString / detectPattern)
 //   - 位置評価   (evaluatePosition)
-//   - 全盤評価   (evaluateBoard) … 葉ノード向け多重脅威評価
 //   - 共有ユーティリティ (opponentOf / hasStoneNearby)
+//
+// 全盤評価（evaluateBoard）は boardEvaluator.ts に移管済み。
+// このファイルは「1マス単位の評価・パターン検出」に専念する。
 
 import type { BoardState, Player } from '../../types/game';
 import type { PatternType, PatternCount } from './constants';
 import { BOARD_SIZE } from '../gameLogic';
-import { AI_SCORES, AI_CONFIG, DIRECTIONS, EVAL_CONFIG } from './constants';
+import { AI_SCORES, AI_CONFIG, DIRECTIONS } from './constants';
 
 
 // ============================================================
@@ -23,7 +25,7 @@ export const opponentOf = (player: Player): Player =>
 
 /**
  * 指定セルの周辺（SEARCH_RANGE 以内）に石があるか判定。
- * 候補手生成・全盤評価での空セルフィルタリングに使用する。
+ * candidateGenerator・boardEvaluator での空セルフィルタリングに使用する。
  */
 export const hasStoneNearby = (
   board: BoardState,
@@ -232,67 +234,4 @@ export const evaluatePosition = (
   );
 
   return attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore;
-};
-
-
-// ============================================================
-// 全盤評価（葉ノード向け）
-// ============================================================
-
-/**
- * 盤面全体を aiPlayer 視点で評価し、スカラースコアを返す。
- *
- * 【旧 evaluateLeaf との違い】
- * 旧実装: `aiMax - oppMax`（各プレイヤーの"1 手だけ"の最善差分）
- * 新実装: 上位 K 手の重み付き和差分
- *
- *   score = Σ_i(aiTopK[i] × decay^i) - Σ_i(oppTopK[i] × decay^i)
- *
- * decay < 1 で 2・3 番手の寄与を逓減させることで:
- *   - 「1 箇所だけ強い」盤面より「複数箇所に脅威がある」盤面を高評価
- *   - 多重脅威のある局面（例: 四三・双三）を正確に反映
- *
- * 【将来の差し替え口】
- * 全ライン走査型の専用評価関数（例: ラインスキャン O(n)）が
- * 用意された場合は、この関数をそちらに置き換えるだけでよい。
- */
-export const evaluateBoard = (
-  board: BoardState,
-  aiPlayer: Player,
-  forbiddenMoves: boolean[][]
-): number => {
-  const opp = opponentOf(aiPlayer);
-  const topK = EVAL_CONFIG.TOP_K;
-  const decay = EVAL_CONFIG.TOP_K_DECAY;
-
-  // 上位 K 要素のみを保持するソート済み降順配列へ挿入
-  const insertTopK = (arr: number[], val: number, k: number): void => {
-    // 線形挿入: K が小さい（≤ 3）ため O(K) で十分
-    let i = arr.length;
-    while (i > 0 && arr[i - 1] < val) i--;
-    arr.splice(i, 0, val);
-    if (arr.length > k) arr.length = k;
-  };
-
-  const aiTopK: number[] = [];
-  const oppTopK: number[] = [];
-
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
-      if (!hasStoneNearby(board, r, c)) continue;
-
-      insertTopK(aiTopK, evaluatePosition(board, r, c, aiPlayer), topK);
-      insertTopK(oppTopK, evaluatePosition(board, r, c, opp), topK);
-    }
-  }
-
-  if (aiTopK.length === 0 && oppTopK.length === 0) return 0;
-
-  let aiTotal = 0;
-  let oppTotal = 0;
-  for (let i = 0; i < aiTopK.length; i++) aiTotal += aiTopK[i] * Math.pow(decay, i);
-  for (let i = 0; i < oppTopK.length; i++) oppTotal += oppTopK[i] * Math.pow(decay, i);
-
-  return aiTotal - oppTotal;
 };
