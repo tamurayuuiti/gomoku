@@ -10,7 +10,6 @@
 
     "types": ["node"],
 
-    "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
 
