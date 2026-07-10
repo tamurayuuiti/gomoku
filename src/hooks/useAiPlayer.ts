@@ -1,9 +1,16 @@
 // src/hooks/useAiPlayer.ts
 // AIプレイヤーの思考と着手を管理するカスタムフック
+//
+// 【Web Worker化】
+// AI探索（calculateNextMove 以降）は UIスレッドをブロックしないよう
+// aiWorker（src/workers/aiWorker.ts）内で実行する。
+// このフックは Worker の生成・postMessage・onmessage・onerror・
+// アンマウント時の terminate() を担当する「実行場所の切り替え」のみを行い、
+// 探索ロジック自体には一切関与しない。
 
 import { useState, useEffect, useRef } from 'react';
 import type { Player, BoardState, GameStatus, GameMode } from '../types/game';
-import { calculateNextMove } from '../utils/ai/search';
+import type { AiWorkerRequest, AiWorkerResponse } from '../workers/aiWorker.types';
 
 interface UseAiPlayerProps {
   board: BoardState;
@@ -26,10 +33,25 @@ export const useAiPlayer = ({
 }: UseAiPlayerProps) => {
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
   const lastProcessedTurnRef = useRef<string>('');
+  const workerRef = useRef<Worker | null>(null);
+
+  // --- Worker生成・破棄 ---
+  useEffect(() => {
+    const worker = new Worker(new URL('../workers/aiWorker.ts', import.meta.url), {
+      type: 'module',
+    });
+    workerRef.current = worker;
+
+    return () => {
+      worker.terminate();
+      workerRef.current = null;
+    };
+  }, []);
 
   // --- AI実行ロジック ---
   useEffect(() => {
     let isMounted = true;
+    let timerId: ReturnType<typeof setTimeout> | undefined;
 
     const isAiTurn =
       gameMode === 'PvE' &&
@@ -44,30 +66,61 @@ export const useAiPlayer = ({
     // 同一ターンの二重実行防止
     if (lastProcessedTurnRef.current === turnId) return;
 
+    const worker = workerRef.current;
+    if (!worker) return;
+
     lastProcessedTurnRef.current = turnId;
     setIsAiThinking(true);
 
-    // 思考は即座に開始する（同期関数）
+    // 思考は Worker 側で非同期に開始する（UIスレッドはブロックしない）
     const thinkStartTime = performance.now();
-    const nextMove = calculateNextMove(board, forbiddenMoves, currentPlayer);
-    const elapsed = performance.now() - thinkStartTime;
 
-    // 着手までの表示上の遅延は max(600ms, 実際の思考時間) とする
-    const remainingDelay = Math.max(0, 600 - elapsed);
+    const handleMessage = (event: MessageEvent<AiWorkerResponse>) => {
+      const { nextMove, error } = event.data;
 
-    const timerId = setTimeout(() => {
-      if (!isMounted) return;
-
-      if (nextMove) {
-        onMove(nextMove.row, nextMove.col);
+      if (error) {
+        // 必要最低限のエラーログを出力し、isAiThinking を解除してUIのフリーズを防ぐ
+        console.error('[useAiPlayer] AI worker error:', error);
+        if (isMounted) setIsAiThinking(false);
+        return;
       }
 
-      setIsAiThinking(false);
-    }, remainingDelay);
+      const elapsed = performance.now() - thinkStartTime;
+      // 着手までの表示上の遅延は max(600ms, 実際の思考時間) とする
+      const remainingDelay = Math.max(0, 600 - elapsed);
+
+      timerId = setTimeout(() => {
+        if (!isMounted) return;
+
+        if (nextMove) {
+          onMove(nextMove.row, nextMove.col);
+        }
+
+        setIsAiThinking(false);
+      }, remainingDelay);
+    };
+
+    const handleError = (event: ErrorEvent) => {
+      // Worker 内で捕捉されなかった例外（構文エラー等）に対するフォールバック
+      console.error('[useAiPlayer] AI worker crashed:', event.message);
+      if (isMounted) setIsAiThinking(false);
+    };
+
+    worker.addEventListener('message', handleMessage);
+    worker.addEventListener('error', handleError);
+
+    const request: AiWorkerRequest = {
+      board,
+      forbiddenMoves,
+      currentPlayer,
+    };
+    worker.postMessage(request);
 
     return () => {
       isMounted = false;
       clearTimeout(timerId);
+      worker.removeEventListener('message', handleMessage);
+      worker.removeEventListener('error', handleError);
     };
   }, [
     board,
