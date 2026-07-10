@@ -140,15 +140,53 @@ export const detectPattern = (s: string): PatternType => {
 // ============================================================
 
 /**
- * 指定位置への着手価値を playerColor の視点で返す。
+ * 中央近接ボーナス（極小の位置補正）。
+ *
+ * 目的: 評価値が完全に同点となる候補手について、盤面中央 (7,7) に
+ * 近い手をわずかに優先させるための tie-breaker。
+ *
+ * 設計:
+ *   - 既存スコア体系の最小刻み幅は AI_SCORES.SINGLE（= 1）。
+ *   - POSITION_BONUS_EPSILON はこれより 2 桁小さい値にし、
+ *     中央からの距離に応じて [0, POSITION_BONUS_EPSILON) の範囲でのみ加点する。
+ *   - そのため、本来スコアが 1 でも異なる候補同士の順位は
+ *     位置補正によって絶対に逆転しない（詳細は下記 computePositionBonus 参照）。
+ */
+const POSITION_BONUS_EPSILON = 0.01;
+
+/** 盤面中央の座標（15×15 なら (7,7)） */
+const BOARD_CENTER = (BOARD_SIZE - 1) / 2;
+
+/** 中央から盤面の隅までの最大距離（正規化の基準値） */
+const MAX_CENTER_DISTANCE = Math.sqrt(2) * BOARD_CENTER;
+
+/**
+ * (row, col) の中央近接度に応じた極小の位置補正値を返す。
+ *
+ * 中央 (BOARD_CENTER, BOARD_CENTER) で最大値 POSITION_BONUS_EPSILON、
+ * 盤面の隅で 0 に線形に近づく。
+ * 戻り値は常に [0, POSITION_BONUS_EPSILON) の範囲に収まる。
+ */
+const computePositionBonus = (row: number, col: number): number => {
+  const distance = Math.sqrt(
+    (row - BOARD_CENTER) ** 2 + (col - BOARD_CENTER) ** 2
+  );
+  return (1 - distance / MAX_CENTER_DISTANCE) * POSITION_BONUS_EPSILON;
+};
+
+/**
+ * 指定位置への着手価値を playerColor の視点で返す（位置補正なしの素点）。
  *
  * 評価フロー:
  *   1. 攻撃パターン（自分が置いた後）
  *   2. 相手 before パターン（相手の現在の脅威）
  *   3. 相手 after パターン（自分が置いた後の相手の脅威）
  *   → 即時評価 → 通常スコア加算
+ *
+ * 既存のスコア体系・優先順位はこの関数内で完結しており、
+ * 中央近接ボーナスは呼び出し元の evaluatePosition が加算する。
  */
-export const evaluatePosition = (
+const evaluatePositionRaw = (
   board: BoardState,
   row: number,
   col: number,
@@ -235,3 +273,22 @@ export const evaluatePosition = (
 
   return attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore;
 };
+
+/**
+ * 指定位置への着手価値を playerColor の視点で返す。
+ *
+ * 評価ロジック本体は evaluatePositionRaw に委譲し、ここでは
+ * 「評価値が完全に同点となる候補手について、中央に近い手をわずかに
+ * 優先する」ための極小の位置補正（computePositionBonus）のみを加算する。
+ *
+ * 補正値は常に [0, POSITION_BONUS_EPSILON) の範囲であり、
+ * 既存スコア体系の最小刻み幅（AI_SCORES.SINGLE = 1）より
+ * 十分小さいため、素点が異なる候補同士の順位は逆転しない。
+ */
+export const evaluatePosition = (
+  board: BoardState,
+  row: number,
+  col: number,
+  playerColor: Player
+): number =>
+  evaluatePositionRaw(board, row, col, playerColor) + computePositionBonus(row, col);
