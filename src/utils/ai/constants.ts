@@ -40,14 +40,30 @@ export const AI_SCORES = {
 
 
 // --- AI探索設定 ---
+// 【探索パラメータの一元管理】
+// depth・timeLimitMs のデフォルト値はここに集約している。
+// AIの強さを調整したい場合、呼び出し側で SearchOptions を明示指定しない限り
+// 常にこの値が使われるため、値を書き換えるだけで挙動を変更できる。
 export const AI_CONFIG = {
   ATTACK_WEIGHT: 1.1,
 
   /** 候補手生成時の周辺探索距離 */
   SEARCH_RANGE: 2,
 
-  /** ミニマックス探索の基本深さ（2〜3 を想定） */
+  /**
+   * ミニマックス探索の基本深さ（2〜3 を想定）
+   * - SearchOptions.timeLimitMs 未指定時: この深さで固定探索する
+   * - SearchOptions.timeLimitMs 指定時  : 反復深化の上限深さとして使う
+   */
   MINIMAX_DEPTH: 2,
+
+  /**
+   * 反復深化のデフォルト時間制限 [ms]（仮値）。
+   * SearchOptions.timeLimitMs が明示されなかった場合のフォールバック値。
+   * 今後 AI レベル（Easy/Normal/Hard 等）を導入する際は、
+   * レベルごとの SearchOptions プリセットでこの値を上書きする想定。
+   */
+  DEFAULT_TIME_LIMIT_MS: 10000,
 
   /**
    * 各ノードで探索する候補手の上限数（move ordering 後に先頭から取得）
@@ -76,16 +92,18 @@ export const EVAL_CONFIG = {
 
 
 /**
- * 探索オプション（将来の iterative deepening・時間制御向け）
+ * 探索オプション（iterative deepening・時間制御用）
  *
- * 現時点では depth のみ有効。timeLimitMs は iterative deepening 実装時に使用する。
+ * - depth: 反復深化を使わない場合の固定深さ探索に使用（timeLimitMs 未指定時のフォールバック）
+ * - timeLimitMs: 指定時、search.ts 側で depth=1,2,3... と反復深化を行い、
+ *   制限時間内に完了した最後の深さの結果を採用する。
  */
 export interface SearchOptions {
   /** 探索深さの上書き（未指定時は AI_CONFIG.MINIMAX_DEPTH） */
   depth?: number;
   /**
-   * 探索時間上限 [ms]（iterative deepening 実装時に有効化）
-   * @future
+   * 探索時間上限 [ms]。指定すると反復深化（iterative deepening）による
+   * 時間制御付き探索になる。未指定時は depth 固定の従来動作。
    */
   timeLimitMs?: number;
 }

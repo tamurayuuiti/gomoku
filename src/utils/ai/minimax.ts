@@ -11,9 +11,7 @@
 //
 // 【将来の拡張ポイント】
 //   - transposition table: SearchContext に TTMap を追加
-//   - iterative deepening: findBestMove 内のループ化
 //   - aspiration window:   ルート alpha/beta を SearchContext で管理
-//   - time control:        SearchContext に startTimeMs / timeLimitMs を追加
 
 import type { BoardState, Position, Player } from '../../types/game';
 import { checkWin } from '../gameLogic';
@@ -40,8 +38,6 @@ import {
  * 【将来の拡張フィールド例】
  *   transpositionTable : Map<bigint, TTEntry>   … 置換表
  *   zobristHash        : ZobristHasher           … 差分ハッシュ計算器
- *   startTimeMs        : number                  … 探索開始時刻（時間制御用）
- *   timeLimitMs        : number                  … 時間制限（iterative deepening）
  *   nodeCount          : number                  … 評価ノード数カウンタ
  *   historyTable       : number[][][]            … history heuristic カウンタ
  */
@@ -49,16 +45,27 @@ interface SearchContext {
   aiPlayer: Player;
   forbiddenMoves: boolean[][];
   killerTable: KillerTable;
+  /**
+   * 探索打ち切り時刻（performance.now() 基準の絶対時刻 [ms]）。
+   * Infinity の場合は時間制御なし（従来通り depth 固定探索）。
+   */
+  deadline: number;
 }
 
 const createSearchContext = (
   aiPlayer: Player,
-  forbiddenMoves: boolean[][]
+  forbiddenMoves: boolean[][],
+  deadline: number = Infinity
 ): SearchContext => ({
   aiPlayer,
   forbiddenMoves,
   killerTable: createKillerTable(),
+  deadline,
 });
+
+/** 探索打ち切り時刻を超過しているか判定する */
+const isTimeUp = (ctx: SearchContext): boolean =>
+  ctx.deadline !== Infinity && performance.now() >= ctx.deadline;
 
 
 // ============================================================
@@ -111,6 +118,9 @@ const minimax = (
     let maxScore = -Infinity;
 
     for (const { pos, score: moveScore } of candidates) {
+      // 時間切れ: この時点までに評価した中での暫定値で探索を打ち切る
+      if (isTimeUp(ctx)) break;
+
       const { row, col } = pos;
       board[row][col] = currentPlayer;
 
@@ -148,6 +158,9 @@ const minimax = (
     let minScore = Infinity;
 
     for (const { pos, score: moveScore } of candidates) {
+      // 時間切れ: この時点までに評価した中での暫定値で探索を打ち切る
+      if (isTimeUp(ctx)) break;
+
       const { row, col } = pos;
       board[row][col] = currentPlayer;
 
@@ -193,16 +206,15 @@ const minimax = (
  * ミニマックス探索で最善手を求めて返す。
  *
  * search.ts から呼び出される唯一の公開関数。
- * インターフェースは変更なし（search.ts 側の互換性を維持）。
+ * search.ts 側の反復深化ループから depth=1,2,3... と繰り返し呼び出される想定。
  *
- * 【将来の拡張ポイント: iterative deepening】
- * ```
- * for (let d = 1; d <= depth; d++) {
- *   bestPos = searchAtDepth(board, d, ctx);
- *   if (isTimeUp(ctx)) break;
- * }
- * ```
- * SearchContext に startTimeMs / timeLimitMs を追加するだけで対応可能。
+ * 【時間制御】
+ * deadline（performance.now() 基準の絶対時刻）を指定すると、
+ * 探索中に時間切れを検知した時点で安全に打ち切る。
+ * その場合、ルート候補を最後まで評価しきれていなければ
+ * 「この深さの探索は不完全」とみなし null を返す。
+ * 呼び出し元（search.ts）は null を受け取った場合、
+ * 直前の深さで得られた完全な結果を採用する。
  *
  * 【将来の拡張ポイント: aspiration window】
  * 前回 depth の bestScore を基に初期 [α, β] を絞り込み、
@@ -213,15 +225,18 @@ const minimax = (
  * @param forbiddenMoves 禁じ手マップ（探索中は静的として扱う）
  * @param aiPlayer       AI のプレイヤー
  * @param depth          探索深さ（デフォルト: AI_CONFIG.MINIMAX_DEPTH）
- * @returns              最善手の Position、候補なしの場合は null
+ * @param deadline       探索打ち切り時刻（performance.now() 基準、未指定時は無制限）
+ * @returns              最善手の Position。候補なし、または時間切れで
+ *                        この深さの探索を完了できなかった場合は null
  */
 export const findBestMove = (
   board: BoardState,
   forbiddenMoves: boolean[][],
   aiPlayer: Player,
-  depth: number = AI_CONFIG.MINIMAX_DEPTH
+  depth: number = AI_CONFIG.MINIMAX_DEPTH,
+  deadline: number = Infinity
 ): Position | null => {
-  const ctx = createSearchContext(aiPlayer, forbiddenMoves);
+  const ctx = createSearchContext(aiPlayer, forbiddenMoves, deadline);
   const candidates = generateOrderedCandidates(
     board,
     aiPlayer,
@@ -241,6 +256,12 @@ export const findBestMove = (
   );
 
   for (const { pos } of candidates) {
+    // 時間切れ: ルート候補を全て評価しきれていないため、この深さの結果は不採用とする
+    if (isTimeUp(ctx)) {
+      console.log(`[Minimax] depth=${depth} timed out before completion`);
+      return null;
+    }
+
     const { row, col } = pos;
     board[row][col] = aiPlayer;
 
