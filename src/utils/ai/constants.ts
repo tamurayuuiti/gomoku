@@ -55,7 +55,7 @@ export const AI_CONFIG = {
    * - SearchOptions.timeLimitMs 未指定時: この深さで固定探索する
    * - SearchOptions.timeLimitMs 指定時  : 反復深化の上限深さとして使う
    */
-  MINIMAX_DEPTH: 2,
+  MINIMAX_DEPTH: 6,
 
   /**
    * 反復深化のデフォルト時間制限 [ms]（仮値）。
