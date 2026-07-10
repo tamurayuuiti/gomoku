@@ -1,13 +1,13 @@
 // src/utils/ai/candidateGenerator.ts
-// 候補手生成・move ordering・killer heuristic を担うモジュール
+// 候補手生成・move ordering・killer heuristic・history heuristic を担うモジュール
 //
 // 責務:
 //   - KillerTable の型定義と操作（storeKiller / isKiller）
-//   - 3 tier move ordering（CRITICAL / KILLER / REST）
+//   - HistoryTable の型定義と操作（storeHistory / getHistoryScore）
+//   - 3 tier move ordering（CRITICAL / KILLER / REST）＋ REST 内の history 補助ソート
 //   - 候補手の上限絞り込み（MAX_CANDIDATES）
 //
 // 【将来の拡張ポイント】
-//   - history heuristic: storeHistory / scoreWithHistory を追加
 //   - countermove heuristic: 直前手をキーとするテーブルを追加
 //   - TT ベストムーブ: generateOrderedCandidates の先頭に TT ヒット手を挿入
 
@@ -36,6 +36,28 @@ export const MAX_KILLER_DEPTH = 8 as const;
 /** 空の KillerTable を生成するファクトリ */
 export const createKillerTable = (): KillerTable =>
   Array.from({ length: MAX_KILLER_DEPTH }, (): KillerEntry => [null, null]);
+
+
+// ============================================================
+// HistoryTable 型定義
+// ============================================================
+
+/**
+ * history heuristic 用のスコアテーブル。
+ * historyTable[player][row][col] に「その手が過去にカットオフを
+ * 引き起こした深さ」に基づく加点を累積する。
+ *
+ * KillerTable が「直近 2 手・深さごと」の局所的な記録なのに対し、
+ * HistoryTable は探索木全体を通じて手番（player）単位で累積する
+ * グローバルな統計であり、SearchContext に 1 つだけ保持する。
+ */
+export type HistoryTable = Record<Player, number[][]>;
+
+/** 空の HistoryTable を生成するファクトリ（Black/White それぞれ BOARD_SIZE 四方を 0 初期化） */
+export const createHistoryTable = (): HistoryTable => ({
+  Black: Array.from({ length: BOARD_SIZE }, () => new Array<number>(BOARD_SIZE).fill(0)),
+  White: Array.from({ length: BOARD_SIZE }, () => new Array<number>(BOARD_SIZE).fill(0)),
+});
 
 
 // ============================================================
@@ -81,10 +103,6 @@ export const CRITICAL_SCORE_THRESHOLD = AI_SCORES.DOUBLE_THREE; // 50_000
  * - 同じ手を重複登録しない
  * - slot[0] が最新で slot[1] が次点
  * - CRITICAL 手（WIN 相当）は呼び出し元で除外済み
- *
- * 【将来の拡張】
- *   history heuristic と組み合わせる場合は、
- *   ここで historyTable[player][row][col]++ を行う。
  */
 export const storeKiller = (
   killerTable: KillerTable,
@@ -115,6 +133,38 @@ export const isKiller = (
 
 
 // ============================================================
+// History heuristic management
+// ============================================================
+
+/**
+ * カットオフを引き起こした手を history table に加点記録する。
+ *
+ * 加点方式: depth^2（一般的な history heuristic の重み付け）。
+ * 深い（＝残り探索深さが大きい）ノードでのカットオフほど、
+ * それだけ広い部分木の枝刈りに貢献したとみなして重く評価する。
+ *
+ * player 単位でテーブルを分けているため、自分の手番の中でだけ
+ * 履歴が比較される（相手の手と混同しない）。
+ */
+export const storeHistory = (
+  historyTable: HistoryTable,
+  player: Player,
+  depth: number,
+  pos: Position
+): void => {
+  historyTable[player][pos.row][pos.col] += depth * depth;
+};
+
+/** 指定座標の history スコアを取得する（未記録なら 0） */
+export const getHistoryScore = (
+  historyTable: HistoryTable,
+  player: Player,
+  row: number,
+  col: number
+): number => historyTable[player][row][col];
+
+
+// ============================================================
 // 候補手生成（3 tier move ordering）
 // ============================================================
 
@@ -132,10 +182,11 @@ export const isKiller = (
  *   CRITICAL 未満でも探索上重要な手を REST より先に試せる。
  *
  * Tier 2 (REST):
- *   上記以外。evaluatePosition 降順でソート済み。
+ *   上記以外。evaluatePosition 降順を主キーとし、
+ *   history heuristic のスコアを補助的な副キーとして安定ソートする
+ *   （evaluatePosition の大小関係は history によって逆転しない）。
  *
  * 【将来の拡張ポイント】
- *   - history heuristic: REST tier 内のスコアに historyScore を加算して再ソート
  *   - countermove heuristic: 直前手への対応として有効だった手を killer tier に追加
  *   - TT ベストムーブ: 置換表ヒット時は先頭に挿入（Tier -1 相当）
  *
@@ -143,6 +194,7 @@ export const isKiller = (
  * @param player         手番プレイヤー
  * @param forbiddenMoves 禁じ手マップ
  * @param killerTable    killer table（SearchContext から渡す）
+ * @param historyTable   history table（SearchContext から渡す。REST tier の補助ソートに使用）
  * @param depth          現在の探索深さ（killer 参照に使用）
  * @returns              ordered な ScoredPosition 配列（上限 MAX_CANDIDATES）
  *                        evaluatePosition の score を保持したまま返すため、
@@ -153,6 +205,7 @@ export const generateOrderedCandidates = (
   player: Player,
   forbiddenMoves: boolean[][],
   killerTable: KillerTable,
+  historyTable: HistoryTable,
   depth: number
 ): ScoredPosition[] => {
   const scored: ScoredPosition[] = [];
@@ -188,6 +241,16 @@ export const generateOrderedCandidates = (
       restTier.push(entry);
     }
   }
+
+  // REST tier: evaluatePosition スコアの大小関係は変えず、
+  // 同一スコアの手同士に限って history heuristic のスコアで降順に並べ替える。
+  // （評価スコアが主キー・history は補助的な副キーという位置づけを厳密に保つ）
+  restTier.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const historyA = getHistoryScore(historyTable, player, a.pos.row, a.pos.col);
+    const historyB = getHistoryScore(historyTable, player, b.pos.row, b.pos.col);
+    return historyB - historyA;
+  });
 
   // CRITICAL が既に MAX_CANDIDATES を超える局面（多重勝利等）では
   // CRITICAL のみ返すことで探索が迅速に収束する

@@ -20,9 +20,12 @@ import { opponentOf } from './evaluator';
 import { evaluateBoard } from './boardEvaluator';
 import {
   type KillerTable,
+  type HistoryTable,
   CRITICAL_SCORE_THRESHOLD,
   createKillerTable,
+  createHistoryTable,
   storeKiller,
+  storeHistory,
   generateOrderedCandidates,
 } from './candidateGenerator';
 
@@ -39,12 +42,17 @@ import {
  *   transpositionTable : Map<bigint, TTEntry>   … 置換表
  *   zobristHash        : ZobristHasher           … 差分ハッシュ計算器
  *   nodeCount          : number                  … 評価ノード数カウンタ
- *   historyTable       : number[][][]            … history heuristic カウンタ
  */
 interface SearchContext {
   aiPlayer: Player;
   forbiddenMoves: boolean[][];
   killerTable: KillerTable;
+  /**
+   * history heuristic 用テーブル。
+   * カットオフを引き起こした手を player 単位で累積記録し、
+   * generateOrderedCandidates の REST tier 内ソートの補助に使う。
+   */
+  historyTable: HistoryTable;
   /**
    * 探索打ち切り時刻（performance.now() 基準の絶対時刻 [ms]）。
    * Infinity の場合は時間制御なし（従来通り depth 固定探索）。
@@ -60,6 +68,7 @@ const createSearchContext = (
   aiPlayer,
   forbiddenMoves,
   killerTable: createKillerTable(),
+  historyTable: createHistoryTable(),
   deadline,
 });
 
@@ -106,6 +115,7 @@ const minimax = (
     currentPlayer,
     ctx.forbiddenMoves,
     ctx.killerTable,
+    ctx.historyTable,
     depth
   );
 
@@ -144,10 +154,11 @@ const minimax = (
       if (score > maxScore) maxScore = score;
       if (score > alpha) alpha = score;
 
-      // β カットオフ: CRITICAL 未満の手のみ killer に記録
+      // β カットオフ: CRITICAL 未満の手のみ killer / history に記録
       if (beta <= alpha) {
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, { row, col });
+          storeHistory(ctx.historyTable, currentPlayer, depth, { row, col });
         }
         break;
       }
@@ -184,10 +195,11 @@ const minimax = (
       if (score < minScore) minScore = score;
       if (score < beta) beta = score;
 
-      // α カットオフ: CRITICAL 未満の手のみ killer に記録
+      // α カットオフ: CRITICAL 未満の手のみ killer / history に記録
       if (beta <= alpha) {
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, { row, col });
+          storeHistory(ctx.historyTable, currentPlayer, depth, { row, col });
         }
         break;
       }
@@ -242,6 +254,7 @@ export const findBestMove = (
     aiPlayer,
     forbiddenMoves,
     ctx.killerTable,
+    ctx.historyTable,
     depth
   );
   if (candidates.length === 0) return null;
