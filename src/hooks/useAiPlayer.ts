@@ -47,17 +47,23 @@ export const useAiPlayer = ({
     lastProcessedTurnRef.current = turnId;
     setIsAiThinking(true);
 
+    // 思考は即座に開始する（同期関数）
+    const thinkStartTime = performance.now();
+    const nextMove = calculateNextMove(board, forbiddenMoves, currentPlayer);
+    const elapsed = performance.now() - thinkStartTime;
+
+    // 着手までの表示上の遅延は max(600ms, 実際の思考時間) とする
+    const remainingDelay = Math.max(0, 600 - elapsed);
+
     const timerId = setTimeout(() => {
       if (!isMounted) return;
-
-      const nextMove = calculateNextMove(board, forbiddenMoves, currentPlayer);
 
       if (nextMove) {
         onMove(nextMove.row, nextMove.col);
       }
 
       setIsAiThinking(false);
-    }, 600);
+    }, remainingDelay);
 
     return () => {
       isMounted = false;
