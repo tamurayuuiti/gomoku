@@ -39,6 +39,21 @@ export const createKillerTable = (): KillerTable =>
 
 
 // ============================================================
+// ScoredPosition 型定義
+// ============================================================
+
+/**
+ * evaluatePosition の結果を保持したまま候補手を表す型。
+ * generateOrderedCandidates の呼び出し元（minimax.ts）で
+ * 同一候補に対する evaluatePosition の再計算を避けるために使う。
+ */
+export interface ScoredPosition {
+  pos: Position;
+  score: number;
+}
+
+
+// ============================================================
 // CRITICAL 閾値
 // ============================================================
 
@@ -129,7 +144,9 @@ export const isKiller = (
  * @param forbiddenMoves 禁じ手マップ
  * @param killerTable    killer table（SearchContext から渡す）
  * @param depth          現在の探索深さ（killer 参照に使用）
- * @returns              ordered な Position 配列（上限 MAX_CANDIDATES）
+ * @returns              ordered な ScoredPosition 配列（上限 MAX_CANDIDATES）
+ *                        evaluatePosition の score を保持したまま返すため、
+ *                        呼び出し元での再計算が不要になる。
  */
 export const generateOrderedCandidates = (
   board: BoardState,
@@ -137,8 +154,8 @@ export const generateOrderedCandidates = (
   forbiddenMoves: boolean[][],
   killerTable: KillerTable,
   depth: number
-): Position[] => {
-  const scored: Array<{ pos: Position; score: number }> = [];
+): ScoredPosition[] => {
+  const scored: ScoredPosition[] = [];
 
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
@@ -157,17 +174,18 @@ export const generateOrderedCandidates = (
   // score 降順（WIN > DEFEND_WIN > ... の自然な tier 順を維持）
   scored.sort((a, b) => b.score - a.score);
 
-  const criticalTier: Position[] = [];
-  const killerTier: Position[] = [];
-  const restTier: Position[] = [];
+  const criticalTier: ScoredPosition[] = [];
+  const killerTier: ScoredPosition[] = [];
+  const restTier: ScoredPosition[] = [];
 
-  for (const { pos, score } of scored) {
+  for (const entry of scored) {
+    const { pos, score } = entry;
     if (score >= CRITICAL_SCORE_THRESHOLD) {
-      criticalTier.push(pos);
+      criticalTier.push(entry);
     } else if (isKiller(killerTable, depth, pos.row, pos.col)) {
-      killerTier.push(pos);
+      killerTier.push(entry);
     } else {
-      restTier.push(pos);
+      restTier.push(entry);
     }
   }
 

@@ -18,7 +18,7 @@
 import type { BoardState, Position, Player } from '../../types/game';
 import { checkWin } from '../gameLogic';
 import { AI_CONFIG, AI_SCORES } from './constants';
-import { opponentOf, evaluatePosition } from './evaluator';
+import { opponentOf } from './evaluator';
 import { evaluateBoard } from './boardEvaluator';
 import {
   type KillerTable,
@@ -110,7 +110,8 @@ const minimax = (
   if (isMaximizing) {
     let maxScore = -Infinity;
 
-    for (const { row, col } of candidates) {
+    for (const { pos, score: moveScore } of candidates) {
+      const { row, col } = pos;
       board[row][col] = currentPlayer;
 
       // 即時勝利判定（AI の勝利）
@@ -135,7 +136,6 @@ const minimax = (
 
       // β カットオフ: CRITICAL 未満の手のみ killer に記録
       if (beta <= alpha) {
-        const moveScore = evaluatePosition(board, row, col, currentPlayer);
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, { row, col });
         }
@@ -147,7 +147,8 @@ const minimax = (
   } else {
     let minScore = Infinity;
 
-    for (const { row, col } of candidates) {
+    for (const { pos, score: moveScore } of candidates) {
+      const { row, col } = pos;
       board[row][col] = currentPlayer;
 
       // 即時勝利判定（相手の勝利 = AI にとっての最悪値）
@@ -172,7 +173,6 @@ const minimax = (
 
       // α カットオフ: CRITICAL 未満の手のみ killer に記録
       if (beta <= alpha) {
-        const moveScore = evaluatePosition(board, row, col, currentPlayer);
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, { row, col });
         }
@@ -231,7 +231,7 @@ export const findBestMove = (
   );
   if (candidates.length === 0) return null;
 
-  let bestPos: Position = candidates[0];
+  let bestPos: Position = candidates[0].pos;
   let bestScore = -Infinity;
   let alpha = -Infinity;
   const beta = Infinity;
@@ -240,7 +240,8 @@ export const findBestMove = (
     `[Minimax] depth=${depth}, candidates=${candidates.length}, player=${aiPlayer}`
   );
 
-  for (const { row, col } of candidates) {
+  for (const { pos } of candidates) {
+    const { row, col } = pos;
     board[row][col] = aiPlayer;
 
     // ルートノード即時勝利（1 手詰め検出）
