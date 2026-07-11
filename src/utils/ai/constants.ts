@@ -1,19 +1,8 @@
 // src/utils/ai/constants.ts
 // AIの評価ロジックや定数を定義するファイル
-
-// --- パターン型定義 ---
-export type PatternType =
-  | 'WIN'
-  | 'OPEN_FOUR'
-  | 'CLOSED_FOUR'
-  | 'OPEN_THREE'
-  | 'CLOSED_THREE'
-  | 'OPEN_TWO'
-  | 'CLOSED_TWO'
-  | 'SINGLE';
-
-export type PatternCount = Record<PatternType, number>;
-
+//
+// 型定義（PatternType / PatternCount / SearchOptions）は複数ファイルから
+// 共有されるため types/ai.ts に集約している。このファイルは定数のみを扱う。
 
 // --- スコア定数（攻撃基準に統一） ---
 export const AI_SCORES = {
@@ -89,24 +78,6 @@ export const EVAL_CONFIG = {
    */
   TOP_K_DECAY: 0.3,
 } as const;
-
-
-/**
- * 探索オプション（iterative deepening・時間制御用）
- *
- * - depth: 反復深化を使わない場合の固定深さ探索に使用（timeLimitMs 未指定時のフォールバック）
- * - timeLimitMs: 指定時、search.ts 側で depth=1,2,3... と反復深化を行い、
- *   制限時間内に完了した最後の深さの結果を採用する。
- */
-export interface SearchOptions {
-  /** 探索深さの上書き（未指定時は AI_CONFIG.MINIMAX_DEPTH） */
-  depth?: number;
-  /**
-   * 探索時間上限 [ms]。指定すると反復深化（iterative deepening）による
-   * 時間制御付き探索になる。未指定時は depth 固定の従来動作。
-   */
-  timeLimitMs?: number;
-}
 
 
 // --- 方向定数 ---

@@ -10,9 +10,9 @@
 // このファイルは "薄いアダプタ" として常に軽量に保つ。
 
 import type { BoardState, Position, Player } from '../../types/game';
+import type { SearchOptions } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
 import { AI_CONFIG } from './constants';
-import type { SearchOptions } from './constants';
 import { findBestMove } from './minimax';
 
 

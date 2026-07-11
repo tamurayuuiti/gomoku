@@ -8,7 +8,7 @@
 // 通信データは calculateNextMove の入出力に必要な最小限に留める。
 
 import type { BoardState, Position, Player } from '../types/game';
-import type { SearchOptions } from '../utils/ai/constants';
+import type { SearchOptions } from '../types/ai';
 
 /**
  * メインスレッド → Worker への探索リクエスト。

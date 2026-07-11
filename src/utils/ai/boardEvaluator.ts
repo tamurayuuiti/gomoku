@@ -16,7 +16,7 @@
 // evaluatePosition と同一のものを使うため、評価値の意味・優先順位は変えていない。
 
 import type { BoardState, Player, Cell } from '../../types/game';
-import type { PatternCount } from './constants';
+import type { PatternCount } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
 import { AI_SCORES, AI_CONFIG, EVAL_CONFIG, DIRECTIONS } from './constants';
 import { detectPattern, hasStoneNearby, opponentOf } from './evaluator';

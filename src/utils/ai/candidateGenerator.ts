@@ -2,33 +2,28 @@
 // 候補手生成・move ordering・killer heuristic・history heuristic を担うモジュール
 //
 // 責務:
-//   - KillerTable の型定義と操作（storeKiller / isKiller）
-//   - HistoryTable の型定義と操作（storeHistory / getHistoryScore）
+//   - KillerTable の生成・操作（storeKiller / isKiller）
+//   - HistoryTable の生成・操作（storeHistory / getHistoryScore）
 //   - 3 tier move ordering（CRITICAL / KILLER / REST）＋ REST 内の history 補助ソート
 //   - 候補手の上限絞り込み（MAX_CANDIDATES）
+//
+// KillerTable / HistoryTable / ScoredPosition の型定義は minimax.ts と共有するため
+// types/ai.ts に集約されている。このファイルはそれらの型を使った生成・操作ロジックを担う。
 //
 // 【将来の拡張ポイント】
 //   - countermove heuristic: 直前手をキーとするテーブルを追加
 //   - TT ベストムーブ: generateOrderedCandidates の先頭に TT ヒット手を挿入
 
 import type { BoardState, Position, Player } from '../../types/game';
+import type { KillerEntry, KillerTable, HistoryTable, ScoredPosition } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
 import { AI_CONFIG, AI_SCORES } from './constants';
 import { evaluatePosition, hasStoneNearby } from './evaluator';
 
 
 // ============================================================
-// KillerTable 型定義
+// Killer table 生成・操作
 // ============================================================
-
-/** 深さ 1 レベルの killer スロット（最新 / 次点） */
-export type KillerEntry = [Position | null, Position | null];
-
-/**
- * killer table 本体。インデックスが深さに対応する。
- * SearchContext（minimax.ts）から参照・渡される。
- */
-export type KillerTable = KillerEntry[];
 
 /** killer table が対応する最大探索深さ */
 export const MAX_KILLER_DEPTH = 8 as const;
@@ -39,40 +34,14 @@ export const createKillerTable = (): KillerTable =>
 
 
 // ============================================================
-// HistoryTable 型定義
+// History table 生成・操作
 // ============================================================
-
-/**
- * history heuristic 用のスコアテーブル。
- * historyTable[player][row][col] に「その手が過去にカットオフを
- * 引き起こした深さ」に基づく加点を累積する。
- *
- * KillerTable が「直近 2 手・深さごと」の局所的な記録なのに対し、
- * HistoryTable は探索木全体を通じて手番（player）単位で累積する
- * グローバルな統計であり、SearchContext に 1 つだけ保持する。
- */
-export type HistoryTable = Record<Player, number[][]>;
 
 /** 空の HistoryTable を生成するファクトリ（Black/White それぞれ BOARD_SIZE 四方を 0 初期化） */
 export const createHistoryTable = (): HistoryTable => ({
   Black: Array.from({ length: BOARD_SIZE }, () => new Array<number>(BOARD_SIZE).fill(0)),
   White: Array.from({ length: BOARD_SIZE }, () => new Array<number>(BOARD_SIZE).fill(0)),
 });
-
-
-// ============================================================
-// ScoredPosition 型定義
-// ============================================================
-
-/**
- * evaluatePosition の結果を保持したまま候補手を表す型。
- * generateOrderedCandidates の呼び出し元（minimax.ts）で
- * 同一候補に対する evaluatePosition の再計算を避けるために使う。
- */
-export interface ScoredPosition {
-  pos: Position;
-  score: number;
-}
 
 
 // ============================================================

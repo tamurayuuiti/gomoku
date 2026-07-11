@@ -10,7 +10,7 @@
 // このファイルは「1マス単位の評価・パターン検出」に専念する。
 
 import type { BoardState, Player } from '../../types/game';
-import type { PatternType, PatternCount } from './constants';
+import type { PatternType, PatternCount } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
 import { AI_SCORES, AI_CONFIG, DIRECTIONS } from './constants';
 

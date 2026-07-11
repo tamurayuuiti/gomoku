@@ -14,13 +14,12 @@
 //   - aspiration window:   ルート alpha/beta を SearchContext で管理
 
 import type { BoardState, Position, Player } from '../../types/game';
+import type { KillerTable, HistoryTable } from '../../types/ai';
 import { checkWin } from '../gameLogic';
 import { AI_CONFIG, AI_SCORES } from './constants';
 import { opponentOf } from './evaluator';
 import { evaluateBoard } from './boardEvaluator';
 import {
-  type KillerTable,
-  type HistoryTable,
   CRITICAL_SCORE_THRESHOLD,
   createKillerTable,
   createHistoryTable,
