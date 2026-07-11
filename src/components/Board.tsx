@@ -20,26 +20,30 @@ const Board = ({ board, onCellClick, lastMove, forbiddenMoves }: BoardProps) => 
   };
 
   return (
-    <div className="w-full max-w-[min(90vw,600px)] rounded-sm bg-[#e3a857] p-2 shadow-[0_20px_50px_rgba(0,0,0,0.3)] ring-4 ring-amber-900">
-      <div
-        className="grid select-none"
-        style={{ gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))` }}
-      >
-        {board.map((row, rowIndex) =>
-          row.map((cell, colIndex) => (
-            <Cell
-              key={`${rowIndex}-${colIndex}`}
-              value={cell}
-              row={rowIndex}
-              col={colIndex}
-              boardSize={BOARD_SIZE}
-              isHoshi={isHoshiPos(rowIndex, colIndex)}
-              isLastMove={lastMove?.row === rowIndex && lastMove?.col === colIndex}
-              isForbidden={forbiddenMoves[rowIndex][colIndex]} // 新規追加
-              onClick={() => onCellClick(rowIndex, colIndex)}
-            />
-          ))
-        )}
+    <div className="w-full max-w-[min(92vw,600px)] rounded-md bg-board-frame p-0.75 shadow-[0_25px_60px_-15px_rgba(44,38,32,0.45)]">
+      <div className="rounded-[3px] bg-board-frame-dark p-2 sm:p-3">
+        <div className="gomoku-board rounded-sm p-2 shadow-[inset_0_2px_6px_rgba(0,0,0,0.25)] sm:p-3">
+          <div
+            className="grid select-none overflow-hidden rounded-xs"
+            style={{ gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))` }}
+          >
+            {board.map((row, rowIndex) =>
+              row.map((cell, colIndex) => (
+                <Cell
+                  key={`${rowIndex}-${colIndex}`}
+                  value={cell}
+                  row={rowIndex}
+                  col={colIndex}
+                  boardSize={BOARD_SIZE}
+                  isHoshi={isHoshiPos(rowIndex, colIndex)}
+                  isLastMove={lastMove?.row === rowIndex && lastMove?.col === colIndex}
+                  isForbidden={forbiddenMoves[rowIndex][colIndex]} // 新規追加
+                  onClick={() => onCellClick(rowIndex, colIndex)}
+                />
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

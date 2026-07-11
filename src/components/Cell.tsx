@@ -28,6 +28,11 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForb
       }`}
       onClick={onClick}
     >
+      {/* マスホバー時の視覚フィードバック（石が置かれていない場合のみ） */}
+      {!value && (
+        <div className="pointer-events-none absolute inset-[8%] rounded-full bg-amber-950/0 transition-colors duration-150 group-hover:bg-amber-950/10" />
+      )}
+
       {/* 十字線の描画ロジック */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         {/* 水平線 */}
@@ -61,7 +66,7 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForb
       {/* 石の描画 */}
       {value && (
         <div
-        className={`z-10 flex h-[85%] w-[85%] items-center justify-center rounded-full shadow-lg transition-all duration-200 
+        className={`z-10 flex h-[86%] w-[86%] items-center justify-center rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.35)] transition-transform duration-200 
             ${value === 'Black' 
             ? 'bg-zinc-900 bg-linear-to-br from-zinc-700 to-black' // v4用の線形グラデーション
             : 'border border-gray-300 bg-white bg-linear-to-br from-white to-slate-200'
@@ -69,7 +74,7 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForb
         >
           {/* 最後の一手の印 */}
           {isLastMove && (
-            <div className="h-2 w-2 animate-pulse rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.8)]" />
+            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_4px_rgba(239,68,68,0.9)]" />
           )}
         </div>
       )}

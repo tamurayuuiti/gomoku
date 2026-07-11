@@ -10,13 +10,15 @@ interface ModeSelectorProps {
 
 const ModeSelector = ({ gameMode, onModeChange }: ModeSelectorProps) => {
   return (
-    <div className="flex rounded-full bg-slate-300/60 p-1 shadow-inner">
+    <div className="flex rounded-full bg-white p-1 shadow-sm ring-1 ring-board-frame/10">
       {(['PvP', 'PvE'] as const).map((mode) => (
         <button
           key={mode}
           onClick={() => onModeChange(mode)}
-          className={`rounded-full px-6 py-2 text-sm font-bold transition-all ${
-            gameMode === mode ? 'bg-white text-amber-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          className={`rounded-full px-5 py-2 text-sm font-bold transition-all ${
+            gameMode === mode
+              ? 'bg-board-frame text-amber-50 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
           }`}
         >
           {mode === 'PvP' ? '対人戦' : 'CPU戦'}

@@ -1,8 +1,33 @@
 @import "tailwindcss";
 
+@theme {
+  /* 木目調ボードと盤面まわりの配色トークン */
+  --color-board-face: #dfa85a;
+  --color-board-face-dark: #c98f3f;
+  --color-board-frame: #5c3a1e;
+  --color-board-frame-dark: #3d2611;
+  --color-page-bg: #f3ede2;
+  --color-ink: #2c2620;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-page-bg);
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(92, 58, 30, 0.06), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(92, 58, 30, 0.05), transparent 45%);
+    background-attachment: fixed;
+  }
+}
+
 @layer components {
-  /* 盤面の背景色など、特定のドメインに関連するスタイルを分離 */
+  /* 盤面の木目背景（面） */
   .gomoku-board {
-    background-color: #eab308;
+    background-color: var(--color-board-face);
+    background-image: linear-gradient(
+      160deg,
+      var(--color-board-face) 0%,
+      var(--color-board-face-dark) 100%
+    );
   }
 }

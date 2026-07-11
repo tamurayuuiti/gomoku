@@ -24,26 +24,26 @@ const ColorSelector = ({
 
   return (
     <div className="flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-      <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Your Color:</span>
-      <div className="flex rounded-lg bg-slate-300/60 p-1 shadow-inner">
+      <span className="text-xs font-bold uppercase tracking-widest text-slate-400">先手／後手</span>
+      <div className="flex rounded-full bg-white p-1 shadow-sm ring-1 ring-board-frame/10">
         <button
           disabled={isDisabled}
           onClick={() => onColorChange('Black')}
-          className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-bold transition-all ${
-            playerColor === 'Black' ? 'bg-zinc-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+            playerColor === 'Black' ? 'bg-zinc-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          } disabled:cursor-not-allowed disabled:opacity-50`}
         >
-          <span className="h-3 w-3 rounded-full bg-zinc-900 border border-zinc-700" />
+          <span className="h-3 w-3 rounded-full border border-zinc-700 bg-zinc-900" />
           先手
         </button>
         <button
           disabled={isDisabled}
           onClick={() => onColorChange('White')}
-          className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-bold transition-all ${
-            playerColor === 'White' ? 'bg-white text-zinc-900 shadow-md' : 'text-slate-500 hover:text-slate-700'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition-all ${
+            playerColor === 'White' ? 'bg-white text-zinc-900 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'
+          } disabled:cursor-not-allowed disabled:opacity-50`}
         >
-          <span className="h-3 w-3 rounded-full bg-white border border-slate-300" />
+          <span className="h-3 w-3 rounded-full border border-slate-300 bg-white" />
           後手
         </button>
       </div>

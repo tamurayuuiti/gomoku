@@ -34,16 +34,34 @@ const StatusMessage = ({
     case 'Playing':
       return (
         <span className="flex items-center gap-2">
-          手番: 
-          <span className={`inline-block h-4 w-4 rounded-full border border-gray-400 ${currentPlayer === 'Black' ? 'bg-zinc-900' : 'bg-white'}`} />
+          <span className="text-xs font-semibold uppercase tracking-widest text-slate-400 sm:text-sm">手番</span>
+          <span className={`inline-block h-4 w-4 rounded-full border border-gray-400 shadow-sm ${currentPlayer === 'Black' ? 'bg-zinc-900' : 'bg-white'}`} />
           {currentPlayer === 'Black' ? '黒' : '白'}
-          {gameMode === 'PvE' && (currentPlayer === playerColor ? ' (あなた)' : ' (CPU)')}
+          {gameMode === 'PvE' && (
+            <span className="text-xs font-semibold text-slate-400 sm:text-sm">
+              {currentPlayer === playerColor ? '（あなた）' : '（CPU）'}
+            </span>
+          )}
         </span>
       );
-    case 'BlackWins': return '黒の勝利';
-    case 'WhiteWins': return '白の勝利';
-    case 'Draw': return '引き分け';
-    default: return null;
+    case 'BlackWins':
+      return (
+        <span className="flex items-center gap-2">
+          <span className="inline-block h-4 w-4 rounded-full border border-gray-400 bg-zinc-900 shadow-sm" />
+          黒の勝利
+        </span>
+      );
+    case 'WhiteWins':
+      return (
+        <span className="flex items-center gap-2">
+          <span className="inline-block h-4 w-4 rounded-full border border-gray-400 bg-white shadow-sm" />
+          白の勝利
+        </span>
+      );
+    case 'Draw':
+      return <span>引き分け</span>;
+    default:
+      return null;
   }
 };
 
