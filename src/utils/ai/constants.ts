@@ -29,10 +29,8 @@ export const AI_SCORES = {
 
 
 // --- AI探索設定 ---
-// 【探索パラメータの一元管理】
-// depth・timeLimitMs のデフォルト値はここに集約している。
-// AIの強さを調整したい場合、呼び出し側で SearchOptions を明示指定しない限り
-// 常にこの値が使われるため、値を書き換えるだけで挙動を変更できる。
+// depth・timeLimitMs のデフォルト値をここに一元管理し、
+// 呼び出し側が SearchOptions を明示しない限り常にこの値が使われる。
 export const AI_CONFIG = {
   ATTACK_WEIGHT: 1.1,
 
@@ -48,7 +46,6 @@ export const AI_CONFIG = {
 
   /**
    * 反復深化のデフォルト時間制限 [ms]（仮値）。
-   * SearchOptions.timeLimitMs が明示されなかった場合のフォールバック値。
    * 今後 AI レベル（Easy/Normal/Hard 等）を導入する際は、
    * レベルごとの SearchOptions プリセットでこの値を上書きする想定。
    */

@@ -11,9 +11,7 @@ export const useGameLogic = () => {
   const [gameStatus, setGameStatus] = useState<GameStatus>('Playing');
   const [lastMove, setLastMove] = useState<Position | null>(null);
 
-  // 指定座標に石を置く関数
   const executeMove = useCallback((row: number, col: number) => {
-    // 盤面の更新
     const newBoard = board.map((r, rIdx) =>
       rIdx === row ? r.map((c, cIdx) => (cIdx === col ? currentPlayer : c)) : r
     );
@@ -21,24 +19,20 @@ export const useGameLogic = () => {
     setBoard(newBoard);
     setLastMove({ row, col });
 
-    // 勝敗判定
     const move: Position = { row, col };
     if (checkWin(newBoard, move, currentPlayer)) {
       setGameStatus(currentPlayer === 'Black' ? 'BlackWins' : 'WhiteWins');
       return;
     }
 
-    // 引き分け判定
     if (checkDraw(newBoard)) {
       setGameStatus('Draw');
       return;
     }
 
-    // 手番交代
     setCurrentPlayer(prev => (prev === 'Black' ? 'White' : 'Black'));
   }, [board, currentPlayer]);
 
-  // ゲームをリセットする関数
   const resetGameLogic = useCallback(() => {
     setBoard(createEmptyBoard());
     setCurrentPlayer('Black');

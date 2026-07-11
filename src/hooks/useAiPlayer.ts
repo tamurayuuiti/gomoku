@@ -1,12 +1,10 @@
 // src/hooks/useAiPlayer.ts
 // AIプレイヤーの思考と着手を管理するカスタムフック
 //
-// 【Web Worker化】
 // AI探索（calculateNextMove 以降）は UIスレッドをブロックしないよう
-// aiWorker（src/workers/aiWorker.ts）内で実行する。
-// このフックは Worker の生成・postMessage・onmessage・onerror・
-// アンマウント時の terminate() を担当する「実行場所の切り替え」のみを行い、
-// 探索ロジック自体には一切関与しない。
+// aiWorker（src/workers/aiWorker.ts）内で実行する。このフックは Worker の
+// 生成・postMessage・onmessage・onerror・アンマウント時の terminate() のみを担い、
+// 探索ロジック自体には関与しない。
 
 import { useState, useEffect, useRef } from 'react';
 import type { Player, BoardState, GameStatus, GameMode } from '../types/game';
@@ -60,7 +58,6 @@ export const useAiPlayer = ({
 
     const turnId = board.map((r) => r.join(',')).join('|');
 
-    // AIのターンでなければ何もしない
     if (!isAiTurn) return;
 
     // 同一ターンの二重実行防止
@@ -72,14 +69,12 @@ export const useAiPlayer = ({
     lastProcessedTurnRef.current = turnId;
     setIsAiThinking(true);
 
-    // 思考は Worker 側で非同期に開始する（UIスレッドはブロックしない）
     const thinkStartTime = performance.now();
 
     const handleMessage = (event: MessageEvent<AiWorkerResponse>) => {
       const { nextMove, error } = event.data;
 
       if (error) {
-        // 必要最低限のエラーログを出力し、isAiThinking を解除してUIのフリーズを防ぐ
         console.error('[useAiPlayer] AI worker error:', error);
         if (isMounted) setIsAiThinking(false);
         return;

@@ -9,7 +9,7 @@ interface BoardProps {
   board: BoardState;
   onCellClick: (row: number, col: number) => void;
   lastMove: Position | null;
-  forbiddenMoves: boolean[][]; // 新規追加
+  forbiddenMoves: boolean[][];
 }
 
 const Board = ({ board, onCellClick, lastMove, forbiddenMoves }: BoardProps) => {
@@ -37,7 +37,7 @@ const Board = ({ board, onCellClick, lastMove, forbiddenMoves }: BoardProps) => 
                   boardSize={BOARD_SIZE}
                   isHoshi={isHoshiPos(rowIndex, colIndex)}
                   isLastMove={lastMove?.row === rowIndex && lastMove?.col === colIndex}
-                  isForbidden={forbiddenMoves[rowIndex][colIndex]} // 新規追加
+                  isForbidden={forbiddenMoves[rowIndex][colIndex]}
                   onClick={() => onCellClick(rowIndex, colIndex)}
                 />
               ))

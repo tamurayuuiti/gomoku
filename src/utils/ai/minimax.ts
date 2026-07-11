@@ -1,17 +1,12 @@
 // src/utils/ai/minimax.ts
 // ミニマックス探索エンジン
 //
-// 責務:
-//   - SearchContext による探索状態の一元管理
-//   - αβ 枝刈り付きミニマックス再帰
-//   - 公開 API: findBestMove
+// SearchContext による探索状態の一元管理、αβ 枝刈り付きミニマックス再帰、
+// 公開 API（findBestMove）を担う。
+// 候補手生成 → candidateGenerator.ts、葉ノード盤面評価 → boardEvaluator.ts に委譲する。
 //
-// 候補手生成・move ordering → candidateGenerator.ts
-// 葉ノード盤面評価          → boardEvaluator.ts
-//
-// 【将来の拡張ポイント】
-//   - transposition table: SearchContext に TTMap を追加
-//   - aspiration window:   ルート alpha/beta を SearchContext で管理
+// @future transposition table（SearchContext に TTMap を追加）、
+//         aspiration window（ルート alpha/beta を SearchContext で管理）
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type { KillerTable, HistoryTable } from '../../types/ai';
@@ -34,28 +29,18 @@ import {
 // ============================================================
 
 /**
- * 探索コンテキスト。
- * 探索木全体を通じて共有される状態をまとめる。
+ * 探索コンテキスト。探索木全体を通じて共有される状態をまとめる。
  *
- * 【将来の拡張フィールド例】
- *   transpositionTable : Map<bigint, TTEntry>   … 置換表
- *   zobristHash        : ZobristHasher           … 差分ハッシュ計算器
- *   nodeCount          : number                  … 評価ノード数カウンタ
+ * @future transpositionTable（置換表）、zobristHash（差分ハッシュ計算器）、
+ *         nodeCount（評価ノード数カウンタ）などの拡張フィールドを想定
  */
 interface SearchContext {
   aiPlayer: Player;
   forbiddenMoves: boolean[][];
   killerTable: KillerTable;
-  /**
-   * history heuristic 用テーブル。
-   * カットオフを引き起こした手を player 単位で累積記録し、
-   * generateOrderedCandidates の REST tier 内ソートの補助に使う。
-   */
+  /** history heuristic 用テーブル。generateOrderedCandidates の REST tier 内ソートの補助に使う */
   historyTable: HistoryTable;
-  /**
-   * 探索打ち切り時刻（performance.now() 基準の絶対時刻 [ms]）。
-   * Infinity の場合は時間制御なし（従来通り depth 固定探索）。
-   */
+  /** 探索打ち切り時刻（performance.now() 基準の絶対時刻 [ms]）。Infinity なら時間制御なし */
   deadline: number;
 }
 
@@ -71,7 +56,6 @@ const createSearchContext = (
   deadline,
 });
 
-/** 探索打ち切り時刻を超過しているか判定する */
 const isTimeUp = (ctx: SearchContext): boolean =>
   ctx.deadline !== Infinity && performance.now() >= ctx.deadline;
 
@@ -81,9 +65,7 @@ const isTimeUp = (ctx: SearchContext): boolean =>
 // ============================================================
 
 /**
- * αβ 枝刈り付きミニマックス探索。
- *
- * この関数は「探索・αβ・再帰制御」に専念する。
+ * αβ 枝刈り付きミニマックス探索。探索・αβ・再帰制御に専念し、
  * 候補手生成は candidateGenerator、葉ノード評価は boardEvaluator に委譲する。
  *
  * @param board          現在の盤面（in-place 変更・復元）
@@ -104,7 +86,6 @@ const minimax = (
   alpha: number,
   beta: number
 ): number => {
-  // 葉ノード: 全盤評価（多重脅威対応の重み付き和）
   if (depth === 0) {
     return evaluateBoard(board, ctx.aiPlayer, ctx.forbiddenMoves);
   }
@@ -133,7 +114,6 @@ const minimax = (
       const { row, col } = pos;
       board[row][col] = currentPlayer;
 
-      // 即時勝利判定（AI の勝利）
       if (checkWin(board, { row, col }, ctx.aiPlayer)) {
         board[row][col] = null;
         return AI_SCORES.WIN;
@@ -174,7 +154,6 @@ const minimax = (
       const { row, col } = pos;
       board[row][col] = currentPlayer;
 
-      // 即時勝利判定（相手の勝利 = AI にとっての最悪値）
       if (checkWin(board, { row, col }, currentPlayer)) {
         board[row][col] = null;
         return -AI_SCORES.WIN;
@@ -215,22 +194,17 @@ const minimax = (
 
 /**
  * ミニマックス探索で最善手を求めて返す。
- *
- * search.ts から呼び出される唯一の公開関数。
- * search.ts 側の反復深化ループから depth=1,2,3... と繰り返し呼び出される想定。
+ * search.ts の反復深化ループから depth=1,2,3... と繰り返し呼び出される想定。
  *
  * 【時間制御】
- * deadline（performance.now() 基準の絶対時刻）を指定すると、
- * 探索中に時間切れを検知した時点で安全に打ち切る。
- * その場合、ルート候補を最後まで評価しきれていなければ
- * 「この深さの探索は不完全」とみなし null を返す。
- * 呼び出し元（search.ts）は null を受け取った場合、
- * 直前の深さで得られた完全な結果を採用する。
+ * deadline（performance.now() 基準の絶対時刻）を指定すると、探索中に時間切れを
+ * 検知した時点で打ち切る。ルート候補を最後まで評価しきれていなければ
+ * 「この深さの探索は不完全」とみなし null を返す。呼び出し元（search.ts）は
+ * null を受け取った場合、直前の深さで得られた完全な結果を採用する。
  *
- * 【将来の拡張ポイント: aspiration window】
- * 前回 depth の bestScore を基に初期 [α, β] を絞り込み、
- * fail high/low 時に window を広げて再探索。
- * ルートループの alpha / beta を SearchContext 管理にすることで実装できる。
+ * @future aspiration window: 前回 depth の bestScore を基に初期 [α, β] を絞り込み、
+ *         fail high/low 時に window を広げて再探索する。ルートループの
+ *         alpha / beta を SearchContext 管理にすることで実装できる。
  *
  * @param board          現在の盤面
  * @param forbiddenMoves 禁じ手マップ（探索中は静的として扱う）

@@ -9,7 +9,6 @@ export const createEmptyBoard = (): BoardState => {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
 };
 
-// 指定方向への石の連続数をカウント
 const countStonesInDirection = (
   board: BoardState,
   pos: Position,
@@ -32,7 +31,6 @@ const countStonesInDirection = (
 
 // --- 禁じ手判定用ヘルパーロジック ---
 
-// 指定方向のラインパターンを取得
 const getLinePattern = (
   board: BoardState,
   pos: Position,
@@ -61,7 +59,7 @@ const getLinePattern = (
   return line;
 };
 
-// そのラインで「四」が形成されているか判定（長連は除外）
+// 「四」が形成されているか判定（長連は除外）
 const countFoursInLine = (line: (Player | null | undefined)[], player: Player): number => {
   let fours = 0;
 
@@ -79,7 +77,7 @@ const countFoursInLine = (line: (Player | null | undefined)[], player: Player): 
   return fours > 0 ? 1 : 0;
 };
 
-// そのラインで「活三」が形成されているか判定
+// 「活三」が形成されているか判定
 const countOpenThreesInLine = (line: (Player | null | undefined)[], player: Player): number => {
   for (let i = 0; i < line.length; i++) {
     if (line[i] === null) {
@@ -152,11 +150,10 @@ export const checkWin = (
       countStonesInDirection(board, lastMove, player, dRow, dCol) +
       countStonesInDirection(board, lastMove, player, -dRow, -dCol);
 
-    // 黒はちょうど5連のみ勝利
+    // 黒はちょうど5連のみ勝利、白は5以上で勝利（連珠ルール）
     if (player === 'Black') {
       if (count === 5) return true;
     } else {
-      // 白は5以上で勝利
       if (count >= 5) return true;
     }
   }
@@ -169,7 +166,6 @@ export const checkForbiddenMove = (
   pos: Position,
   player: Player
 ): ForbiddenResult => {
-
   if (player !== 'Black') {
     return { isForbidden: false, reason: null };
   }
@@ -196,7 +192,7 @@ export const checkForbiddenMove = (
     }
   }
 
-  // 五完成は勝利優先
+  // 五完成は勝利優先（禁じ手より勝利判定が優先される連珠ルール）
   if (checkWin(board, pos, player)) {
     return { isForbidden: false, reason: null };
   }
@@ -240,7 +236,6 @@ export const checkDraw = (board: BoardState): boolean => {
 export const getForbiddenReasonMessage = (
   reason: ForbiddenReason
 ): string => {
-
   switch (reason) {
     case 'Three-Three':
       return '三三は禁じ手です';

@@ -1,12 +1,9 @@
 // src/utils/ai/search.ts
 // AIの次の一手を計算するロジックを定義するファイル
 //
-// 責務:
-//   - 初手処理（盤面空き → 中央）
-//   - 反復深化（iterative deepening）ループの制御
-//   - findBestMove の呼び出しと結果の返却
-//
-// 探索ロジック本体（αβ・move ordering・評価関数）は minimax.ts 以下に完全委譲している。
+// 初手処理（盤面空き → 中央）、反復深化（iterative deepening）ループの制御、
+// findBestMove の呼び出しと結果の返却を担う。
+// 探索ロジック本体（αβ・move ordering・評価関数）は minimax.ts 以下に完全委譲し、
 // このファイルは "薄いアダプタ" として常に軽量に保つ。
 
 import type { BoardState, Position, Player } from '../../types/game';
@@ -21,21 +18,17 @@ import { findBestMove } from './minimax';
  *
  * 公開インターフェース: この関数のシグネチャは変更禁止。
  *
- * 【探索パラメータの一元管理】
- * options が一切指定されなかった場合は、AI_CONFIG.MINIMAX_DEPTH /
+ * options が一切指定されなかった場合は AI_CONFIG.MINIMAX_DEPTH /
  * AI_CONFIG.DEFAULT_TIME_LIMIT_MS をデフォルト値として使用する。
- * AIの強さを調整したい場合は、呼び出し側で options を渡すか、
- * constants.ts の AI_CONFIG の値を書き換えるだけでよい。
  *
  * 【反復深化（iterative deepening）】
- * options.timeLimitMs が指定された場合、depth=1,2,3... と
- * 深さを1ずつ増やしながら findBestMove を繰り返し呼び出す。
- * 各深さの探索は制限時間内に完了した場合のみ結果を採用し、
- * 時間切れで途中終了した深さの結果（findBestMove が null を返す）は破棄する。
+ * options.timeLimitMs が指定された場合、depth=1,2,3... と深さを1ずつ増やしながら
+ * findBestMove を繰り返し呼び出す。各深さの探索は制限時間内に完了した場合のみ結果を
+ * 採用し、時間切れで途中終了した深さの結果（findBestMove が null を返す）は破棄する。
  * 最終的に「時間内に完全に探索できた最後の深さ」の結果を返す。
  *
- * options.timeLimitMs が未指定の場合は従来通り、
- * options.depth（未指定時は AI_CONFIG.MINIMAX_DEPTH）による固定深さ探索を行う。
+ * options.timeLimitMs が未指定の場合は options.depth（未指定時は AI_CONFIG.MINIMAX_DEPTH）
+ * による固定深さ探索を行う。
  */
 export const calculateNextMove = (
   board: BoardState,
@@ -51,8 +44,7 @@ export const calculateNextMove = (
     return { row: center, col: center };
   }
 
-  // options 完全未指定時は AI_CONFIG のデフォルト一式（depth + timeLimitMs）を適用する。
-  // 呼び出し側が depth のみ・timeLimitMs のみを個別指定した場合はそちらを優先する。
+  // 呼び出し側が depth のみ・timeLimitMs のみを個別指定した場合はそちらを優先する
   const resolvedOptions: SearchOptions =
     options ?? {
       depth: AI_CONFIG.MINIMAX_DEPTH,
@@ -81,8 +73,7 @@ export const calculateNextMove = (
   let completedDepth = 0;
 
   for (let d = 1; d <= maxDepth; d++) {
-    // depth=1 は「最低限1手は返す」ための保証として時間制限なしで探索する。
-    // timeLimitMs が極端に短い場合でも AI が無反応にならないようにするための安全策。
+    // depth=1 は時間制限なしで探索し、極端に短い timeLimitMs でも AI が無反応にならない保証とする
     const candidate =
       d === 1
         ? findBestMove(board, forbiddenMoves, currentTurn, d)

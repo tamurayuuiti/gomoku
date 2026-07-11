@@ -15,7 +15,6 @@ import GameStatusPanel from './components/GameStatusPanel';
 import './index.css';
 
 const App = () => {
-  // --- コアロジック ---
   const {
     board,
     currentPlayer,
@@ -33,16 +32,13 @@ const App = () => {
 
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
-  // --- 禁じ手計算 ---
   const forbiddenMoves = useForbiddenMoves(board, currentPlayer, gameStatus, useForbiddenRule);
 
-  // --- 着手共通処理 ---
   const executeMove = useCallback((row: number, col: number) => {
     setForbiddenWarning(null);
     coreExecuteMove(row, col);
   }, [coreExecuteMove]);
 
-  // --- AI 制御 ---
   const { isAiThinking } = useAiPlayer({
     board,
     currentPlayer,
@@ -53,7 +49,6 @@ const App = () => {
     onMove: executeMove,
   });
 
-  // --- ユーザー操作ハンドラ ---
   const handleCellClick = useCallback((row: number, col: number) => {
     if (gameStatus !== 'Playing') return;
     if (board[row][col] !== null) return;
@@ -75,10 +70,9 @@ const App = () => {
     executeMove(row, col);
   }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove, useForbiddenRule]);
 
-  // --- UIヘルパー ---
   const resetGame = useCallback(() => {
-    resetGameLogic(); // ゲームロジックの状態をリセット
-    setForbiddenWarning(null); // UI側の警告を消去
+    resetGameLogic();
+    setForbiddenWarning(null);
   }, [resetGameLogic]);
 
   const handleModeChange = (mode: GameMode) => {

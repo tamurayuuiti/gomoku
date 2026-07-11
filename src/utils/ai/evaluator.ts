@@ -1,13 +1,9 @@
 // src/utils/ai/evaluator.ts
 // AIが盤面を評価するロジックを定義するファイル
 //
-// 責務:
-//   - パターン検出 (getLineString / detectPattern)
-//   - 位置評価   (evaluatePosition)
-//   - 共有ユーティリティ (opponentOf / hasStoneNearby)
-//
+// パターン検出（getLineString / detectPattern）、位置評価（evaluatePosition）、
+// 共有ユーティリティ（opponentOf / hasStoneNearby）を担う。
 // 全盤評価（evaluateBoard）は boardEvaluator.ts に移管済み。
-// このファイルは「1マス単位の評価・パターン検出」に専念する。
 
 import type { BoardState, Player } from '../../types/game';
 import type { PatternType, PatternCount } from '../../types/ai';
@@ -19,14 +15,10 @@ import { AI_SCORES, AI_CONFIG, DIRECTIONS } from './constants';
 // 共有ユーティリティ
 // ============================================================
 
-/** 相手プレイヤーを返す */
 export const opponentOf = (player: Player): Player =>
   player === 'Black' ? 'White' : 'Black';
 
-/**
- * 指定セルの周辺（SEARCH_RANGE 以内）に石があるか判定。
- * candidateGenerator・boardEvaluator での空セルフィルタリングに使用する。
- */
+/** 指定セルの周辺（SEARCH_RANGE 以内）に石があるか判定（候補手の絞り込みに使用） */
 export const hasStoneNearby = (
   board: BoardState,
   row: number,
@@ -55,15 +47,8 @@ export const hasStoneNearby = (
 // ============================================================
 
 /**
- * 指定位置を中心とした 1 方向 9 セルの文字列を返す。
- *
- * 文字変換:
- *   '1' = color の石（または center = '1'）
- *   '0' = 空マス
- *   '2' = 盤外 / 相手石（壁扱い）
- *
- * centerChar を '2' にすると「ここに相手石が置かれた場合」の
- * after-state パターンとして利用できる。
+ * 指定位置を中心とした 1 方向 9 セルの文字列を返す（'1'=color の石, '0'=空マス, '2'=盤外/相手石）。
+ * centerChar を '2' にすると「ここに相手石が置かれた場合」の after-state パターンとして使える。
  */
 export const getLineString = (
   board: BoardState,
@@ -140,33 +125,15 @@ export const detectPattern = (s: string): PatternType => {
 // ============================================================
 
 /**
- * 中央近接ボーナス（極小の位置補正）。
- *
- * 目的: 評価値が完全に同点となる候補手について、盤面中央 (7,7) に
- * 近い手をわずかに優先させるための tie-breaker。
- *
- * 設計:
- *   - 既存スコア体系の最小刻み幅は AI_SCORES.SINGLE（= 1）。
- *   - POSITION_BONUS_EPSILON はこれより 2 桁小さい値にし、
- *     中央からの距離に応じて [0, POSITION_BONUS_EPSILON) の範囲でのみ加点する。
- *   - そのため、本来スコアが 1 でも異なる候補同士の順位は
- *     位置補正によって絶対に逆転しない（詳細は下記 computePositionBonus 参照）。
+ * 中央近接ボーナス（tie-breaker）。
+ * POSITION_BONUS_EPSILON はスコア体系の最小刻み幅（AI_SCORES.SINGLE = 1）より
+ * 2 桁小さいため、素点が異なる候補同士の順位を逆転させることはない。
  */
 const POSITION_BONUS_EPSILON = 0.01;
 
-/** 盤面中央の座標（15×15 なら (7,7)） */
 const BOARD_CENTER = (BOARD_SIZE - 1) / 2;
-
-/** 中央から盤面の隅までの最大距離（正規化の基準値） */
 const MAX_CENTER_DISTANCE = Math.sqrt(2) * BOARD_CENTER;
 
-/**
- * (row, col) の中央近接度に応じた極小の位置補正値を返す。
- *
- * 中央 (BOARD_CENTER, BOARD_CENTER) で最大値 POSITION_BONUS_EPSILON、
- * 盤面の隅で 0 に線形に近づく。
- * 戻り値は常に [0, POSITION_BONUS_EPSILON) の範囲に収まる。
- */
 const computePositionBonus = (row: number, col: number): number => {
   const distance = Math.sqrt(
     (row - BOARD_CENTER) ** 2 + (col - BOARD_CENTER) ** 2
@@ -176,15 +143,8 @@ const computePositionBonus = (row: number, col: number): number => {
 
 /**
  * 指定位置への着手価値を playerColor の視点で返す（位置補正なしの素点）。
- *
- * 評価フロー:
- *   1. 攻撃パターン（自分が置いた後）
- *   2. 相手 before パターン（相手の現在の脅威）
- *   3. 相手 after パターン（自分が置いた後の相手の脅威）
- *   → 即時評価 → 通常スコア加算
- *
- * 既存のスコア体系・優先順位はこの関数内で完結しており、
- * 中央近接ボーナスは呼び出し元の evaluatePosition が加算する。
+ * 評価フロー: 攻撃パターン → 相手 before パターン → 相手 after パターン →
+ * 即時評価 → 通常スコア加算。中央近接ボーナスは呼び出し元の evaluatePosition が加算する。
  */
 const evaluatePositionRaw = (
   board: BoardState,
@@ -276,14 +236,8 @@ const evaluatePositionRaw = (
 
 /**
  * 指定位置への着手価値を playerColor の視点で返す。
- *
- * 評価ロジック本体は evaluatePositionRaw に委譲し、ここでは
- * 「評価値が完全に同点となる候補手について、中央に近い手をわずかに
- * 優先する」ための極小の位置補正（computePositionBonus）のみを加算する。
- *
- * 補正値は常に [0, POSITION_BONUS_EPSILON) の範囲であり、
- * 既存スコア体系の最小刻み幅（AI_SCORES.SINGLE = 1）より
- * 十分小さいため、素点が異なる候補同士の順位は逆転しない。
+ * 本体は evaluatePositionRaw に委譲し、同点候補の tie-breaker として
+ * 中央近接ボーナス（computePositionBonus）のみを加算する。
  */
 export const evaluatePosition = (
   board: BoardState,

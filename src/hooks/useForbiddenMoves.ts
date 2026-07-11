@@ -5,7 +5,6 @@ import { useMemo } from 'react';
 import type { Player, BoardState, GameStatus } from '../types/game';
 import { BOARD_SIZE, checkForbiddenMove } from '../utils/gameLogic';
 
-// 禁じ手の事前計算
 export const useForbiddenMoves = (
   board: BoardState,
   currentPlayer: Player,
