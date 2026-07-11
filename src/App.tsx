@@ -3,7 +3,7 @@
 
 import type { Player, GameMode } from './types/game';
 import { useState, useCallback } from 'react';
-import { checkForbiddenMove, getForbiddenReasonMessage } from './utils/gameLogic';
+import { getForbiddenReasonMessage, checkForbiddenMove } from './utils/gameLogic';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import { useGameLogic } from './hooks/useGameLogic';
 import { useAiPlayer } from './hooks/useAiPlayer';
@@ -12,6 +12,7 @@ import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
 import ForbiddenRuleToggle from './components/ForbiddenRuleToggle';
 import GameStatusPanel from './components/GameStatusPanel';
+import { RotateCcw } from 'lucide-react';
 import './index.css';
 
 const App = () => {
@@ -32,6 +33,7 @@ const App = () => {
 
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
+  // 盤面全体の禁じ手座標はここで一度だけ計算し、クリック時の判定にもそのまま利用する
   const forbiddenMoves = useForbiddenMoves(board, currentPlayer, gameStatus, useForbiddenRule);
 
   const executeMove = useCallback((row: number, col: number) => {
@@ -52,23 +54,21 @@ const App = () => {
   const handleCellClick = useCallback((row: number, col: number) => {
     if (gameStatus !== 'Playing') return;
     if (board[row][col] !== null) return;
-    
+
     // AI思考中または対戦相手の手番時はクリックを無効化
     if (isAiThinking || (gameMode === 'PvE' && currentPlayer !== playerColor)) {
       return;
     }
 
-    // 禁じ手チェック（黒番のみ）
-    if (useForbiddenRule && currentPlayer === 'Black') {
+    // 禁じ手チェック（黒番のみ）：useForbiddenMovesで事前計算済みの結果を参照
+    if (useForbiddenRule && currentPlayer === 'Black' && forbiddenMoves[row][col]) {
       const result = checkForbiddenMove(board, { row, col }, 'Black');
-      if (result.isForbidden) {
-        setForbiddenWarning(getForbiddenReasonMessage(result.reason));
-        return;
-      }
+      setForbiddenWarning(getForbiddenReasonMessage(result.reason));
+      return;
     }
 
     executeMove(row, col);
-  }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove, useForbiddenRule]);
+  }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove, useForbiddenRule, forbiddenMoves]);
 
   const resetGame = useCallback(() => {
     resetGameLogic();
@@ -147,9 +147,10 @@ const App = () => {
         onClick={resetGame}
         className="group mt-8 flex items-center gap-2 rounded-full bg-board-frame px-7 py-3 font-bold text-amber-50 shadow-md transition-all hover:bg-board-frame-dark active:scale-95"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 transition-transform duration-300 group-hover:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
+        <RotateCcw
+          className="h-5 w-5 transition-transform duration-300 group-hover:rotate-180"
+          strokeWidth={3}
+        />
         対局をリセット
       </button>
     </div>
