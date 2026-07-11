@@ -9,6 +9,13 @@ export const createEmptyBoard = (): BoardState => {
   return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
 };
 
+export const DIRECTIONS = [
+  [0, 1],
+  [1, 0],
+  [1, 1],
+  [1, -1],
+] as const;
+
 const countStonesInDirection = (
   board: BoardState,
   pos: Position,
@@ -137,14 +144,7 @@ export const checkWin = (
   lastMove: Position,
   player: Player
 ): boolean => {
-  const directions = [
-    [0, 1],
-    [1, 0],
-    [1, 1],
-    [1, -1]
-  ];
-
-  for (const [dRow, dCol] of directions) {
+  for (const [dRow, dCol] of DIRECTIONS) {
     const count =
       1 +
       countStonesInDirection(board, lastMove, player, dRow, dCol) +
@@ -170,15 +170,8 @@ export const checkForbiddenMove = (
     return { isForbidden: false, reason: null };
   }
 
-  const directions = [
-    [0, 1],
-    [1, 0],
-    [1, 1],
-    [1, -1]
-  ];
-
   // 1. 長連チェック
-  for (const [dRow, dCol] of directions) {
+  for (const [dRow, dCol] of DIRECTIONS) {
     const count =
       1 +
       countStonesInDirection(board, pos, player, dRow, dCol) +
@@ -200,7 +193,7 @@ export const checkForbiddenMove = (
   let totalFours = 0;
   let totalOpenThrees = 0;
 
-  for (const [dRow, dCol] of directions) {
+  for (const [dRow, dCol] of DIRECTIONS) {
     const line = getLinePattern(board, pos, player, dRow, dCol);
 
     totalFours += countFoursInLine(line, player);

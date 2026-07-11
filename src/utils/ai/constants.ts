@@ -4,6 +4,8 @@
 // 型定義（PatternType / PatternCount / SearchOptions）は複数ファイルから
 // 共有されるため types/ai.ts に集約している。このファイルは定数のみを扱う。
 
+import { DIRECTIONS as GAME_DIRECTIONS } from '../gameLogic';
+
 // --- スコア定数（攻撃基準に統一） ---
 export const AI_SCORES = {
   // 最優先事項
@@ -78,9 +80,4 @@ export const EVAL_CONFIG = {
 
 
 // --- 方向定数 ---
-export const DIRECTIONS = [
-  [1, 0],
-  [0, 1],
-  [1, 1],
-  [1, -1],
-] as const;
+export const DIRECTIONS = GAME_DIRECTIONS;
