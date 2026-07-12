@@ -40,18 +40,18 @@ export const AI_CONFIG = {
   SEARCH_RANGE: 2,
 
   /**
-   * ミニマックス探索の基本深さ（2〜3 を想定）
+   * ミニマックス探索の基本深さ
    * - SearchOptions.timeLimitMs 未指定時: この深さで固定探索する
    * - SearchOptions.timeLimitMs 指定時  : 反復深化の上限深さとして使う
    */
-  MINIMAX_DEPTH: 6,
+  MINIMAX_DEPTH: 8,
 
   /**
-   * 反復深化のデフォルト時間制限 [ms]（仮値）。
+   * 反復深化のデフォルト時間制限 [ms]。
    * 今後 AI レベル（Easy/Normal/Hard 等）を導入する際は、
    * レベルごとの SearchOptions プリセットでこの値を上書きする想定。
    */
-  DEFAULT_TIME_LIMIT_MS: 10000,
+  DEFAULT_TIME_LIMIT_MS: 1200,
 
   /**
    * 各ノードで探索する候補手の上限数（move ordering 後に先頭から取得）

@@ -21,7 +21,7 @@ const ModeSelector = ({ gameMode, onModeChange }: ModeSelectorProps) => {
               : 'text-slate-500 hover:text-slate-700'
           }`}
         >
-          {mode === 'PvP' ? '対人戦' : 'CPU戦'}
+          {mode === 'PvP' ? '対人戦' : 'AI戦'}
         </button>
       ))}
     </div>

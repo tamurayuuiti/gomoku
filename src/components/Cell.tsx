@@ -1,6 +1,7 @@
 // src/components/Cell.tsx
 // 盤面の各マスを表すコンポーネント
 
+import { X } from 'lucide-react';
 import type { Player } from '../types/game';
 
 interface CellProps {
@@ -53,9 +54,7 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForb
       {isForbidden && !value && (
         <div className="absolute z-20 flex h-1/2 w-1/2 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
           <div className="flex h-full w-full items-center justify-center rounded-full bg-rose-500/20 backdrop-blur-xs">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="h-3/4 w-3/4 text-rose-600">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X strokeWidth={3} className="h-3/4 w-3/4 text-rose-600" />
           </div>
         </div>
       )}
