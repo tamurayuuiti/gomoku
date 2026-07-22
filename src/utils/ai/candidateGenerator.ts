@@ -4,15 +4,13 @@
 // KillerTable / HistoryTable / ScoredPosition の型定義は minimax.ts と共有するため
 // types/ai.ts に集約されている。このファイルはそれらの型を使った生成・操作ロジックを担う。
 //
-// @future countermove heuristic（直前手をキーとするテーブル）、
-//         TT ベストムーブ（generateOrderedCandidates の先頭挿入）
+// @future countermove heuristic（直前手をキーとするテーブル）
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type { KillerEntry, KillerTable, HistoryTable, ScoredPosition } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
 import { AI_CONFIG, AI_SCORES } from './constants';
 import { evaluatePosition, hasStoneNearby } from './evaluator';
-
 
 // ============================================================
 // Killer table 生成・操作
@@ -24,7 +22,6 @@ export const MAX_KILLER_DEPTH = 8 as const;
 export const createKillerTable = (): KillerTable =>
   Array.from({ length: MAX_KILLER_DEPTH }, (): KillerEntry => [null, null]);
 
-
 // ============================================================
 // History table 生成・操作
 // ============================================================
@@ -33,7 +30,6 @@ export const createHistoryTable = (): HistoryTable => ({
   Black: Array.from({ length: BOARD_SIZE }, () => new Array<number>(BOARD_SIZE).fill(0)),
   White: Array.from({ length: BOARD_SIZE }, () => new Array<number>(BOARD_SIZE).fill(0)),
 });
-
 
 // ============================================================
 // CRITICAL 閾値
@@ -45,7 +41,6 @@ export const createHistoryTable = (): HistoryTable => ({
  * は常に先頭に来るため killer 管理は不要とみなす。
  */
 export const CRITICAL_SCORE_THRESHOLD = AI_SCORES.DOUBLE_THREE; // 50_000
-
 
 // ============================================================
 // Killer move management
@@ -61,8 +56,10 @@ export const storeKiller = (
   pos: Position
 ): void => {
   if (depth >= MAX_KILLER_DEPTH) return;
+
   const slot = killerTable[depth];
   if (slot[0]?.row === pos.row && slot[0]?.col === pos.col) return;
+
   slot[1] = slot[0];
   slot[0] = { row: pos.row, col: pos.col };
 };
@@ -75,13 +72,13 @@ export const isKiller = (
   col: number
 ): boolean => {
   if (depth >= MAX_KILLER_DEPTH) return false;
+
   const [k0, k1] = killerTable[depth];
   return (
     (k0?.row === row && k0?.col === col) ||
     (k1?.row === row && k1?.col === col)
   );
 };
-
 
 // ============================================================
 // History heuristic management
@@ -109,14 +106,15 @@ export const getHistoryScore = (
   col: number
 ): number => historyTable[player][row][col];
 
-
 // ============================================================
-// 候補手生成（3 tier move ordering）
+// 候補手生成（4 tier move ordering）
 // ============================================================
 
 /**
- * 候補手を 3 tier に分類して結合し、上位 MAX_CANDIDATES 手を返す。
+ * 候補手を 4 tier に分類して結合し、上位 MAX_CANDIDATES 手を返す。
  *
+ * Tier -1 (TT MOVE): Transposition Table に登録された「過去の最善手」。
+ *   同一局面の再探索時に最も枝刈り効果が高いため、最優先で試す。
  * Tier 0 (CRITICAL): evaluatePosition スコアが CRITICAL_SCORE_THRESHOLD 以上の手
  *   （WIN / DEFEND_WIN / OPEN_FOUR / 四三 / 双三）。αβ の境界を早期更新し枝刈り率を最大化する。
  * Tier 1 (KILLER): killer table に登録された「静かな手（CRITICAL 未満）」。
@@ -124,7 +122,7 @@ export const getHistoryScore = (
  * Tier 2 (REST): 上記以外。evaluatePosition 降順を主キー、history heuristic を
  *   補助的な副キーとして安定ソートする（評価スコアの大小関係は history で逆転しない）。
  *
- * @future countermove heuristic を killer tier に追加、TT ベストムーブを先頭挿入（Tier -1 相当）
+ * @future countermove heuristic を killer tier に追加
  *
  * @param board          現在の盤面
  * @param player         手番プレイヤー
@@ -132,6 +130,7 @@ export const getHistoryScore = (
  * @param killerTable    killer table（SearchContext から渡す）
  * @param historyTable   history table（SearchContext から渡す。REST tier の補助ソートに使用）
  * @param depth          現在の探索深さ（killer 参照に使用）
+ * @param ttBestMove     Transposition Table から取得したこの局面の最善手（未登録なら null）
  * @returns              ordered な ScoredPosition 配列（上限 MAX_CANDIDATES）。
  *                        score を保持したまま返すため呼び出し元での再計算が不要。
  */
@@ -141,7 +140,8 @@ export const generateOrderedCandidates = (
   forbiddenMoves: boolean[][],
   killerTable: KillerTable,
   historyTable: HistoryTable,
-  depth: number
+  depth: number,
+  ttBestMove: Position | null = null
 ): ScoredPosition[] => {
   const scored: ScoredPosition[] = [];
 
@@ -162,12 +162,24 @@ export const generateOrderedCandidates = (
   // score 降順（WIN > DEFEND_WIN > ... の自然な tier 順を維持）
   scored.sort((a, b) => b.score - a.score);
 
+  const ttTier: ScoredPosition[] = [];
   const criticalTier: ScoredPosition[] = [];
   const killerTier: ScoredPosition[] = [];
   const restTier: ScoredPosition[] = [];
 
+  // TT Move を最優先で抽出（重複排除のため、他の tier からは除外する）
+  const ttMoveKey = ttBestMove ? `${ttBestMove.row},${ttBestMove.col}` : null;
+
   for (const entry of scored) {
     const { pos, score } = entry;
+    const posKey = `${pos.row},${pos.col}`;
+
+    // TT Move は Tier -1 へ（重複排除）
+    if (ttMoveKey !== null && posKey === ttMoveKey) {
+      ttTier.push(entry);
+      continue;
+    }
+
     if (score >= CRITICAL_SCORE_THRESHOLD) {
       criticalTier.push(entry);
     } else if (isKiller(killerTable, depth, pos.row, pos.col)) {
@@ -179,6 +191,7 @@ export const generateOrderedCandidates = (
 
   restTier.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
+
     const historyA = getHistoryScore(historyTable, player, a.pos.row, a.pos.col);
     const historyB = getHistoryScore(historyTable, player, b.pos.row, b.pos.col);
     return historyB - historyA;
@@ -186,6 +199,6 @@ export const generateOrderedCandidates = (
 
   // CRITICAL が既に MAX_CANDIDATES を超える局面（多重勝利等）では
   // CRITICAL のみ返すことで探索が迅速に収束する
-  const ordered = [...criticalTier, ...killerTier, ...restTier];
+  const ordered = [...ttTier, ...criticalTier, ...killerTier, ...restTier];
   return ordered.slice(0, AI_CONFIG.MAX_CANDIDATES);
 };

@@ -7,6 +7,7 @@
 import { DIRECTIONS as GAME_DIRECTIONS } from '../gameLogic';
 
 // --- スコア定数（攻撃基準に統一） ---
+
 export const AI_SCORES = {
   // 最優先事項
   WIN: 1_000_000,
@@ -29,8 +30,8 @@ export const AI_SCORES = {
   SINGLE: 1,
 } as const;
 
-
 // --- AI探索設定 ---
+
 // depth・timeLimitMs のデフォルト値をここに一元管理し、
 // 呼び出し側が SearchOptions を明示しない限り常にこの値が使われる。
 export const AI_CONFIG = {
@@ -60,8 +61,8 @@ export const AI_CONFIG = {
   MAX_CANDIDATES: 15,
 } as const;
 
-
 // --- 全盤評価設定 ---
+
 export const EVAL_CONFIG = {
   /**
    * evaluateBoard で集計する上位 K 手の数。
@@ -78,6 +79,46 @@ export const EVAL_CONFIG = {
   TOP_K_DECAY: 0.3,
 } as const;
 
+// --- Transposition Table / Aspiration Window 設定 ---
+
+export const TT_CONFIG = {
+  /**
+   * 置換表の最大エントリ数。
+   * この値を超えたら全クリアする（簡易的なメモリ管理）。
+   * 1エントリ ≈ 100byte として、200,000件 ≈ 20MB 程度を想定。
+   *
+   * @future 世代管理（Age/LRU）による淘汰戦略へ改善予定
+   */
+  MAX_ENTRIES: 200_000,
+
+  /**
+   * Aspiration Window の有効フラグ。
+   *
+   * 現在は TT / Aspiration Window が棋力低下の原因かどうかを切り分けるため、
+   * 一時的に false（無効）としている。
+   *
+   * 再導入時は true に設定し、ASPIRATION_WINDOW を使用する。
+   * ただし、再導入時には fail-high / fail-low 時の再探索ウィンドウ設計を
+   * 安全な形（原則 full window 再探索など）に修正することを推奨する。
+   */
+  ENABLE_ASPIRATION_WINDOW: false,
+
+  /**
+   * Aspiration Window の初期幅。
+   * 反復深化の各ステップで、前回のスコアを中心に ±この幅のウィンドウを設定する。
+   * Fail High/Low 時にウィンドウを拡大して再探索する。
+   *
+   * 幅が狭すぎると再探索回数が増え、広すぎると枝刈り効果が薄れる。
+   * 五目並べのスコア体系（SINGLE=1 〜 WIN=1,000,000）に対し、
+   * 通常評価の揺らぎ（数百〜数千点）をカバーできる 50 を初期値とする。
+   *
+   * 注意:
+   *   現在は ENABLE_ASPIRATION_WINDOW = false のため使用されない。
+   *   削除せず、将来の再導入用に残す。
+   */
+  ASPIRATION_WINDOW: 50,
+} as const;
 
 // --- 方向定数 ---
+
 export const DIRECTIONS = GAME_DIRECTIONS;
