@@ -44,8 +44,11 @@ export const AI_CONFIG = {
    * ミニマックス探索の基本深さ
    * - SearchOptions.timeLimitMs 未指定時: この深さで固定探索する
    * - SearchOptions.timeLimitMs 指定時  : 反復深化の上限深さとして使う
+   *
+   * 第2弾では LMR / PVS / 候補手生成改善により深度余地が増えるため、
+   * 時間制御（DEFAULT_TIME_LIMIT_MS）を前提に 12 へ引き上げる。
    */
-  MINIMAX_DEPTH: 8,
+  MINIMAX_DEPTH: 12,
 
   /**
    * 反復深化のデフォルト時間制限 [ms]。
@@ -56,7 +59,9 @@ export const AI_CONFIG = {
 
   /**
    * 各ノードで探索する候補手の上限数（move ordering 後に先頭から取得）
-   * 深さ 2・15手なら最大 15^2 = 225 leaf 評価に抑制できる
+   *
+   * 第2弾では candidateGenerator 側で局面依存の上限制御を行うため、
+   * この値は feature flag OFF 時やフォールバック時の基準値として使う。
    */
   MAX_CANDIDATES: 15,
 } as const;
@@ -117,6 +122,100 @@ export const TT_CONFIG = {
    *   削除せず、将来の再導入用に残す。
    */
   ASPIRATION_WINDOW: 50,
+} as const;
+
+// --- 第2弾 feature flags ---
+
+/**
+ * 第2弾探索高速化機能の個別有効フラグ。
+ *
+ * 各機能を独立して ON/OFF できるようにし、
+ * 性能比較・デバッグ・段階的ロールアウトを容易にする。
+ */
+export const AI_FEATURES = {
+  /**
+   * 戦術的候補手生成を有効化する。
+   * - CRITICAL / Countermove / Killer / Quiet の tier 管理
+   * - Quiet のマージン剪定
+   * - 局面依存の候補手上限
+   */
+  ENABLE_TACTICAL_CANDIDATES: true,
+
+  /** Countermove Heuristic を有効化する */
+  ENABLE_COUNTERMOVE: true,
+
+  /** Late Move Reduction を有効化する */
+  ENABLE_LMR: true,
+
+  /** PVS / NegaScout を有効化する */
+  ENABLE_PVS: true,
+} as const;
+
+// --- 候補手生成設定 ---
+
+export const CANDIDATE_CONFIG = {
+  /** ルートノードの候補手上限 */
+  ROOT_MAX_CANDIDATES: 16,
+
+  /** 静かな局面での通常ノード候補手上限 */
+  DEFAULT_MAX_CANDIDATES: 12,
+
+  /**
+   * CRITICAL 手が存在する局面での候補手上限。
+   * ただし CRITICAL 手自体はこの上限で切り捨てない。
+   */
+  TACTICAL_MAX_CANDIDATES: 10,
+
+  /**
+   * Quiet 手のマージン剪定を有効化する。
+   * 最善 Quiet 手より大きく劣る静かな手を枝刈りする。
+   */
+  ENABLE_MARGIN_PRUNING: true,
+
+  /**
+   * Quiet 手のマージン幅。
+   * 最善 Quiet 手からこの値以上低い手は原則として捨てる。
+   *
+   * 戦術手・CRITICAL・Killer・Countermove・TT Move は対象外。
+   */
+  QUIET_SCORE_MARGIN: AI_SCORES.OPEN_THREE,
+} as const;
+
+// --- LMR 設定 ---
+
+export const LMR_CONFIG = {
+  /** LMR を適用する最小残り深度 */
+  MIN_DEPTH: 3,
+
+  /** LMR を適用する最小 move index（0始まり） */
+  MIN_MOVE_INDEX: 3,
+
+  /** 最大削減量 */
+  MAX_REDUCTION: 2,
+
+  /** より深い削減を使う残り深度 */
+  DEEP_REDUCTION_DEPTH: 6,
+
+  /** より深い削減を使う move index */
+  DEEP_REDUCTION_MOVE_INDEX: 6,
+
+  /**
+   * ルートノードでの LMR を許可するか。
+   * 最善手選択への影響を避けるため、デフォルトでは OFF。
+   */
+  ALLOW_ROOT: false,
+} as const;
+
+// --- PVS 設定 ---
+
+export const PVS_CONFIG = {
+  /**
+   * ルートノードでの PVS を許可するか。
+   *
+   * 内部ノードの PVS は有効でも、ルートでは最善手安定性を重視して
+   * デフォルト OFF とする。
+   */
+  ENABLE_ROOT_PVS: false,
 } as const;
 
 // --- 方向定数 ---

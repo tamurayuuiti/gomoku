@@ -3,7 +3,7 @@
 //
 // 初手処理（盤面空き → 中央）、反復深化（iterative deepening）ループの制御、
 // Aspiration Window による探索ウィンドウ管理、findBestMove の呼び出しと結果の返却を担う。
-// 探索ロジック本体（αβ・move ordering・評価関数・TT）は minimax.ts 以下に完全委譲し、
+// 探索ロジック本体（αβ・move ordering・評価関数・TT・LMR・PVS）は minimax.ts 以下に完全委譲し、
 // このファイルは "薄いアダプタ" として常に軽量に保つ。
 
 import type { BoardState, Position, Player } from '../../types/game';
@@ -36,8 +36,12 @@ import { TranspositionTable } from './transpositionTable';
  *   ただし、再導入時には fail-high / fail-low 時の再探索ウィンドウを
  *   安全な設計（原則 full window 再探索など）に見直すことを推奨する。
  *
- * options.timeLimitMs が未指定の場合は options.depth（未指定時は AI_CONFIG.MINIMAX_DEPTH）
- * による固定深さ探索を行う。
+ * 【lastMove】
+ * options.lastMove が指定されている場合、Countermove Heuristic のため
+ * findBestMove へ伝播する。
+ *
+ * options.lastMove だけで depth / timeLimitMs が未指定の場合は、
+ * 従来通り AI_CONFIG.MINIMAX_DEPTH / AI_CONFIG.DEFAULT_TIME_LIMIT_MS を使う。
  */
 export const calculateNextMove = (
   board: BoardState,
@@ -53,17 +57,33 @@ export const calculateNextMove = (
     return { row: center, col: center };
   }
 
-  // 呼び出し側が depth のみ・timeLimitMs のみを個別指定した場合はそちらを優先する
-  const resolvedOptions: SearchOptions =
-    options ?? {
-      depth: AI_CONFIG.MINIMAX_DEPTH,
-      timeLimitMs: AI_CONFIG.DEFAULT_TIME_LIMIT_MS,
-    };
+  const explicitDepth = options?.depth !== undefined;
+  const explicitTime = options?.timeLimitMs !== undefined;
 
-  const maxDepth = resolvedOptions.depth ?? AI_CONFIG.MINIMAX_DEPTH;
+  /**
+   * lastMove だけが渡された場合は「探索パラメータはデフォルト」として扱う。
+   * これにより、Worker 経由で lastMove を追加しても従来の時間制御が壊れない。
+   */
+  const onlyLastMove =
+    options !== undefined &&
+    !explicitDepth &&
+    !explicitTime &&
+    options.lastMove !== undefined;
+
+  const maxDepth = explicitDepth
+    ? (options!.depth as number)
+    : AI_CONFIG.MINIMAX_DEPTH;
+
+  const timeLimitMs = explicitTime
+    ? (options!.timeLimitMs as number)
+    : (!explicitDepth && (options === undefined || onlyLastMove)
+        ? AI_CONFIG.DEFAULT_TIME_LIMIT_MS
+        : undefined);
+
+  const lastMove = options?.lastMove ?? null;
 
   // --- timeLimitMs 未指定: 従来通りの固定深さ探索 ---
-  if (resolvedOptions.timeLimitMs === undefined) {
+  if (timeLimitMs === undefined) {
     const tt = new TranspositionTable();
 
     const result = findBestMove(
@@ -74,13 +94,14 @@ export const calculateNextMove = (
       Infinity,
       tt,
       -Infinity,
-      Infinity
+      Infinity,
+      lastMove
     );
 
     if (result.move) {
       console.log(
         `AI selected: (${result.move.row}, ${result.move.col}) via minimax depth=${maxDepth} ` +
-          `score=${result.score}, tt=${JSON.stringify(tt.stats)} (turn: ${currentTurn})`
+        `score=${result.score}, tt=${JSON.stringify(tt.stats)} (turn: ${currentTurn})`
       );
     }
 
@@ -88,7 +109,7 @@ export const calculateNextMove = (
   }
 
   // --- timeLimitMs 指定: 反復深化（iterative deepening） ---
-  const deadline = performance.now() + resolvedOptions.timeLimitMs;
+  const deadline = performance.now() + timeLimitMs;
   const tt = new TranspositionTable();
 
   let best: Position | null = null;
@@ -132,7 +153,8 @@ export const calculateNextMove = (
       effectiveDeadline,
       tt,
       alpha,
-      beta
+      beta,
+      lastMove
     );
 
     // ------------------------------------------------------------
@@ -162,7 +184,8 @@ export const calculateNextMove = (
           effectiveDeadline,
           tt,
           -Infinity,
-          Infinity
+          Infinity,
+          lastMove
         );
       }
       // Fail Low: スコアがウィンドウ下限を下回った → 真のスコアはもっと低い
@@ -179,7 +202,8 @@ export const calculateNextMove = (
           effectiveDeadline,
           tt,
           -Infinity,
-          Infinity
+          Infinity,
+          lastMove
         );
       }
     }
@@ -198,8 +222,8 @@ export const calculateNextMove = (
   if (best) {
     console.log(
       `AI selected: (${best.row}, ${best.col}) via iterative deepening ` +
-        `completedDepth=${completedDepth}/${maxDepth}, score=${prevScore}, ` +
-        `tt=${JSON.stringify(tt.stats)} (turn: ${currentTurn})`
+      `completedDepth=${completedDepth}/${maxDepth}, score=${prevScore}, ` +
+      `tt=${JSON.stringify(tt.stats)} (turn: ${currentTurn})`
     );
   }
 

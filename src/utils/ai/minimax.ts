@@ -5,21 +5,44 @@
 // Transposition Table 連携、公開 API（findBestMove）を担う。
 // 候補手生成 → candidateGenerator.ts、葉ノード盤面評価 → boardEvaluator.ts に委譲する。
 //
-// @future aspiration window の高度化（ウィンドウ幅の動的調整）、
-//         Late Move Reduction（LMR）、Principal Variation Search（PVS）
+// 第2弾:
+//   - Countermove Heuristic
+//   - Late Move Reduction（LMR）
+//   - PVS / NegaScout
+//   を追加。
+//
+// 設計方針:
+//   - 評価関数・スコア体系の意味は変更しない。
+//   - TT flag（EXACT / LOWERBOUND / UPPERBOUND）の管理を壊さない。
+//   - LMR は戦術手・重要手に適用しない。
+//   - 削減探索した結果は TT store depth を保守的に下げる。
 
 import type { BoardState, Position, Player } from '../../types/game';
-import type { KillerTable, HistoryTable, TTFlag } from '../../types/ai';
+import type {
+  KillerTable,
+  HistoryTable,
+  TTFlag,
+  CountermoveTable,
+  OrderedCandidate,
+} from '../../types/ai';
 import { checkWin } from '../gameLogic';
-import { AI_CONFIG, AI_SCORES } from './constants';
+import {
+  AI_CONFIG,
+  AI_SCORES,
+  AI_FEATURES,
+  LMR_CONFIG,
+  PVS_CONFIG,
+} from './constants';
 import { opponentOf } from './evaluator';
 import { evaluateBoard } from './boardEvaluator';
 import {
   CRITICAL_SCORE_THRESHOLD,
   createKillerTable,
   createHistoryTable,
+  createCountermoveTable,
   storeKiller,
   storeHistory,
+  storeCountermove,
   generateOrderedCandidates,
 } from './candidateGenerator';
 import { TranspositionTable } from './transpositionTable';
@@ -31,19 +54,24 @@ import { calculateInitialHash, updateHash } from './zobrist';
 
 /**
  * 探索コンテキスト。探索木全体を通じて共有される状態をまとめる。
- *
- * @future nodeCount（評価ノード数カウンタ）、LMR用統計などの拡張フィールドを想定
  */
 interface SearchContext {
   aiPlayer: Player;
   forbiddenMoves: boolean[][];
   killerTable: KillerTable;
+
   /** history heuristic 用テーブル。generateOrderedCandidates の REST tier 内ソートの補助に使う */
   historyTable: HistoryTable;
+
+  /** countermove heuristic 用テーブル。直前手に対する応手を記録する */
+  countermoveTable: CountermoveTable;
+
   /** 探索打ち切り時刻（performance.now() 基準の絶対時刻 [ms]）。Infinity なら時間制御なし */
   deadline: number;
+
   /** Transposition Table（置換表）。反復深化の全深さで共有する */
   tt: TranspositionTable;
+
   /**
    * 時間切れなどで探索が中断されたかどうか。
    * true の場合、不完全な結果を TT に保存してはならない。
@@ -61,6 +89,7 @@ const createSearchContext = (
   forbiddenMoves,
   killerTable: createKillerTable(),
   historyTable: createHistoryTable(),
+  countermoveTable: createCountermoveTable(),
   deadline,
   tt,
   aborted: false,
@@ -83,22 +112,76 @@ const isTimeUp = (ctx: SearchContext): boolean => {
 };
 
 // ============================================================
+// LMR
+// ============================================================
+
+/**
+ * LMR の削減量を返す。
+ *
+ * 保守性を重視し、以下には適用しない。
+ * - ルートノード（ALLOW_ROOT = false の場合）
+ * - 浅い深度
+ * - 序盤の move index
+ * - TT Move / Killer / Countermove
+ * - CRITICAL / 戦術手
+ */
+const getReduction = (
+  depth: number,
+  moveIndex: number,
+  flags: OrderedCandidate['flags'],
+  isRoot: boolean
+): number => {
+  if (!AI_FEATURES.ENABLE_LMR) return 0;
+  if (isRoot && !LMR_CONFIG.ALLOW_ROOT) return 0;
+  if (depth < LMR_CONFIG.MIN_DEPTH) return 0;
+  if (moveIndex < LMR_CONFIG.MIN_MOVE_INDEX) return 0;
+  if (!flags.reductionAllowed) return 0;
+
+  if (
+    flags.isTTMove ||
+    flags.isKiller ||
+    flags.isCountermove ||
+    flags.isCritical ||
+    flags.isTactical
+  ) {
+    return 0;
+  }
+
+  let reduction = 1;
+
+  if (
+    depth >= LMR_CONFIG.DEEP_REDUCTION_DEPTH &&
+    moveIndex >= LMR_CONFIG.DEEP_REDUCTION_MOVE_INDEX
+  ) {
+    reduction = 2;
+  }
+
+  const maxPossibleReduction = Math.max(0, depth - 1);
+
+  return Math.min(
+    reduction,
+    LMR_CONFIG.MAX_REDUCTION,
+    maxPossibleReduction
+  );
+};
+
+// ============================================================
 // ミニマックス探索本体
 // ============================================================
 
 /**
- * αβ 枝刈り付きミニマックス探索（Transposition Table 連携版）。
- * 探索・αβ・再帰制御に専念し、候補手生成は candidateGenerator、
- * 葉ノード評価は boardEvaluator に委譲する。
+ * αβ 枝刈り付きミニマックス探索（TT / PVS / LMR / Countermove 対応版）。
  *
  * @param board          現在の盤面（in-place 変更・復元）
  * @param depth          残り探索深さ（0 = 葉ノード）
  * @param isMaximizing   true = AI 手番 / false = 相手手番
  * @param currentPlayer  現在の手番プレイヤー
- * @param ctx            探索コンテキスト（killer table / TT 等を共有）
+ * @param ctx            探索コンテキスト
  * @param alpha          最大化側の現時点下限保証値
  * @param beta           最小化側の現時点上限保証値
- * @param currentHash    現在の盤面ハッシュ（差分更新で伝播）
+ * @param currentHash    現在の盤面ハッシュ
+ * @param lastMove       直前手（countermove 用）
+ * @param isRoot         ルートノードかどうか
  * @returns              aiPlayer 視点のスコア
  */
 const minimax = (
@@ -109,10 +192,11 @@ const minimax = (
   ctx: SearchContext,
   alpha: number,
   beta: number,
-  currentHash: bigint
+  currentHash: bigint,
+  lastMove: Position | null,
+  isRoot: boolean = false
 ): number => {
   // 既に探索が中断されている場合、このノードの結果は信頼できない。
-  // 親ノード側で ctx.aborted を確認し、TT store せずに破棄する。
   if (ctx.aborted) {
     return 0;
   }
@@ -142,8 +226,11 @@ const minimax = (
     ctx.forbiddenMoves,
     ctx.killerTable,
     ctx.historyTable,
+    ctx.countermoveTable,
     depth,
-    ttBestMove
+    lastMove,
+    ttBestMove,
+    isRoot
   );
 
   // 候補なし（盤面満杯等）→ 葉ノード評価にフォールバック
@@ -155,54 +242,128 @@ const minimax = (
 
   if (isMaximizing) {
     let maxScore = -Infinity;
+    let ttStoreDepth = depth;
 
-    for (const { pos, score: moveScore } of candidates) {
-      // 時間切れ: この時点までに評価した中での暫定値で探索を打ち切る
+    for (let moveIndex = 0; moveIndex < candidates.length; moveIndex++) {
       if (isTimeUp(ctx)) break;
 
+      const { pos, score: moveScore, flags } = candidates[moveIndex];
       const { row, col } = pos;
+
       board[row][col] = currentPlayer;
       const nextHash = updateHash(currentHash, row, col, currentPlayer);
+      const currentMove: Position = { row, col };
 
       // 即時勝利検出
-      if (checkWin(board, { row, col }, ctx.aiPlayer)) {
+      if (checkWin(board, currentMove, ctx.aiPlayer)) {
         board[row][col] = null;
         return AI_SCORES.WIN;
       }
 
-      const score = minimax(
-        board,
-        depth - 1,
-        false,
-        opponentOf(currentPlayer),
-        ctx,
-        alpha,
-        beta,
-        nextHash
-      );
+      let reduction = getReduction(depth, moveIndex, flags, isRoot);
+
+      // null-window 探索は alpha が有限でないと安全に使えない。
+      const canNull = Number.isFinite(alpha);
+      if (reduction > 0 && !canNull) {
+        reduction = 0;
+      }
+
+      const usePvsNull =
+        AI_FEATURES.ENABLE_PVS &&
+        moveIndex > 0 &&
+        canNull &&
+        !(isRoot && !PVS_CONFIG.ENABLE_ROOT_PVS);
+
+      let score: number;
+
+      if (usePvsNull || reduction > 0) {
+        const childDepth = Math.max(0, depth - 1 - reduction);
+        const nullBeta = alpha + 1;
+
+        // 削減 or PVS null-window 探索
+        score = minimax(
+          board,
+          childDepth,
+          false,
+          opponentOf(currentPlayer),
+          ctx,
+          alpha,
+          nullBeta,
+          nextHash,
+          currentMove,
+          false
+        );
+
+        if (ctx.aborted) {
+          board[row][col] = null;
+          return score;
+        }
+
+        // fail-high: 通常深度・通常ウィンドウで再探索
+        if (score > alpha) {
+          score = minimax(
+            board,
+            depth - 1,
+            false,
+            opponentOf(currentPlayer),
+            ctx,
+            alpha,
+            beta,
+            nextHash,
+            currentMove,
+            false
+          );
+        } else if (reduction > 0) {
+          // 削減探索で fail-low した結果は信用度を下げ、TT store depth を保守化する。
+          ttStoreDepth = Math.min(ttStoreDepth, depth - reduction);
+        }
+      } else {
+        // full-window 通常探索
+        score = minimax(
+          board,
+          depth - 1,
+          false,
+          opponentOf(currentPlayer),
+          ctx,
+          alpha,
+          beta,
+          nextHash,
+          currentMove,
+          false
+        );
+      }
 
       board[row][col] = null;
 
       // 子ノード探索中に時間切れになった場合、このノード結果も不完全。
-      // TT store せずに上位へ中断を伝播する。
       if (ctx.aborted) {
         return score;
       }
 
       if (score > maxScore) {
         maxScore = score;
-        bestMove = { row, col };
+        bestMove = currentMove;
       }
 
       if (score > alpha) alpha = score;
 
-      // β カットオフ: CRITICAL 未満の手のみ killer / history に記録
+      // β カットオフ: CRITICAL 未満の手のみ killer / history / countermove に記録
       if (beta <= alpha) {
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
-          storeKiller(ctx.killerTable, depth, { row, col });
-          storeHistory(ctx.historyTable, currentPlayer, depth, { row, col });
+          storeKiller(ctx.killerTable, depth, currentMove);
+          storeHistory(ctx.historyTable, currentPlayer, depth, currentMove);
+
+          if (AI_FEATURES.ENABLE_COUNTERMOVE && lastMove) {
+            storeCountermove(
+              ctx.countermoveTable,
+              currentPlayer,
+              lastMove,
+              currentMove
+            );
+          }
         }
-        bestMove = { row, col }; // カットオフを起こした手を bestMove として記録
+
+        bestMove = currentMove;
         break;
       }
     }
@@ -215,64 +376,139 @@ const minimax = (
     // --- Transposition Table Store ---
     // 必ず original alpha / beta で flag を判定する。
     let flag: TTFlag = 'EXACT';
+
     if (maxScore <= alphaOrig) {
       flag = 'UPPERBOUND';
     } else if (maxScore >= betaOrig) {
       flag = 'LOWERBOUND';
     }
 
-    ctx.tt.store(currentHash, depth, maxScore, flag, bestMove);
+    ctx.tt.store(currentHash, ttStoreDepth, maxScore, flag, bestMove);
     return maxScore;
   } else {
     let minScore = Infinity;
+    let ttStoreDepth = depth;
 
-    for (const { pos, score: moveScore } of candidates) {
-      // 時間切れ: この時点までに評価した中での暫定値で探索を打ち切る
+    for (let moveIndex = 0; moveIndex < candidates.length; moveIndex++) {
       if (isTimeUp(ctx)) break;
 
+      const { pos, score: moveScore, flags } = candidates[moveIndex];
       const { row, col } = pos;
+
       board[row][col] = currentPlayer;
       const nextHash = updateHash(currentHash, row, col, currentPlayer);
+      const currentMove: Position = { row, col };
 
       // 即時勝利検出（相手視点）
-      if (checkWin(board, { row, col }, currentPlayer)) {
+      if (checkWin(board, currentMove, currentPlayer)) {
         board[row][col] = null;
         return -AI_SCORES.WIN;
       }
 
-      const score = minimax(
-        board,
-        depth - 1,
-        true,
-        opponentOf(currentPlayer),
-        ctx,
-        alpha,
-        beta,
-        nextHash
-      );
+      let reduction = getReduction(depth, moveIndex, flags, isRoot);
+
+      // null-window 探索は beta が有限でないと安全に使えない。
+      const canNull = Number.isFinite(beta);
+      if (reduction > 0 && !canNull) {
+        reduction = 0;
+      }
+
+      const usePvsNull =
+        AI_FEATURES.ENABLE_PVS &&
+        moveIndex > 0 &&
+        canNull &&
+        !(isRoot && !PVS_CONFIG.ENABLE_ROOT_PVS);
+
+      let score: number;
+
+      if (usePvsNull || reduction > 0) {
+        const childDepth = Math.max(0, depth - 1 - reduction);
+        const nullAlpha = beta - 1;
+
+        // 削減 or PVS null-window 探索
+        score = minimax(
+          board,
+          childDepth,
+          true,
+          opponentOf(currentPlayer),
+          ctx,
+          nullAlpha,
+          beta,
+          nextHash,
+          currentMove,
+          false
+        );
+
+        if (ctx.aborted) {
+          board[row][col] = null;
+          return score;
+        }
+
+        // fail-low: 通常深度・通常ウィンドウで再探索
+        if (score < beta) {
+          score = minimax(
+            board,
+            depth - 1,
+            true,
+            opponentOf(currentPlayer),
+            ctx,
+            alpha,
+            beta,
+            nextHash,
+            currentMove,
+            false
+          );
+        } else if (reduction > 0) {
+          // 削減探索で fail-high した結果は信用度を下げ、TT store depth を保守化する。
+          ttStoreDepth = Math.min(ttStoreDepth, depth - reduction);
+        }
+      } else {
+        // full-window 通常探索
+        score = minimax(
+          board,
+          depth - 1,
+          true,
+          opponentOf(currentPlayer),
+          ctx,
+          alpha,
+          beta,
+          nextHash,
+          currentMove,
+          false
+        );
+      }
 
       board[row][col] = null;
 
       // 子ノード探索中に時間切れになった場合、このノード結果も不完全。
-      // TT store せずに上位へ中断を伝播する。
       if (ctx.aborted) {
         return score;
       }
 
       if (score < minScore) {
         minScore = score;
-        bestMove = { row, col };
+        bestMove = currentMove;
       }
 
       if (score < beta) beta = score;
 
-      // α カットオフ: CRITICAL 未満の手のみ killer / history に記録
+      // α カットオフ: CRITICAL 未満の手のみ killer / history / countermove に記録
       if (beta <= alpha) {
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
-          storeKiller(ctx.killerTable, depth, { row, col });
-          storeHistory(ctx.historyTable, currentPlayer, depth, { row, col });
+          storeKiller(ctx.killerTable, depth, currentMove);
+          storeHistory(ctx.historyTable, currentPlayer, depth, currentMove);
+
+          if (AI_FEATURES.ENABLE_COUNTERMOVE && lastMove) {
+            storeCountermove(
+              ctx.countermoveTable,
+              currentPlayer,
+              lastMove,
+              currentMove
+            );
+          }
         }
-        bestMove = { row, col }; // カットオフを起こした手を bestMove として記録
+
+        bestMove = currentMove;
         break;
       }
     }
@@ -285,13 +521,14 @@ const minimax = (
     // --- Transposition Table Store ---
     // 最小化ノードでは beta が更新されるため、必ず betaOrig を使う。
     let flag: TTFlag = 'EXACT';
+
     if (minScore <= alphaOrig) {
       flag = 'UPPERBOUND';
     } else if (minScore >= betaOrig) {
       flag = 'LOWERBOUND';
     }
 
-    ctx.tt.store(currentHash, depth, minScore, flag, bestMove);
+    ctx.tt.store(currentHash, ttStoreDepth, minScore, flag, bestMove);
     return minScore;
   }
 };
@@ -307,12 +544,13 @@ const minimax = (
 export interface FindBestMoveResult {
   /** 最善手。候補なし・時間切れ未完了の場合は null */
   move: Position | null;
+
   /** 探索スコア（aiPlayer 視点）。時間切れ未完了の場合は -Infinity */
   score: number;
 }
 
 /**
- * ミニマックス探索で最善手を求めて返す（Transposition Table / Aspiration Window 対応版）。
+ * ミニマックス探索で最善手を求めて返す（TT / PVS / LMR / Countermove 対応版）。
  * search.ts の反復深化ループから depth=1,2,3... と繰り返し呼び出される想定。
  *
  * 【時間制御】
@@ -321,23 +559,19 @@ export interface FindBestMoveResult {
  * 「この深さの探索は不完全」とみなし move=null を返す。呼び出し元（search.ts）は
  * move=null を受け取った場合、直前の深さで得られた完全な結果を採用する。
  *
- * 【Aspiration Window】
- * initialAlpha / initialBeta で探索ウィンドウを絞り込める。
- * Fail High/Low 時の再探索は呼び出し元（search.ts）が制御する。
- *
- * 現在は search.ts 側で Aspiration Window を一時的に無効化しているため、
- * 通常は initialAlpha = -Infinity, initialBeta = Infinity で呼び出される。
+ * 【lastMove】
+ * Countermove Heuristic のため、直前手を任意で受け取る。
+ * 未指定でも探索木内部では着手ごとに lastMove が伝播する。
  *
  * @param board          現在の盤面
  * @param forbiddenMoves 禁じ手マップ（探索中は静的として扱う）
  * @param aiPlayer       AI のプレイヤー
- * @param depth          探索深さ（デフォルト: AI_CONFIG.MINIMAX_DEPTH）
- * @param deadline       探索打ち切り時刻（performance.now() 基準、未指定時は無制限）
- * @param tt             Transposition Table インスタンス（反復深化で共有）
- * @param initialAlpha   探索ウィンドウ下限（未指定時は -Infinity）
- * @param initialBeta    探索ウィンドウ上限（未指定時は +Infinity）
- * @returns              最善手とスコア。候補なし、または時間切れで
- *                        この深さの探索を完了できなかった場合は move=null
+ * @param depth          探索深さ
+ * @param deadline       探索打ち切り時刻
+ * @param tt             Transposition Table インスタンス
+ * @param initialAlpha   探索ウィンドウ下限
+ * @param initialBeta    探索ウィンドウ上限
+ * @param lastMove       直前手（null 可）
  */
 export const findBestMove = (
   board: BoardState,
@@ -347,7 +581,8 @@ export const findBestMove = (
   deadline: number = Infinity,
   tt: TranspositionTable,
   initialAlpha: number = -Infinity,
-  initialBeta: number = Infinity
+  initialBeta: number = Infinity,
+  lastMove: Position | null = null
 ): FindBestMoveResult => {
   const ctx = createSearchContext(aiPlayer, forbiddenMoves, deadline, tt);
 
@@ -363,8 +598,11 @@ export const findBestMove = (
     forbiddenMoves,
     ctx.killerTable,
     ctx.historyTable,
+    ctx.countermoveTable,
     depth,
-    ttBestMove
+    lastMove,
+    ttBestMove,
+    true
   );
 
   if (candidates.length === 0) {
@@ -383,42 +621,93 @@ export const findBestMove = (
 
   console.log(
     `[Minimax] depth=${depth}, candidates=${candidates.length}, player=${aiPlayer}, ` +
-      `window=[${alpha}, ${beta}], ttSize=${tt.size}`
+    `window=[${alpha}, ${beta}], ttSize=${tt.size}`
   );
 
-  for (const { pos } of candidates) {
+  for (let moveIndex = 0; moveIndex < candidates.length; moveIndex++) {
     // 時間切れ: ルート候補を全て評価しきれていないため、この深さの結果は不採用とする
     if (isTimeUp(ctx)) {
       console.log(`[Minimax] depth=${depth} timed out before completion`);
       return { move: null, score: -Infinity };
     }
 
+    const { pos } = candidates[moveIndex];
     const { row, col } = pos;
+
     board[row][col] = aiPlayer;
     const nextHash = updateHash(initialHash, row, col, aiPlayer);
+    const currentMove: Position = { row, col };
 
     // ルートノード即時勝利（1 手詰め検出）
-    if (checkWin(board, { row, col }, aiPlayer)) {
+    if (checkWin(board, currentMove, aiPlayer)) {
       board[row][col] = null;
       console.log(`[Minimax] Immediate Win at (${row}, ${col})`);
-      return { move: { row, col }, score: AI_SCORES.WIN };
+      return { move: currentMove, score: AI_SCORES.WIN };
     }
 
-    const score = minimax(
-      board,
-      depth - 1,
-      false,
-      opponentOf(aiPlayer),
-      ctx,
-      alpha,
-      beta,
-      nextHash
-    );
+    let score: number;
+
+    const useRootPvsNull =
+      AI_FEATURES.ENABLE_PVS &&
+      PVS_CONFIG.ENABLE_ROOT_PVS &&
+      moveIndex > 0 &&
+      Number.isFinite(alpha);
+
+    if (useRootPvsNull) {
+      const nullBeta = alpha + 1;
+
+      score = minimax(
+        board,
+        depth - 1,
+        false,
+        opponentOf(aiPlayer),
+        ctx,
+        alpha,
+        nullBeta,
+        nextHash,
+        currentMove,
+        false
+      );
+
+      if (ctx.aborted) {
+        board[row][col] = null;
+        console.log(`[Minimax] depth=${depth} aborted during child search`);
+        return { move: null, score: -Infinity };
+      }
+
+      // fail-high: full window で再探索
+      if (score > alpha) {
+        score = minimax(
+          board,
+          depth - 1,
+          false,
+          opponentOf(aiPlayer),
+          ctx,
+          alpha,
+          beta,
+          nextHash,
+          currentMove,
+          false
+        );
+      }
+    } else {
+      score = minimax(
+        board,
+        depth - 1,
+        false,
+        opponentOf(aiPlayer),
+        ctx,
+        alpha,
+        beta,
+        nextHash,
+        currentMove,
+        false
+      );
+    }
 
     board[row][col] = null;
 
     // 子ノード探索中に時間切れになった場合、この depth の結果は不完全。
-    // 呼び出し元で直前の完全な結果を使ってもらうため move=null を返す。
     if (ctx.aborted) {
       console.log(`[Minimax] depth=${depth} aborted during child search`);
       return { move: null, score: -Infinity };
@@ -426,7 +715,7 @@ export const findBestMove = (
 
     if (score > bestScore) {
       bestScore = score;
-      bestPos = { row, col };
+      bestPos = currentMove;
     }
 
     // ルート α を更新して子ノードの枝刈り効率を高める
@@ -437,10 +726,12 @@ export const findBestMove = (
     // full window（beta = Infinity）の場合は通常この分岐には入らない。
     if (alpha >= beta) {
       ctx.tt.store(initialHash, depth, bestScore, 'LOWERBOUND', bestPos);
+
       console.log(
         `[Minimax] depth=${depth} fail-high: alpha=${alpha}, beta=${beta}, ` +
-          `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
+        `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
       );
+
       return { move: bestPos, score: bestScore };
     }
   }
@@ -453,6 +744,7 @@ export const findBestMove = (
   // ルートノードの結果を TT に保存。
   // Aspiration Window 使用時に備え、EXACT 固定ではなく bound を判定する。
   let flag: TTFlag = 'EXACT';
+
   if (bestScore <= alphaOrig) {
     flag = 'UPPERBOUND';
   } else if (bestScore >= betaOrig) {

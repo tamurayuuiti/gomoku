@@ -34,6 +34,15 @@ export interface SearchOptions {
    * 制限時間内に完了した最後の深さの結果を採用する。未指定時は depth 固定の従来動作。
    */
   timeLimitMs?: number;
+
+  /**
+   * 直前手（Countermove Heuristic のルート強化用）。
+   *
+   * - 未指定でも探索中は着手ごとに lastMove が自動伝播する。
+   * - UI 側から実際の直前手を渡すと、ルートノードでの countermove 精度が向上する。
+   * - Worker 通信との後方互換のため任意項目とする。
+   */
+  lastMove?: Position | null;
 }
 
 // --- 候補手（candidateGenerator.ts / minimax.ts で共有） ---
@@ -45,6 +54,49 @@ export interface SearchOptions {
 export interface ScoredPosition {
   pos: Position;
   score: number;
+}
+
+/**
+ * 候補手の戦術的性質・ordering 属性を表すフラグ。
+ *
+ * LMR / PVS / 候補手絞り込みで使用する。
+ * score の意味そのものは変更せず、探索制御用の補助情報として扱う。
+ */
+export interface CandidateFlags {
+  /** Transposition Table に登録されていた最善手 */
+  isTTMove: boolean;
+
+  /** killer heuristic に登録されていた手 */
+  isKiller: boolean;
+
+  /** countermove heuristic に登録されていた手 */
+  isCountermove: boolean;
+
+  /**
+   * 戦術的に最重要の手。
+   * WIN / DEFEND_WIN / OPEN_FOUR / DOUBLE_FOUR / FOUR_THREE / DOUBLE_THREE 相当。
+   */
+  isCritical: boolean;
+
+  /**
+   * 戦術手として LMR 除外対象にする手。
+   * isCritical に加え、CLOSED_FOUR 以上の明確な脅威を含む。
+   */
+  isTactical: boolean;
+
+  /** 静かな手（LMR 適用候補） */
+  isQuiet: boolean;
+
+  /** LMR を適用してよいか */
+  reductionAllowed: boolean;
+}
+
+/**
+ * 候補手生成の結果を表す型。
+ * ScoredPosition に探索制御用フラグを付与する。
+ */
+export interface OrderedCandidate extends ScoredPosition {
+  flags: CandidateFlags;
 }
 
 // --- Killer heuristic（candidateGenerator.ts / minimax.ts で共有） ---
@@ -67,6 +119,20 @@ export type KillerTable = KillerEntry[];
  */
 export type HistoryTable = Record<Player, number[][]>;
 
+// --- Countermove heuristic（candidateGenerator.ts / minimax.ts で共有） ---
+
+/**
+ * countermove heuristic 用テーブル。
+ *
+ * table[player][lastMoveIndex] = player 側が lastMove に対してカットオフを起こした応手。
+ * lastMoveIndex = row * BOARD_SIZE + col で平坦化する。
+ *
+ * 例:
+ *   相手が (r,c) に打った → 自分が (r2,c2) で β カットオフを起こした
+ *   table[自分の手番][index(r,c)] = { row: r2, col: c2 }
+ */
+export type CountermoveTable = Record<Player, (Position | null)[]>;
+
 // --- Transposition Table（transpositionTable.ts / minimax.ts で共有） ---
 
 /**
@@ -84,12 +150,16 @@ export type TTFlag = 'EXACT' | 'LOWERBOUND' | 'UPPERBOUND';
 export interface TTEntry {
   /** 盤面ハッシュ（衝突検知用） */
   hash: bigint;
+
   /** このエントリを生成した探索の残り深さ */
   depth: number;
+
   /** 探索スコア（aiPlayer 視点） */
   score: number;
+
   /** スコアの信頼性種別 */
   flag: TTFlag;
+
   /** この局面での最善手（Move Ordering に使用） */
   bestMove: Position | null;
 }

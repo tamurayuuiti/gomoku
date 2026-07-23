@@ -21,9 +21,19 @@
 // これにより、旧実装で専用Effectが担っていた「AIの手番でなくなったら
 // isAiThinking を false に戻す」という挙動も、isAiTurn を導出値の算出に
 // 組み込むことで自然に再現している。
+//
+// --- lastMove（第2弾追加） ---
+// 任意で lastMove を受け取り、Worker へ options.lastMove として渡す。
+// 未指定の場合は従来通り options なしで Worker を呼び出す。
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { Player, BoardState, GameStatus, GameMode } from '../types/game';
+import type {
+  Player,
+  BoardState,
+  GameStatus,
+  GameMode,
+  Position,
+} from '../types/game';
 import type { AiWorkerRequest, AiWorkerResponse } from '../workers/aiWorker.types';
 
 interface UseAiPlayerProps {
@@ -34,6 +44,13 @@ interface UseAiPlayerProps {
   playerColor: Player;
   forbiddenMoves: boolean[][];
   onMove: (row: number, col: number) => void;
+
+  /**
+   * 直前手（任意）。
+   * Countermove Heuristic のルート精度を上げたい場合に渡す。
+   * 未指定でも AI 探索内部では着手ごとに lastMove が伝播する。
+   */
+  lastMove?: Position | null;
 }
 
 export const useAiPlayer = ({
@@ -44,6 +61,7 @@ export const useAiPlayer = ({
   playerColor,
   forbiddenMoves,
   onMove,
+  lastMove,
 }: UseAiPlayerProps) => {
   // 応答（またはエラー）を受け取り、表示上の最低遅延も消化し終えたターンのID。
   // Workerからの非同期イベントに応じてのみ変化する値なので state として保持する。
@@ -67,11 +85,19 @@ export const useAiPlayer = ({
   // 現在の盤面を一意に表すID
   const turnId = useMemo(() => board.map((r) => r.join(',')).join('|'), [board]);
 
+  // lastMove の参照が毎回変わっても Effect を不必要に再実行しないよう、
+  // 座標キーで安定化させる。
+  const lastMoveKey = useMemo(
+    () => (lastMove ? `${lastMove.row},${lastMove.col}` : ''),
+    [lastMove],
+  );
+
   // --- Worker生成・破棄 ---
   useEffect(() => {
     const worker = new Worker(new URL('../workers/aiWorker.ts', import.meta.url), {
       type: 'module',
     });
+
     workerRef.current = worker;
 
     return () => {
@@ -107,6 +133,7 @@ export const useAiPlayer = ({
       }
 
       const elapsed = performance.now() - thinkStartTime;
+
       // 着手までの表示上の遅延は max(600ms, 実際の思考時間) とする
       const remainingDelay = Math.max(0, 600 - elapsed);
 
@@ -135,6 +162,16 @@ export const useAiPlayer = ({
       forbiddenMoves,
       currentPlayer,
     };
+
+    // lastMove が指定されている場合のみ options を付与する。
+    // これにより、既存の呼び出し側（lastMove 未指定）は完全に従来動作となる。
+    if (lastMoveKey) {
+      const [row, col] = lastMoveKey.split(',').map(Number);
+      request.options = {
+        lastMove: { row, col },
+      };
+    }
+
     worker.postMessage(request);
 
     return () => {
@@ -153,6 +190,7 @@ export const useAiPlayer = ({
     onMove,
     isAiTurn,
     turnId,
+    lastMoveKey,
   ]);
 
   // 「Workerに問い合わせ中」＝ AIの手番であり、かつ現在のターンがまだ解決していない場合
