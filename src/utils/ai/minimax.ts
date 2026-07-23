@@ -9,13 +9,11 @@
 //   - Countermove Heuristic
 //   - Late Move Reduction（LMR）
 //   - PVS / NegaScout
-//   を追加。
 //
-// 設計方針:
-//   - 評価関数・スコア体系の意味は変更しない。
-//   - TT flag（EXACT / LOWERBOUND / UPPERBOUND）の管理を壊さない。
-//   - LMR は戦術手・重要手に適用しない。
-//   - 削減探索した結果は TT store depth を保守的に下げる。
+// 第3弾:
+//   - LineCache 差分ラインキャッシュ
+//   - CandidateSet 候補集合増分管理
+//   - evaluateBoardWithCache / evaluatePositionWithCache への接続
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
@@ -24,6 +22,9 @@ import type {
   TTFlag,
   CountermoveTable,
   OrderedCandidate,
+  LineCacheState,
+  CandidateSetState,
+  CandidateSetUndo,
 } from '../../types/ai';
 import { checkWin } from '../gameLogic';
 import {
@@ -34,12 +35,15 @@ import {
   PVS_CONFIG,
 } from './constants';
 import { opponentOf } from './evaluator';
-import { evaluateBoard } from './boardEvaluator';
+import { evaluateBoard, evaluateBoardWithCache } from './boardEvaluator';
 import {
   CRITICAL_SCORE_THRESHOLD,
   createKillerTable,
   createHistoryTable,
   createCountermoveTable,
+  createCandidateSet,
+  applyCandidateSet,
+  undoCandidateSet,
   storeKiller,
   storeHistory,
   storeCountermove,
@@ -47,6 +51,11 @@ import {
 } from './candidateGenerator';
 import { TranspositionTable } from './transpositionTable';
 import { calculateInitialHash, updateHash } from './zobrist';
+import {
+  createLineCache,
+  updateLineCache,
+  undoLineCache,
+} from './lineCache';
 
 // ============================================================
 // SearchContext
@@ -66,6 +75,12 @@ interface SearchContext {
   /** countermove heuristic 用テーブル。直前手に対する応手を記録する */
   countermoveTable: CountermoveTable;
 
+  /** 第3弾: 差分ラインキャッシュ。無効時は null */
+  lineCache: LineCacheState | null;
+
+  /** 第3弾: 候補集合の増分管理。無効時は null */
+  candidateSet: CandidateSetState | null;
+
   /** 探索打ち切り時刻（performance.now() 基準の絶対時刻 [ms]）。Infinity なら時間制御なし */
   deadline: number;
 
@@ -80,6 +95,7 @@ interface SearchContext {
 }
 
 const createSearchContext = (
+  board: BoardState,
   aiPlayer: Player,
   forbiddenMoves: boolean[][],
   deadline: number = Infinity,
@@ -90,6 +106,10 @@ const createSearchContext = (
   killerTable: createKillerTable(),
   historyTable: createHistoryTable(),
   countermoveTable: createCountermoveTable(),
+  lineCache: AI_FEATURES.ENABLE_LINE_CACHE ? createLineCache(board) : null,
+  candidateSet: AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES
+    ? createCandidateSet(board, forbiddenMoves)
+    : null,
   deadline,
   tt,
   aborted: false,
@@ -109,6 +129,77 @@ const isTimeUp = (ctx: SearchContext): boolean => {
   }
 
   return false;
+};
+
+// ============================================================
+// 着手 / 復元ヘルパー（第3弾）
+// ============================================================
+
+/**
+ * board / LineCache / CandidateSet を一括で着手状態へ進める。
+ * Zobrist hash は呼び出し側で updateHash する。
+ */
+const applyMove = (
+  ctx: SearchContext,
+  board: BoardState,
+  row: number,
+  col: number,
+  player: Player
+): CandidateSetUndo | null => {
+  board[row][col] = player;
+
+  if (ctx.lineCache) {
+    updateLineCache(ctx.lineCache, row, col, player);
+  }
+
+  if (ctx.candidateSet) {
+    return applyCandidateSet(ctx.candidateSet, board, ctx.forbiddenMoves, row, col);
+  }
+
+  return null;
+};
+
+/**
+ * applyMove の逆操作。
+ * board を空に戻してから LineCache / CandidateSet を復元する。
+ */
+const undoMove = (
+  ctx: SearchContext,
+  board: BoardState,
+  row: number,
+  col: number,
+  player: Player,
+  candidateUndo: CandidateSetUndo | null
+): void => {
+  board[row][col] = null;
+
+  if (ctx.lineCache) {
+    undoLineCache(ctx.lineCache, { row, col, player });
+  }
+
+  if (ctx.candidateSet && candidateUndo) {
+    undoCandidateSet(ctx.candidateSet, candidateUndo);
+  }
+};
+
+/**
+ * 葉ノード評価。LineCache があれば cache 版を使う。
+ */
+const evaluateLeaf = (
+  board: BoardState,
+  ctx: SearchContext
+): number => {
+  if (ctx.lineCache) {
+    return evaluateBoardWithCache(
+      board,
+      ctx.lineCache,
+      ctx.aiPlayer,
+      ctx.forbiddenMoves,
+      ctx.candidateSet
+    );
+  }
+
+  return evaluateBoard(board, ctx.aiPlayer, ctx.forbiddenMoves);
 };
 
 // ============================================================
@@ -170,19 +261,7 @@ const getReduction = (
 // ============================================================
 
 /**
- * αβ 枝刈り付きミニマックス探索（TT / PVS / LMR / Countermove 対応版）。
- *
- * @param board          現在の盤面（in-place 変更・復元）
- * @param depth          残り探索深さ（0 = 葉ノード）
- * @param isMaximizing   true = AI 手番 / false = 相手手番
- * @param currentPlayer  現在の手番プレイヤー
- * @param ctx            探索コンテキスト
- * @param alpha          最大化側の現時点下限保証値
- * @param beta           最小化側の現時点上限保証値
- * @param currentHash    現在の盤面ハッシュ
- * @param lastMove       直前手（countermove 用）
- * @param isRoot         ルートノードかどうか
- * @returns              aiPlayer 視点のスコア
+ * αβ 枝刈り付きミニマックス探索（TT / PVS / LMR / Countermove / LineCache 対応版）。
  */
 const minimax = (
   board: BoardState,
@@ -203,11 +282,10 @@ const minimax = (
 
   // --- 葉ノード評価 ---
   if (depth === 0) {
-    return evaluateBoard(board, ctx.aiPlayer, ctx.forbiddenMoves);
+    return evaluateLeaf(board, ctx);
   }
 
   // --- Transposition Table Lookup ---
-  // original alpha / beta を保存し、TT Store 時の flag 判定に使う。
   const alphaOrig = alpha;
   const betaOrig = beta;
 
@@ -230,12 +308,14 @@ const minimax = (
     depth,
     lastMove,
     ttBestMove,
-    isRoot
+    isRoot,
+    ctx.lineCache,
+    ctx.candidateSet
   );
 
   // 候補なし（盤面満杯等）→ 葉ノード評価にフォールバック
   if (candidates.length === 0) {
-    return evaluateBoard(board, ctx.aiPlayer, ctx.forbiddenMoves);
+    return evaluateLeaf(board, ctx);
   }
 
   let bestMove: Position | null = null;
@@ -250,13 +330,13 @@ const minimax = (
       const { pos, score: moveScore, flags } = candidates[moveIndex];
       const { row, col } = pos;
 
-      board[row][col] = currentPlayer;
+      const candidateUndo = applyMove(ctx, board, row, col, currentPlayer);
       const nextHash = updateHash(currentHash, row, col, currentPlayer);
       const currentMove: Position = { row, col };
 
       // 即時勝利検出
       if (checkWin(board, currentMove, ctx.aiPlayer)) {
-        board[row][col] = null;
+        undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
         return AI_SCORES.WIN;
       }
 
@@ -295,7 +375,7 @@ const minimax = (
         );
 
         if (ctx.aborted) {
-          board[row][col] = null;
+          undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
           return score;
         }
 
@@ -313,6 +393,11 @@ const minimax = (
             currentMove,
             false
           );
+
+          if (ctx.aborted) {
+            undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+            return score;
+          }
         } else if (reduction > 0) {
           // 削減探索で fail-low した結果は信用度を下げ、TT store depth を保守化する。
           ttStoreDepth = Math.min(ttStoreDepth, depth - reduction);
@@ -331,14 +416,14 @@ const minimax = (
           currentMove,
           false
         );
+
+        if (ctx.aborted) {
+          undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+          return score;
+        }
       }
 
-      board[row][col] = null;
-
-      // 子ノード探索中に時間切れになった場合、このノード結果も不完全。
-      if (ctx.aborted) {
-        return score;
-      }
+      undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
 
       if (score > maxScore) {
         maxScore = score;
@@ -374,7 +459,6 @@ const minimax = (
     }
 
     // --- Transposition Table Store ---
-    // 必ず original alpha / beta で flag を判定する。
     let flag: TTFlag = 'EXACT';
 
     if (maxScore <= alphaOrig) {
@@ -395,13 +479,13 @@ const minimax = (
       const { pos, score: moveScore, flags } = candidates[moveIndex];
       const { row, col } = pos;
 
-      board[row][col] = currentPlayer;
+      const candidateUndo = applyMove(ctx, board, row, col, currentPlayer);
       const nextHash = updateHash(currentHash, row, col, currentPlayer);
       const currentMove: Position = { row, col };
 
       // 即時勝利検出（相手視点）
       if (checkWin(board, currentMove, currentPlayer)) {
-        board[row][col] = null;
+        undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
         return -AI_SCORES.WIN;
       }
 
@@ -440,7 +524,7 @@ const minimax = (
         );
 
         if (ctx.aborted) {
-          board[row][col] = null;
+          undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
           return score;
         }
 
@@ -458,6 +542,11 @@ const minimax = (
             currentMove,
             false
           );
+
+          if (ctx.aborted) {
+            undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+            return score;
+          }
         } else if (reduction > 0) {
           // 削減探索で fail-high した結果は信用度を下げ、TT store depth を保守化する。
           ttStoreDepth = Math.min(ttStoreDepth, depth - reduction);
@@ -476,14 +565,14 @@ const minimax = (
           currentMove,
           false
         );
+
+        if (ctx.aborted) {
+          undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+          return score;
+        }
       }
 
-      board[row][col] = null;
-
-      // 子ノード探索中に時間切れになった場合、このノード結果も不完全。
-      if (ctx.aborted) {
-        return score;
-      }
+      undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
 
       if (score < minScore) {
         minScore = score;
@@ -519,7 +608,6 @@ const minimax = (
     }
 
     // --- Transposition Table Store ---
-    // 最小化ノードでは beta が更新されるため、必ず betaOrig を使う。
     let flag: TTFlag = 'EXACT';
 
     if (minScore <= alphaOrig) {
@@ -539,7 +627,6 @@ const minimax = (
 
 /**
  * findBestMove の戻り値型。
- * Aspiration Window 対応のため、最善手とスコアの両方を返す。
  */
 export interface FindBestMoveResult {
   /** 最善手。候補なし・時間切れ未完了の場合は null */
@@ -550,28 +637,7 @@ export interface FindBestMoveResult {
 }
 
 /**
- * ミニマックス探索で最善手を求めて返す（TT / PVS / LMR / Countermove 対応版）。
- * search.ts の反復深化ループから depth=1,2,3... と繰り返し呼び出される想定。
- *
- * 【時間制御】
- * deadline（performance.now() 基準の絶対時刻）を指定すると、探索中に時間切れを
- * 検知した時点で打ち切る。ルート候補を最後まで評価しきれていなければ
- * 「この深さの探索は不完全」とみなし move=null を返す。呼び出し元（search.ts）は
- * move=null を受け取った場合、直前の深さで得られた完全な結果を採用する。
- *
- * 【lastMove】
- * Countermove Heuristic のため、直前手を任意で受け取る。
- * 未指定でも探索木内部では着手ごとに lastMove が伝播する。
- *
- * @param board          現在の盤面
- * @param forbiddenMoves 禁じ手マップ（探索中は静的として扱う）
- * @param aiPlayer       AI のプレイヤー
- * @param depth          探索深さ
- * @param deadline       探索打ち切り時刻
- * @param tt             Transposition Table インスタンス
- * @param initialAlpha   探索ウィンドウ下限
- * @param initialBeta    探索ウィンドウ上限
- * @param lastMove       直前手（null 可）
+ * ミニマックス探索で最善手を求めて返す（TT / PVS / LMR / Countermove / LineCache 対応版）。
  */
 export const findBestMove = (
   board: BoardState,
@@ -584,7 +650,7 @@ export const findBestMove = (
   initialBeta: number = Infinity,
   lastMove: Position | null = null
 ): FindBestMoveResult => {
-  const ctx = createSearchContext(aiPlayer, forbiddenMoves, deadline, tt);
+  const ctx = createSearchContext(board, aiPlayer, forbiddenMoves, deadline, tt);
 
   // 初期盤面ハッシュを計算（思考開始時に1回のみ）
   const initialHash = calculateInitialHash(board);
@@ -602,7 +668,9 @@ export const findBestMove = (
     depth,
     lastMove,
     ttBestMove,
-    true
+    true,
+    ctx.lineCache,
+    ctx.candidateSet
   );
 
   if (candidates.length === 0) {
@@ -634,13 +702,13 @@ export const findBestMove = (
     const { pos } = candidates[moveIndex];
     const { row, col } = pos;
 
-    board[row][col] = aiPlayer;
+    const candidateUndo = applyMove(ctx, board, row, col, aiPlayer);
     const nextHash = updateHash(initialHash, row, col, aiPlayer);
     const currentMove: Position = { row, col };
 
     // ルートノード即時勝利（1 手詰め検出）
     if (checkWin(board, currentMove, aiPlayer)) {
-      board[row][col] = null;
+      undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
       console.log(`[Minimax] Immediate Win at (${row}, ${col})`);
       return { move: currentMove, score: AI_SCORES.WIN };
     }
@@ -670,7 +738,7 @@ export const findBestMove = (
       );
 
       if (ctx.aborted) {
-        board[row][col] = null;
+        undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
         console.log(`[Minimax] depth=${depth} aborted during child search`);
         return { move: null, score: -Infinity };
       }
@@ -689,6 +757,12 @@ export const findBestMove = (
           currentMove,
           false
         );
+
+        if (ctx.aborted) {
+          undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
+          console.log(`[Minimax] depth=${depth} aborted during child search`);
+          return { move: null, score: -Infinity };
+        }
       }
     } else {
       score = minimax(
@@ -703,15 +777,15 @@ export const findBestMove = (
         currentMove,
         false
       );
+
+      if (ctx.aborted) {
+        undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
+        console.log(`[Minimax] depth=${depth} aborted during child search`);
+        return { move: null, score: -Infinity };
+      }
     }
 
-    board[row][col] = null;
-
-    // 子ノード探索中に時間切れになった場合、この depth の結果は不完全。
-    if (ctx.aborted) {
-      console.log(`[Minimax] depth=${depth} aborted during child search`);
-      return { move: null, score: -Infinity };
-    }
+    undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
 
     if (score > bestScore) {
       bestScore = score;
@@ -722,8 +796,6 @@ export const findBestMove = (
     if (score > alpha) alpha = score;
 
     // ルートで fail-high。
-    // Aspiration Window 使用時は、ここで lower bound として返す。
-    // full window（beta = Infinity）の場合は通常この分岐には入らない。
     if (alpha >= beta) {
       ctx.tt.store(initialHash, depth, bestScore, 'LOWERBOUND', bestPos);
 
@@ -742,7 +814,6 @@ export const findBestMove = (
   }
 
   // ルートノードの結果を TT に保存。
-  // Aspiration Window 使用時に備え、EXACT 固定ではなく bound を判定する。
   let flag: TTFlag = 'EXACT';
 
   if (bestScore <= alphaOrig) {

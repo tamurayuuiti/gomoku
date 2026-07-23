@@ -163,3 +163,71 @@ export interface TTEntry {
   /** この局面での最善手（Move Ordering に使用） */
   bestMove: Position | null;
 }
+
+// --- LineCache（lineCache.ts / evaluator.ts / boardEvaluator.ts / minimax.ts で共有） ---
+
+/**
+ * 1方向分のラインキャッシュ。
+ * [row][col] に 9 文字ライン文字列を保持する。
+ */
+export type LineCacheDirectionCache = string[][];
+
+/**
+ * ある手番視点の全方向ラインキャッシュ。
+ * DIRECTIONS の順に 4 要素持つ。
+ */
+export type LineCachePerspective = LineCacheDirectionCache[];
+
+/**
+ * 盤面全体のラインキャッシュ。
+ * Black 視点・White 視点の両方を保持する。
+ */
+export interface LineCacheState {
+  caches: Record<Player, LineCachePerspective>;
+}
+
+/**
+ * LineCache 差分更新の undo 情報。
+ * 着手前の空マス状態へ戻すため、着手位置と手番のみで十分。
+ */
+export interface LineCacheUndo {
+  row: number;
+  col: number;
+  player: Player;
+}
+
+// --- CandidateSet（candidateGenerator.ts / minimax.ts / boardEvaluator.ts で共有） ---
+
+/**
+ * CandidateSet の差分更新で影響を受けたセルの旧状態。
+ */
+export interface CandidateSetChange {
+  /** row * BOARD_SIZE + col */
+  index: number;
+
+  /** 更新前の近接石カウント */
+  oldRefCount: number;
+
+  /** 更新前に候補集合に含まれていたか */
+  oldIsCandidate: boolean;
+}
+
+/**
+ * CandidateSet の undo 情報。
+ */
+export interface CandidateSetUndo {
+  affected: CandidateSetChange[];
+}
+
+/**
+ * 候補集合の増分管理状態。
+ *
+ * - candidates: 候補マス（空マスかつ近傍に石あり、禁手ではない）の flat index 集合
+ * - isCandidate: 候補かどうかの高速参照用マップ
+ * - refCount: 各空マスについて、SEARCH_RANGE 内にある石の数
+ */
+export interface CandidateSetState {
+  candidates: Set<number>;
+  isCandidate: boolean[][];
+  refCount: number[][];
+}

@@ -4,6 +4,11 @@
 // KillerTable / HistoryTable / CountermoveTable / ScoredPosition / OrderedCandidate の型定義は
 // minimax.ts と共有するため types/ai.ts に集約されている。
 // このファイルはそれらの型を使った生成・操作ロジックを担う。
+//
+// 第3弾:
+//   - LineCache を利用した候補手評価
+//   - CandidateSet による候補集合の増分管理
+//   を追加。
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
@@ -12,10 +17,22 @@ import type {
   HistoryTable,
   OrderedCandidate,
   CountermoveTable,
+  LineCacheState,
+  CandidateSetState,
+  CandidateSetUndo,
 } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
-import { AI_CONFIG, AI_SCORES, AI_FEATURES, CANDIDATE_CONFIG } from './constants';
-import { evaluatePosition, hasStoneNearby } from './evaluator';
+import {
+  AI_CONFIG,
+  AI_SCORES,
+  AI_FEATURES,
+  CANDIDATE_CONFIG,
+} from './constants';
+import {
+  evaluatePosition,
+  hasStoneNearby,
+  evaluatePositionWithCache,
+} from './evaluator';
 
 // ============================================================
 // Killer table 生成・操作
@@ -61,11 +78,6 @@ const toIndex = (pos: Position): number => pos.row * BOARD_SIZE + pos.col;
 
 /**
  * β / α カットオフを引き起こした手を countermove table に記録する。
- *
- * @param table    countermove table
- * @param player   カットオフを起こした側の手番
- * @param lastMove 直前に相手が打った手
- * @param move     カットオフを起こした手
  */
 export const storeCountermove = (
   table: CountermoveTable,
@@ -166,6 +178,172 @@ export const getHistoryScore = (
 ): number => historyTable[player][row][col];
 
 // ============================================================
+// CandidateSet（第3弾）
+// ============================================================
+
+const toFlat = (row: number, col: number): number => row * BOARD_SIZE + col;
+
+/**
+ * 候補集合を初期盤面から構築する。
+ *
+ * 各空マスについて SEARCH_RANGE 内の石数を数え、
+ * 1 以上あれば候補とする。
+ */
+export const createCandidateSet = (
+  board: BoardState,
+  forbiddenMoves: boolean[][]
+): CandidateSetState => {
+  const refCount: number[][] = Array.from({ length: BOARD_SIZE }, () =>
+    new Array<number>(BOARD_SIZE).fill(0)
+  );
+
+  const isCandidate: boolean[][] = Array.from({ length: BOARD_SIZE }, () =>
+    new Array<boolean>(BOARD_SIZE).fill(false)
+  );
+
+  const candidates = new Set<number>();
+
+  const range = AI_CONFIG.SEARCH_RANGE;
+
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
+
+      let count = 0;
+
+      for (let dr = -range; dr <= range; dr++) {
+        for (let dc = -range; dc <= range; dc++) {
+          const nr = r + dr;
+          const nc = c + dc;
+
+          if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
+            continue;
+          }
+
+          if (board[nr][nc] !== null) {
+            count++;
+          }
+        }
+      }
+
+      refCount[r][c] = count;
+
+      if (count > 0) {
+        isCandidate[r][c] = true;
+        candidates.add(toFlat(r, c));
+      }
+    }
+  }
+
+  return { candidates, isCandidate, refCount };
+};
+
+/**
+ * 着手に伴い候補集合を増分更新する。
+ *
+ * board[row][col] に石が置かれた直後に呼ぶことを想定する。
+ * 影響範囲は着手位置の SEARCH_RANGE 近傍のみ。
+ */
+export const applyCandidateSet = (
+  state: CandidateSetState,
+  board: BoardState,
+  forbiddenMoves: boolean[][],
+  row: number,
+  col: number
+): CandidateSetUndo => {
+  const affected: CandidateSetUndo['affected'] = [];
+  const seen = new Set<number>();
+
+  const range = AI_CONFIG.SEARCH_RANGE;
+
+  const record = (r: number, c: number): void => {
+    const idx = toFlat(r, c);
+    if (seen.has(idx)) return;
+
+    seen.add(idx);
+    affected.push({
+      index: idx,
+      oldRefCount: state.refCount[r][c],
+      oldIsCandidate: state.isCandidate[r][c],
+    });
+  };
+
+  // 影響範囲の旧状態をすべて記録する
+  for (let dr = -range; dr <= range; dr++) {
+    for (let dc = -range; dc <= range; dc++) {
+      const nr = row + dr;
+      const nc = col + dc;
+
+      if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
+        continue;
+      }
+
+      record(nr, nc);
+    }
+  }
+
+  // 着手位置は候補から外す
+  if (state.isCandidate[row][col]) {
+    state.isCandidate[row][col] = false;
+    state.candidates.delete(toFlat(row, col));
+  }
+
+  // 近傍の空マスの refCount を増やす
+  for (let dr = -range; dr <= range; dr++) {
+    for (let dc = -range; dc <= range; dc++) {
+      const nr = row + dr;
+      const nc = col + dc;
+
+      if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
+        continue;
+      }
+
+      if (nr === row && nc === col) continue;
+      if (board[nr][nc] !== null) continue;
+      if (forbiddenMoves[nr][nc]) continue;
+
+      state.refCount[nr][nc]++;
+
+      if (state.refCount[nr][nc] === 1) {
+        state.isCandidate[nr][nc] = true;
+        state.candidates.add(toFlat(nr, nc));
+      }
+    }
+  }
+
+  return { affected };
+};
+
+/**
+ * applyCandidateSet の前に状態を復元する。
+ */
+export const undoCandidateSet = (
+  state: CandidateSetState,
+  undo: CandidateSetUndo
+): void => {
+  for (const change of undo.affected) {
+    const r = Math.floor(change.index / BOARD_SIZE);
+    const c = change.index % BOARD_SIZE;
+
+    const currentIsCandidate = state.isCandidate[r][c];
+
+    state.refCount[r][c] = change.oldRefCount;
+
+    if (change.oldIsCandidate) {
+      if (!currentIsCandidate) {
+        state.isCandidate[r][c] = true;
+        state.candidates.add(change.index);
+      }
+    } else {
+      if (currentIsCandidate) {
+        state.isCandidate[r][c] = false;
+        state.candidates.delete(change.index);
+      }
+    }
+  }
+};
+
+// ============================================================
 // 候補手生成（戦術的最適化 + 5 tier move ordering）
 // ============================================================
 
@@ -187,21 +365,6 @@ export const getHistoryScore = (
  *
  * Tier 4 (QUIET):
  *   上記以外。score 降順 + history 補助でソートし、必要に応じてマージン剪定する。
- *
- * ENABLE_TACTICAL_CANDIDATES = false の場合は、
- * 従来に近い TT / CRITICAL / COUNTER / KILLER / REST の結合を
- * AI_CONFIG.MAX_CANDIDATES で切り出す。
- *
- * @param board             現在の盤面
- * @param player            手番プレイヤー
- * @param forbiddenMoves    禁じ手マップ
- * @param killerTable       killer table
- * @param historyTable      history table
- * @param countermoveTable  countermove table
- * @param depth             現在の残り探索深さ
- * @param lastMove          直前手（null 可）
- * @param ttBestMove        TT から取得した最善手（null 可）
- * @param isRoot            ルートノードかどうか
  */
 export const generateOrderedCandidates = (
   board: BoardState,
@@ -213,49 +376,76 @@ export const generateOrderedCandidates = (
   depth: number,
   lastMove: Position | null = null,
   ttBestMove: Position | null = null,
-  isRoot: boolean = false
+  isRoot: boolean = false,
+  lineCache: LineCacheState | null = null,
+  candidateSet: CandidateSetState | null = null
 ): OrderedCandidate[] => {
   const scored: OrderedCandidate[] = [];
 
   const ttKey = ttBestMove ? toIndex(ttBestMove) : -1;
+
   const counterPos = AI_FEATURES.ENABLE_COUNTERMOVE
     ? getCountermove(countermoveTable, player, lastMove)
     : null;
+
   const counterKey = counterPos ? toIndex(counterPos) : -1;
 
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
+  const useLineCache = AI_FEATURES.ENABLE_LINE_CACHE && lineCache !== null;
+  const useCandidateSet =
+    AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES && candidateSet !== null;
+
+  const addCandidate = (r: number, c: number): void => {
+    const score = useLineCache
+      ? evaluatePositionWithCache(lineCache as LineCacheState, r, c, player)
+      : evaluatePosition(board, r, c, player);
+
+    const posKey = toIndex({ row: r, col: c });
+
+    const isTTMove = posKey === ttKey;
+    const isKillerMove = isKiller(killerTable, depth, r, c);
+    const isCountermove =
+      AI_FEATURES.ENABLE_COUNTERMOVE && posKey === counterKey;
+
+    const isCritical = score >= CRITICAL_SCORE_THRESHOLD;
+    const isTactical = isCritical || score >= AI_SCORES.CLOSED_FOUR;
+    const isQuiet = !isTactical;
+
+    scored.push({
+      pos: { row: r, col: c },
+      score,
+      flags: {
+        isTTMove,
+        isKiller: isKillerMove,
+        isCountermove,
+        isCritical,
+        isTactical,
+        isQuiet,
+        reductionAllowed:
+          isQuiet &&
+          !isTTMove &&
+          !isKillerMove &&
+          !isCountermove,
+      },
+    });
+  };
+
+  if (useCandidateSet && candidateSet) {
+    for (const idx of candidateSet.candidates) {
+      const r = Math.floor(idx / BOARD_SIZE);
+      const c = idx % BOARD_SIZE;
+
       if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
-      if (!hasStoneNearby(board, r, c)) continue;
 
-      const score = evaluatePosition(board, r, c, player);
-      const posKey = r * BOARD_SIZE + c;
+      addCandidate(r, c);
+    }
+  } else {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
+        if (!hasStoneNearby(board, r, c)) continue;
 
-      const isTTMove = posKey === ttKey;
-      const isKillerMove = isKiller(killerTable, depth, r, c);
-      const isCountermove = AI_FEATURES.ENABLE_COUNTERMOVE && posKey === counterKey;
-
-      const isCritical = score >= CRITICAL_SCORE_THRESHOLD;
-      const isTactical = isCritical || score >= AI_SCORES.CLOSED_FOUR;
-      const isQuiet = !isTactical;
-
-      scored.push({
-        pos: { row: r, col: c },
-        score,
-        flags: {
-          isTTMove,
-          isKiller: isKillerMove,
-          isCountermove,
-          isCritical,
-          isTactical,
-          isQuiet,
-          reductionAllowed:
-            isQuiet &&
-            !isTTMove &&
-            !isKillerMove &&
-            !isCountermove,
-        },
-      });
+        addCandidate(r, c);
+      }
     }
   }
 
@@ -275,6 +465,7 @@ export const generateOrderedCandidates = (
   const addUnique = (tier: OrderedCandidate[], entry: OrderedCandidate): void => {
     const key = toIndex(entry.pos);
     if (used.has(key)) return;
+
     used.add(key);
     tier.push(entry);
   };
@@ -312,6 +503,7 @@ export const generateOrderedCandidates = (
     finalQuietTier.length > 1
   ) {
     const bestQuietScore = finalQuietTier[0].score;
+
     finalQuietTier = finalQuietTier.filter(
       (entry) => entry.score >= bestQuietScore - CANDIDATE_CONFIG.QUIET_SCORE_MARGIN
     );
@@ -326,6 +518,7 @@ export const generateOrderedCandidates = (
       ...killerTier,
       ...quietTier,
     ];
+
     return ordered.slice(0, AI_CONFIG.MAX_CANDIDATES);
   }
 

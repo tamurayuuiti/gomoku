@@ -10,12 +10,13 @@
 //   - ベストムーブの提供（Move Ordering 用）
 //   - 探索診断用の統計情報提供
 //
-// @future 世代管理（Age）によるサイズ制限の高度化、
-//         クラスター化（バケット方式）による衝突耐性向上
+// 第3弾:
+//   - 上限到達時の全クリアではなく oldest eviction を導入
+//   - 既存エントリ更新時は insertion order を刷新し、最近の深い情報を残しやすくする
 
 import type { Position } from '../../types/game';
 import type { TTEntry, TTFlag } from '../../types/ai';
-import { TT_CONFIG } from './constants';
+import { TT_CONFIG, AI_FEATURES } from './constants';
 
 // ============================================================
 // TT 統計情報
@@ -28,12 +29,18 @@ import { TT_CONFIG } from './constants';
 export interface TTStats {
   /** lookup を試行した回数 */
   lookups: number;
+
   /** lookup が実際にスコア返却に成功した回数 */
   hits: number;
+
   /** 実際にエントリを保存した回数 */
   stores: number;
+
   /** 現在のテーブルサイズ */
   size: number;
+
+  /** 退避（eviction / clear）が発生した回数 */
+  evictions: number;
 }
 
 // ============================================================
@@ -55,6 +62,7 @@ export class TranspositionTable {
   private lookupCount = 0;
   private hitCount = 0;
   private storeCount = 0;
+  private evictionCount = 0;
 
   constructor() {
     this.table = new Map<bigint, TTEntry>();
@@ -62,22 +70,6 @@ export class TranspositionTable {
 
   /**
    * 指定ハッシュのエントリを検索し、αβ探索に利用できるスコアを返す。
-   *
-   * 利用条件:
-   *   - エントリが存在する
-   *   - エントリの深度が現在の残り深度以上（浅い結果は信頼できないため）
-   *
-   * スコア返却ルール:
-   *   - EXACT: そのまま返す
-   *   - LOWERBOUND: score >= beta なら返す（βカットオフ相当）
-   *   - UPPERBOUND: score <= alpha なら返す（α更新相当）
-   *   - 条件を満たさない場合は null（探索継続）
-   *
-   * @param hash  現在の盤面ハッシュ
-   * @param depth 現在の残り探索深さ
-   * @param alpha 現在のα値
-   * @param beta  現在のβ値
-   * @returns 利用可能なスコア、または null
    */
   lookup(
     hash: bigint,
@@ -117,13 +109,11 @@ export class TranspositionTable {
   /**
    * 指定ハッシュのエントリからベストムーブを取得する。
    * Move Ordering（TT Move の先頭挿入）に使用する。
-   *
-   * @param hash 現在の盤面ハッシュ
-   * @returns ベストムーブ、または null
    */
   getBestMove(hash: bigint): Position | null {
     const entry = this.table.get(hash);
     if (!entry || entry.hash !== hash) return null;
+
     return entry.bestMove;
   }
 
@@ -137,14 +127,8 @@ export class TranspositionTable {
    *   - 既存より浅い → 保存しない
    *
    * サイズ制限:
-   *   - エントリ数が TT_CONFIG.MAX_ENTRIES を超えたら全クリア。
-   *     簡易的なメモリ管理。@future 世代管理（LRU/Age）へ改善予定。
-   *
-   * @param hash     盤面ハッシュ
-   * @param depth    探索深さ
-   * @param score    探索スコア
-   * @param flag     エントリ種別（EXACT/LOWERBOUND/UPPERBOUND）
-   * @param bestMove その局面での最善手（Move Ordering 用）
+   *   - 新規ハッシュ保存時に上限を超えたら oldest eviction。
+   *   - feature flag OFF の場合は全クリア。
    */
   store(
     hash: bigint,
@@ -153,16 +137,41 @@ export class TranspositionTable {
     flag: TTFlag,
     bestMove: Position | null
   ): void {
-    // サイズ制限チェック（簡易版: 上限超過で全クリア）
-    if (this.table.size >= TT_CONFIG.MAX_ENTRIES) {
-      this.table.clear();
-    }
-
     const existing = this.table.get(hash);
 
     // Depth Preferred: 既存より浅い結果は保存しない
     if (existing && existing.depth > depth) {
       return;
+    }
+
+    // 新規エントリの場合のみサイズ制限をチェックする。
+    // 既存エントリの更新はサイズを増やさない。
+    if (!existing && this.table.size >= TT_CONFIG.MAX_ENTRIES) {
+      if (AI_FEATURES.ENABLE_TT_OLDEST_EVICTION) {
+        const deleteCount = Math.max(
+          1,
+          Math.floor(this.table.size * TT_CONFIG.EVICTION_RATIO)
+        );
+
+        let deleted = 0;
+
+        // Map は挿入順を保持するため、先頭から古いエントリを削除できる。
+        for (const key of this.table.keys()) {
+          this.table.delete(key);
+          deleted++;
+
+          if (deleted >= deleteCount) break;
+        }
+      } else {
+        this.table.clear();
+      }
+
+      this.evictionCount++;
+    }
+
+    // 既存エントリを上書きする場合は、一度削除して insertion order を刷新する。
+    if (existing) {
+      this.table.delete(hash);
     }
 
     this.table.set(hash, {
@@ -196,6 +205,7 @@ export class TranspositionTable {
       hits: this.hitCount,
       stores: this.storeCount,
       size: this.table.size,
+      evictions: this.evictionCount,
     };
   }
 }

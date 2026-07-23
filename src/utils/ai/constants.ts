@@ -45,8 +45,8 @@ export const AI_CONFIG = {
    * - SearchOptions.timeLimitMs 未指定時: この深さで固定探索する
    * - SearchOptions.timeLimitMs 指定時  : 反復深化の上限深さとして使う
    *
-   * 第2弾では LMR / PVS / 候補手生成改善により深度余地が増えるため、
-   * 時間制御（DEFAULT_TIME_LIMIT_MS）を前提に 12 へ引き上げる。
+   * 第2弾で LMR / PVS / 候補手生成改善により深度余地が増えるため、
+   * 時間制御（DEFAULT_TIME_LIMIT_MS）を前提に 12 へ引き上げ済み。
    */
   MINIMAX_DEPTH: 12,
 
@@ -92,19 +92,15 @@ export const TT_CONFIG = {
    * この値を超えたら全クリアする（簡易的なメモリ管理）。
    * 1エントリ ≈ 100byte として、200,000件 ≈ 20MB 程度を想定。
    *
-   * @future 世代管理（Age/LRU）による淘汰戦略へ改善予定
+   * 第3弾で oldest eviction を導入したため、全クリアはフォールバック。
    */
   MAX_ENTRIES: 200_000,
 
   /**
    * Aspiration Window の有効フラグ。
    *
-   * 現在は TT / Aspiration Window が棋力低下の原因かどうかを切り分けるため、
-   * 一時的に false（無効）としている。
-   *
-   * 再導入時は true に設定し、ASPIRATION_WINDOW を使用する。
-   * ただし、再導入時には fail-high / fail-low 時の再探索ウィンドウ設計を
-   * 安全な形（原則 full window 再探索など）に修正することを推奨する。
+   * 第3弾では search.ts 側の AI_FEATURES.ENABLE_SAFE_ASPIRATION を使用する。
+   * このフラグは後方互換のため残すが、基本は使用しない。
    */
   ENABLE_ASPIRATION_WINDOW: false,
 
@@ -113,26 +109,28 @@ export const TT_CONFIG = {
    * 反復深化の各ステップで、前回のスコアを中心に ±この幅のウィンドウを設定する。
    * Fail High/Low 時にウィンドウを拡大して再探索する。
    *
-   * 幅が狭すぎると再探索回数が増え、広すぎると枝刈り効果が薄れる。
-   * 五目並べのスコア体系（SINGLE=1 〜 WIN=1,000,000）に対し、
-   * 通常評価の揺らぎ（数百〜数千点）をカバーできる 50 を初期値とする。
-   *
-   * 注意:
-   *   現在は ENABLE_ASPIRATION_WINDOW = false のため使用されない。
-   *   削除せず、将来の再導入用に残す。
+   * 第3弾では LMR/PVS によるスコア揺れを考慮し、50 → 100 へ拡大している。
    */
-  ASPIRATION_WINDOW: 50,
+  ASPIRATION_WINDOW: 100,
+
+  /**
+   * TT oldest eviction 時に削除する割合。
+   * 上限到達時、挿入順にこの割合だけ古いエントリを削除する。
+   */
+  EVICTION_RATIO: 0.2,
 } as const;
 
 // --- 第2弾 feature flags ---
 
 /**
- * 第2弾探索高速化機能の個別有効フラグ。
+ * 第2弾・第3弾の探索機能を個別に有効/無効化するフラグ。
  *
  * 各機能を独立して ON/OFF できるようにし、
  * 性能比較・デバッグ・段階的ロールアウトを容易にする。
  */
 export const AI_FEATURES = {
+  // --- 第2弾 ---
+
   /**
    * 戦術的候補手生成を有効化する。
    * - CRITICAL / Countermove / Killer / Quiet の tier 管理
@@ -149,6 +147,23 @@ export const AI_FEATURES = {
 
   /** PVS / NegaScout を有効化する */
   ENABLE_PVS: true,
+
+  // --- 第3弾 ---
+
+  /** 差分ラインキャッシュを有効化する */
+  ENABLE_LINE_CACHE: true,
+
+  /** 候補集合の増分管理を有効化する */
+  ENABLE_INCREMENTAL_CANDIDATES: true,
+
+  /** Aspiration Window を安全な形で再有効化する */
+  ENABLE_SAFE_ASPIRATION: true,
+
+  /** TT 上限到達時の oldest eviction を有効化する */
+  ENABLE_TT_OLDEST_EVICTION: true,
+
+  /** detectPattern のキャッシュを有効化する */
+  ENABLE_PATTERN_CACHE: true,
 } as const;
 
 // --- 候補手生成設定 ---
