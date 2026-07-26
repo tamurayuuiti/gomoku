@@ -19,21 +19,50 @@
 //   - 対局全体統計セッションを開始・記録・終了する。
 //   - AI が勝った場合はその場で GameSession を終了する。
 //   - 人間勝ち・引き分けは UI からの制御メッセージで終了する。
+//
+// 第5弾:
+//   - Aspiration Window の再調整（flag 付き）
+//   - adaptive Aspiration（flag 付き）
+//   - 時間予測（flag 付き）
+//   - 中心パターンキャッシュ統計の反映
+//
+// 第5.5弾:
+//   - Aspiration tuning / adaptive を既定で活用するための制御を追加
+//   - adaptive window の簡易収縮を追加
+//   - 時間予測の適用開始深度を保守化
+//
+// 第5.5.1弾:
+//   - Static Eval Cache を calculateNextMove 単位で生成し、全 findBestMove で共有
+//   - Aspiration quiet-only 条件を追加
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions } from '../../types/ai';
 import { BOARD_SIZE, checkWin } from '../gameLogic';
-import { AI_CONFIG, AI_SCORES, TT_CONFIG, AI_FEATURES } from './constants';
+import {
+  AI_CONFIG,
+  AI_SCORES,
+  TT_CONFIG,
+  AI_FEATURES,
+  PHASE5_FEATURES,
+  PHASE5_CONFIG,
+} from './constants';
 import { findBestMove } from './minimax';
 import { TranspositionTable } from './transpositionTable';
 import {
   resetPatternCacheStats,
   getPatternCacheStats,
+  resetCenterPatternCacheStats,
+  getCenterPatternCacheStats,
 } from './evaluator';
+import {
+  createStaticEvalCache,
+  type StaticEvalCache,
+} from './staticEvalCache';
 import {
   createSearchStats,
   mergeTTStats,
   mergePatternCacheStats,
+  mergeCenterPatternCacheStats,
   finalizeSearchStats,
   logSearchSummary,
   shouldLogVerboseSearch,
@@ -50,6 +79,10 @@ import {
  * - depth >= 2
  * - 前回スコアがある
  * - 前回スコアが WIN / LOSS 付近ではない
+ *
+ * 第5.5.1弾:
+ * - ENABLE_ASPIRATION_QUIET_ONLY 有効時は、
+ *   abs(prevScore) >= ASPIRATION_QUIET_THRESHOLD の戦術的領域で Aspiration を使わない。
  */
 const shouldUseAspiration = (
   depth: number,
@@ -59,8 +92,20 @@ const shouldUseAspiration = (
   if (depth < 2) return false;
   if (prevScore === null) return false;
 
+  const absScore = Math.abs(prevScore);
+
   // WIN / LOSS 付近ではウィンドウを狭めるリスクを避ける
-  return Math.abs(prevScore) < AI_SCORES.WIN / 2;
+  if (absScore >= AI_SCORES.WIN / 2) return false;
+
+  // 戦術的スコア領域では score 変動が大きいため、full window を使う
+  if (
+    PHASE5_FEATURES.ENABLE_ASPIRATION_QUIET_ONLY &&
+    absScore >= PHASE5_CONFIG.ASPIRATION_QUIET_THRESHOLD
+  ) {
+    return false;
+  }
+
+  return true;
 };
 
 /**
@@ -126,6 +171,29 @@ const isWinningMove = (
 };
 
 /**
+ * 第5.5.1弾:
+ * 1回の calculateNextMove 全体で共有する Static Eval Cache を生成する。
+ */
+const createPerMoveStaticEvalCache = (
+  forbiddenMoves: boolean[][],
+  aiPlayer: Player
+): StaticEvalCache | null => {
+  if (!PHASE5_FEATURES.ENABLE_STATIC_EVAL_CACHE) return null;
+
+  return createStaticEvalCache(
+    {
+      limit: PHASE5_CONFIG.STATIC_EVAL_CACHE_LIMIT,
+      evictionRatio: PHASE5_CONFIG.STATIC_EVAL_CACHE_EVICTION_RATIO,
+    },
+    {
+      aiPlayer,
+      forbiddenMoves,
+      candidateSetEnabled: AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES,
+    }
+  );
+};
+
+/**
  * AIの次の一手を計算して返す。
  *
  * 公開インターフェース: この関数のシグネチャは変更禁止。
@@ -139,6 +207,7 @@ export const calculateNextMove = (
   const startTime = performance.now();
 
   resetPatternCacheStats();
+  resetCenterPatternCacheStats();
 
   const stonesBefore = countStones(board);
   startGameSessionForMove(currentTurn, stonesBefore);
@@ -151,12 +220,15 @@ export const calculateNextMove = (
     const centerMove: Position = { row: center, col: center };
 
     const stats = createSearchStats(currentTurn, 'center', 0, null, null);
+
     stats.selectedMove = centerMove;
     stats.selectedScore = 0;
     stats.completedDepth = 0;
     stats.time.elapsedMs = performance.now() - startTime;
 
     mergePatternCacheStats(stats, getPatternCacheStats());
+    mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
+
     finalizeSearchStats(stats);
     logSearchSummary(stats);
 
@@ -195,6 +267,11 @@ export const calculateNextMove = (
     const stats = createSearchStats(currentTurn, 'fixed', maxDepth, null, lastMove);
     const tt = new TranspositionTable();
 
+    const staticEvalCache = createPerMoveStaticEvalCache(
+      forbiddenMoves,
+      currentTurn
+    );
+
     const result = findBestMove(
       board,
       forbiddenMoves,
@@ -205,7 +282,8 @@ export const calculateNextMove = (
       -Infinity,
       Infinity,
       lastMove,
-      stats
+      stats,
+      staticEvalCache
     );
 
     stats.selectedMove = result.move;
@@ -215,6 +293,8 @@ export const calculateNextMove = (
 
     mergeTTStats(stats, tt.stats);
     mergePatternCacheStats(stats, getPatternCacheStats());
+    mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
+
     finalizeSearchStats(stats);
     logSearchSummary(stats);
 
@@ -245,25 +325,83 @@ export const calculateNextMove = (
   const deadline = performance.now() + timeLimitMs;
   const tt = new TranspositionTable();
 
+  /**
+   * 第5.5.1弾:
+   * Static Eval Cache を calculateNextMove 単位で 1 回だけ生成し、
+   * 反復深化の全 depth / Aspiration 再探索で共有する。
+   */
+  const staticEvalCache = createPerMoveStaticEvalCache(
+    forbiddenMoves,
+    currentTurn
+  );
+
   let best: Position | null = null;
   let completedDepth = 0;
   let prevScore: number | null = null;
 
+  // 第5弾：Aspiration 調整用状態
+  const baseAspirationWindow = PHASE5_FEATURES.ENABLE_ASPIRATION_TUNING
+    ? PHASE5_CONFIG.ASPIRATION_WINDOW_OVERRIDE
+    : TT_CONFIG.ASPIRATION_WINDOW;
+
+  let adaptiveAspirationWindow = baseAspirationWindow;
+  let prevAspirationFailed = false;
+
   for (let d = 1; d <= maxDepth; d++) {
+    const iterStart = performance.now();
+
     // depth=1 は時間制限なしで探索し、極端に短い timeLimitMs でも AI が無反応にならない保証とする
     const effectiveDeadline = d === 1 ? Infinity : deadline;
 
     let alpha = -Infinity;
     let beta = Infinity;
 
+    const aspirationCandidate =
+      AI_FEATURES.ENABLE_SAFE_ASPIRATION &&
+      d >= 2 &&
+      prevScore !== null;
+
     const useAspiration = shouldUseAspiration(d, prevScore);
 
+    if (aspirationCandidate && !useAspiration) {
+      stats.aspiration.disabledNearWin++;
+    }
+
+    /**
+     * Aspiration を使わない場合は adaptive window を base に戻す。
+     * これにより、戦術領域から静かな領域へ戻ったときに広い window を引きずらない。
+     */
+    if (!useAspiration) {
+      adaptiveAspirationWindow = baseAspirationWindow;
+    }
+
+    let depthAspirationFailed = false;
+
     if (useAspiration) {
-      const window = TT_CONFIG.ASPIRATION_WINDOW;
+      let window = adaptiveAspirationWindow;
+
+      if (
+        PHASE5_FEATURES.ENABLE_ADAPTIVE_ASPIRATION &&
+        prevAspirationFailed
+      ) {
+        window = Math.min(
+          PHASE5_CONFIG.ASPIRATION_ADAPTIVE_MAX_WINDOW,
+          window * 2
+        );
+
+        adaptiveAspirationWindow = window;
+        stats.aspiration.adaptiveExpansions++;
+      }
+
       alpha = (prevScore as number) - window;
       beta = (prevScore as number) + window;
 
       stats.aspiration.attempts++;
+      stats.aspiration.windowSum += window;
+
+      if (window > stats.aspiration.windowMax) {
+        stats.aspiration.windowMax = window;
+      }
     }
 
     // 探索実行
@@ -277,7 +415,8 @@ export const calculateNextMove = (
       alpha,
       beta,
       lastMove,
-      stats
+      stats,
+      staticEvalCache
     );
 
     // ------------------------------------------------------------
@@ -288,11 +427,12 @@ export const calculateNextMove = (
       if (result.score >= beta) {
         stats.aspiration.failHigh++;
         stats.aspiration.fullResearches++;
+        depthAspirationFailed = true;
 
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-              `re-searching with full window`
+            `re-searching with full window`
           );
         }
 
@@ -306,16 +446,18 @@ export const calculateNextMove = (
           -Infinity,
           Infinity,
           lastMove,
-          stats
+          stats,
+          staticEvalCache
         );
       } else if (result.score <= alpha) {
         stats.aspiration.failLow++;
         stats.aspiration.fullResearches++;
+        depthAspirationFailed = true;
 
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-              `re-searching with full window`
+            `re-searching with full window`
           );
         }
 
@@ -329,7 +471,8 @@ export const calculateNextMove = (
           -Infinity,
           Infinity,
           lastMove,
-          stats
+          stats,
+          staticEvalCache
         );
       }
     }
@@ -341,8 +484,46 @@ export const calculateNextMove = (
     prevScore = result.score;
     completedDepth = d;
 
+    const iterElapsed = performance.now() - iterStart;
+    stats.time.lastIterationMs = iterElapsed;
+
+    /**
+     * 第5.5弾:
+     * adaptive aspiration の簡易収縮。
+     * fail しなかった場合は、広げた window を base へ戻していく。
+     */
+    if (
+      PHASE5_FEATURES.ENABLE_ADAPTIVE_ASPIRATION &&
+      useAspiration &&
+      !depthAspirationFailed &&
+      adaptiveAspirationWindow > baseAspirationWindow
+    ) {
+      adaptiveAspirationWindow = Math.max(
+        baseAspirationWindow,
+        Math.floor(adaptiveAspirationWindow / 2)
+      );
+    }
+
     // 次の深さに進む余地がなければここで打ち切る
     if (performance.now() >= deadline) break;
+
+    // 第5弾：時間予測（保守的）
+    // 第5.5弾: 適用開始深度を TIME_PREDICTION_MIN_DEPTH へ引き上げ。
+    if (
+      PHASE5_FEATURES.ENABLE_TIME_PREDICTION &&
+      d >= PHASE5_CONFIG.TIME_PREDICTION_MIN_DEPTH
+    ) {
+      const remaining = deadline - performance.now();
+      const estimate = iterElapsed * PHASE5_CONFIG.TIME_PREDICTION_SAFETY;
+
+      if (remaining < estimate) {
+        stats.time.predictedSkips++;
+        stats.time.remainingAtSkipMs = remaining;
+        break;
+      }
+    }
+
+    prevAspirationFailed = depthAspirationFailed && useAspiration;
   }
 
   stats.selectedMove = best;
@@ -352,6 +533,8 @@ export const calculateNextMove = (
 
   mergeTTStats(stats, tt.stats);
   mergePatternCacheStats(stats, getPatternCacheStats());
+  mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
+
   finalizeSearchStats(stats);
   logSearchSummary(stats);
 

@@ -16,6 +16,11 @@
 //
 // 追加:
 //   - 対局統計用の候補手生成時間計測を追加。
+//
+// 第5弾:
+//   - tier bucket 生成を追加（feature flag 付き）。
+//   - 候補手生成時間の per-move 記録を追加。
+//   - 候補手の意味・tier 優先順位・評価値は変更しない。
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
@@ -35,6 +40,7 @@ import {
   AI_SCORES,
   AI_FEATURES,
   CANDIDATE_CONFIG,
+  PHASE5_FEATURES,
 } from './constants';
 import {
   evaluatePosition,
@@ -140,6 +146,7 @@ export const storeKiller = (
   if (depth >= MAX_KILLER_DEPTH) return;
 
   const slot = killerTable[depth];
+
   if (slot[0]?.row === pos.row && slot[0]?.col === pos.col) return;
 
   slot[1] = slot[0];
@@ -208,11 +215,9 @@ export const createCandidateSet = (
   const refCount: number[][] = Array.from({ length: BOARD_SIZE }, () =>
     new Array<number>(BOARD_SIZE).fill(0)
   );
-
   const isCandidate: boolean[][] = Array.from({ length: BOARD_SIZE }, () =>
     new Array<boolean>(BOARD_SIZE).fill(false)
   );
-
   const candidates = new Set<number>();
 
   const range = AI_CONFIG.SEARCH_RANGE;
@@ -273,7 +278,6 @@ export const applyCandidateSet = (
     if (seen.has(idx)) return;
 
     seen.add(idx);
-
     affected.push({
       index: idx,
       oldRefCount: state.refCount[r][c],
@@ -402,18 +406,14 @@ const generateOrderedCandidatesInternal = (
     stats.candidates.genCalls++;
   }
 
-  const scored: OrderedCandidate[] = [];
-
   const ttKey = ttBestMove ? toIndex(ttBestMove) : -1;
 
   const counterPos = AI_FEATURES.ENABLE_COUNTERMOVE
     ? getCountermove(countermoveTable, player, lastMove)
     : null;
-
   const counterKey = counterPos ? toIndex(counterPos) : -1;
 
   const useLineCache = AI_FEATURES.ENABLE_LINE_CACHE && lineCache !== null;
-
   const useCandidateSet =
     AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES && candidateSet !== null;
 
@@ -421,6 +421,210 @@ const generateOrderedCandidatesInternal = (
     stats.candidateSet.used = true;
     recordCandidateSetSize(stats, candidateSet.candidates.size);
   }
+
+  // ============================================================
+  // 第5弾：bucket 方式候補手生成
+  // ============================================================
+  if (PHASE5_FEATURES.ENABLE_TIER_BUCKET_GENERATION) {
+    type InternalCandidate = OrderedCandidate & { order: number };
+
+    const ttTier: InternalCandidate[] = [];
+    const criticalTier: InternalCandidate[] = [];
+    const counterTier: InternalCandidate[] = [];
+    const killerTier: InternalCandidate[] = [];
+    const quietTier: InternalCandidate[] = [];
+
+    let order = 0;
+
+    const addBucketCandidate = (r: number, c: number): void => {
+      const score = useLineCache
+        ? evaluatePositionWithCache(lineCache as LineCacheState, r, c, player)
+        : evaluatePosition(board, r, c, player);
+
+      const posKey = toIndex({ row: r, col: c });
+
+      const isTTMove = posKey === ttKey;
+      const isKillerMove = isKiller(killerTable, depth, r, c);
+      const isCountermove =
+        AI_FEATURES.ENABLE_COUNTERMOVE && posKey === counterKey;
+
+      const isCritical = score >= CRITICAL_SCORE_THRESHOLD;
+      const isTactical = isCritical || score >= AI_SCORES.CLOSED_FOUR;
+      const isQuiet = !isTactical;
+
+      const entry: InternalCandidate = {
+        pos: { row: r, col: c },
+        score,
+        flags: {
+          isTTMove,
+          isKiller: isKillerMove,
+          isCountermove,
+          isCritical,
+          isTactical,
+          isQuiet,
+          reductionAllowed:
+            isQuiet &&
+            !isTTMove &&
+            !isKillerMove &&
+            !isCountermove,
+        },
+        order,
+      };
+
+      order++;
+
+      if (entry.flags.isTTMove) {
+        ttTier.push(entry);
+      } else if (entry.flags.isCritical) {
+        criticalTier.push(entry);
+      } else if (entry.flags.isCountermove) {
+        counterTier.push(entry);
+      } else if (entry.flags.isKiller) {
+        killerTier.push(entry);
+      } else {
+        quietTier.push(entry);
+      }
+    };
+
+    if (useCandidateSet && candidateSet) {
+      for (const idx of candidateSet.candidates) {
+        const r = Math.floor(idx / BOARD_SIZE);
+        const c = idx % BOARD_SIZE;
+
+        if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
+
+        addBucketCandidate(r, c);
+      }
+    } else {
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
+          if (!hasStoneNearby(board, r, c)) continue;
+
+          addBucketCandidate(r, c);
+        }
+      }
+    }
+
+    const totalCount =
+      ttTier.length +
+      criticalTier.length +
+      counterTier.length +
+      killerTier.length +
+      quietTier.length;
+
+    if (totalCount === 0) {
+      return recordReturnedCandidates(stats, []);
+    }
+
+    const sortByScore = (tier: InternalCandidate[]): void => {
+      tier.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.order - b.order;
+      });
+    };
+
+    sortByScore(ttTier);
+    sortByScore(criticalTier);
+    sortByScore(counterTier);
+    sortByScore(killerTier);
+
+    // Quiet tier は score 降順、同点は history 降順、さらに生成順で安定化。
+    quietTier.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+
+      const historyA = getHistoryScore(historyTable, player, a.pos.row, a.pos.col);
+      const historyB = getHistoryScore(historyTable, player, b.pos.row, b.pos.col);
+
+      if (historyB !== historyA) return historyB - historyA;
+
+      return a.order - b.order;
+    });
+
+    // 戦術的候補手生成が有効な場合のみ Quiet のマージン剪定を行う。
+    let finalQuietTier = quietTier;
+    if (
+      AI_FEATURES.ENABLE_TACTICAL_CANDIDATES &&
+      CANDIDATE_CONFIG.ENABLE_MARGIN_PRUNING &&
+      finalQuietTier.length > 1
+    ) {
+      const bestQuietScore = finalQuietTier[0].score;
+      finalQuietTier = finalQuietTier.filter(
+        (entry) => entry.score >= bestQuietScore - CANDIDATE_CONFIG.QUIET_SCORE_MARGIN
+      );
+    }
+
+    // 第4弾：tier 集計（生成された候補の構成を記録する）
+    if (stats) {
+      stats.candidates.criticalTotal += criticalTier.length;
+      stats.candidates.quietTotal += finalQuietTier.length;
+      stats.candidates.quietPrunedTotal += quietTier.length - finalQuietTier.length;
+
+      stats.tt.bestMoveUsed += ttTier.length;
+      stats.ordering.ttBestMoveUsed += ttTier.length;
+      stats.ordering.killerHits += killerTier.length;
+      stats.ordering.countermoveHits += counterTier.length;
+    }
+
+    // feature flag OFF: 従来の固定上限に近い挙動。
+    if (!AI_FEATURES.ENABLE_TACTICAL_CANDIDATES) {
+      const ordered = [
+        ...ttTier,
+        ...criticalTier,
+        ...counterTier,
+        ...killerTier,
+        ...quietTier,
+      ];
+
+      return recordReturnedCandidates(stats, ordered.slice(0, AI_CONFIG.MAX_CANDIDATES));
+    }
+
+    const maxCandidates = isRoot
+      ? CANDIDATE_CONFIG.ROOT_MAX_CANDIDATES
+      : criticalTier.length > 0
+        ? CANDIDATE_CONFIG.TACTICAL_MAX_CANDIDATES
+        : CANDIDATE_CONFIG.DEFAULT_MAX_CANDIDATES;
+
+    /**
+     * CRITICAL が存在する局面:
+     * - TT Move と CRITICAL は絶対に残す。
+     * - その上で、余裕があれば Countermove / Killer / Quiet を追加する。
+     */
+    if (criticalTier.length > 0) {
+      const essential = [...ttTier, ...criticalTier];
+      const extras = [...counterTier, ...killerTier, ...finalQuietTier];
+
+      if (essential.length >= maxCandidates) {
+        return recordReturnedCandidates(stats, essential);
+      }
+
+      return recordReturnedCandidates(
+        stats,
+        [...essential, ...extras.slice(0, maxCandidates - essential.length)]
+      );
+    }
+
+    /**
+     * 静かな局面:
+     * - TT / Countermove / Killer は優先的に残す。
+     * - 残りを Quiet の上位で埋める。
+     */
+    const essential = [...ttTier, ...counterTier, ...killerTier];
+
+    if (essential.length >= maxCandidates) {
+      return recordReturnedCandidates(stats, essential.slice(0, maxCandidates));
+    }
+
+    return recordReturnedCandidates(
+      stats,
+      [...essential, ...finalQuietTier.slice(0, maxCandidates - essential.length)]
+    );
+  }
+
+  // ============================================================
+  // 従来方式（第4弾ベースライン）
+  // ============================================================
+  const scored: OrderedCandidate[] = [];
 
   const addCandidate = (r: number, c: number): void => {
     const score = useLineCache
@@ -526,14 +730,12 @@ const generateOrderedCandidatesInternal = (
 
   // 戦術的候補手生成が有効な場合のみ Quiet のマージン剪定を行う。
   let finalQuietTier = quietTier;
-
   if (
     AI_FEATURES.ENABLE_TACTICAL_CANDIDATES &&
     CANDIDATE_CONFIG.ENABLE_MARGIN_PRUNING &&
     finalQuietTier.length > 1
   ) {
     const bestQuietScore = finalQuietTier[0].score;
-
     finalQuietTier = finalQuietTier.filter(
       (entry) => entry.score >= bestQuietScore - CANDIDATE_CONFIG.QUIET_SCORE_MARGIN
     );
@@ -611,6 +813,9 @@ const generateOrderedCandidatesInternal = (
  *
  * 本体は generateOrderedCandidatesInternal に委譲し、
  * 対局統計用に生成時間だけを計測する。
+ *
+ * 第5弾:
+ *   - stats 側にも候補手生成時間を記録する。
  */
 export const generateOrderedCandidates = (
   board: BoardState,
@@ -627,7 +832,9 @@ export const generateOrderedCandidates = (
   candidateSet: CandidateSetState | null = null,
   stats?: SearchStats
 ): OrderedCandidate[] => {
-  if (!isGameSessionActive()) {
+  const shouldTime = isGameSessionActive() || stats !== undefined;
+
+  if (!shouldTime) {
     return generateOrderedCandidatesInternal(
       board,
       player,
@@ -646,9 +853,10 @@ export const generateOrderedCandidates = (
   }
 
   const start = performance.now();
+  let result: OrderedCandidate[] | undefined;
 
   try {
-    return generateOrderedCandidatesInternal(
+    result = generateOrderedCandidatesInternal(
       board,
       player,
       forbiddenMoves,
@@ -663,7 +871,17 @@ export const generateOrderedCandidates = (
       candidateSet,
       stats
     );
+
+    return result;
   } finally {
-    recordCandidateGenTime(performance.now() - start);
+    const elapsed = performance.now() - start;
+
+    if (stats) {
+      stats.candidates.genTimeMs += elapsed;
+    }
+
+    if (isGameSessionActive()) {
+      recordCandidateGenTime(elapsed);
+    }
   }
 };

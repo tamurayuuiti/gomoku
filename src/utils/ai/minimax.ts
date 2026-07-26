@@ -17,6 +17,15 @@
 //
 // 第4弾:
 //   - SearchContext に統計情報を保持し、探索挙動を変えずに計測する。
+//
+// 第5弾:
+//   - Static Eval Cache 接続
+//   - checkWin / 葉評価の診断計測
+//   - PVS null-window 抑制モード
+//   - ルート PVS 条件付き実験
+//
+// 第5.5.1弾:
+//   - Static Eval Cache を外部から注入可能にし、思考単位で共有できるようにする。
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
@@ -37,6 +46,9 @@ import {
   AI_FEATURES,
   LMR_CONFIG,
   PVS_CONFIG,
+  PHASE5_FEATURES,
+  PHASE5_CONFIG,
+  PHASE5_DEBUG,
 } from './constants';
 import { opponentOf } from './evaluator';
 import { evaluateBoard, evaluateBoardWithCache } from './boardEvaluator';
@@ -65,6 +77,10 @@ import {
   shouldLogVerboseSearch,
   recordCandidateSetSize,
 } from './searchStats';
+import {
+  createStaticEvalCache,
+  type StaticEvalCache,
+} from './staticEvalCache';
 
 // ============================================================
 // SearchContext
@@ -90,6 +106,9 @@ interface SearchContext {
   /** 第3弾: 候補集合の増分管理。無効時は null */
   candidateSet: CandidateSetState | null;
 
+  /** 第5弾: 葉評価キャッシュ。無効時は null */
+  staticEvalCache: StaticEvalCache | null;
+
   /** 探索打ち切り時刻（performance.now() 基準の絶対時刻 [ms]）。Infinity なら時間制御なし */
   deadline: number;
 
@@ -112,18 +131,49 @@ const createSearchContext = (
   forbiddenMoves: boolean[][],
   deadline: number = Infinity,
   tt: TranspositionTable,
-  stats: SearchStats
+  stats: SearchStats,
+  sharedStaticEvalCache?: StaticEvalCache | null
 ): SearchContext => {
+  const lineCache = AI_FEATURES.ENABLE_LINE_CACHE
+    ? createLineCache(board)
+    : null;
+
+  const candidateSet = AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES
+    ? createCandidateSet(board, forbiddenMoves)
+    : null;
+
+  /**
+   * 第5.5.1弾:
+   * 外部から sharedStaticEvalCache が渡された場合はそれを優先する。
+   * undefined の場合のみ、後方互換のため内部で新規生成する。
+   * null が渡された場合は、明示的に cache なしとして扱う。
+   */
+  const staticEvalCache =
+    sharedStaticEvalCache !== undefined
+      ? sharedStaticEvalCache
+      : PHASE5_FEATURES.ENABLE_STATIC_EVAL_CACHE
+        ? createStaticEvalCache(
+            {
+              limit: PHASE5_CONFIG.STATIC_EVAL_CACHE_LIMIT,
+              evictionRatio: PHASE5_CONFIG.STATIC_EVAL_CACHE_EVICTION_RATIO,
+            },
+            {
+              aiPlayer,
+              forbiddenMoves,
+              candidateSetEnabled: candidateSet !== null,
+            }
+          )
+        : null;
+
   const ctx: SearchContext = {
     aiPlayer,
     forbiddenMoves,
     killerTable: createKillerTable(),
     historyTable: createHistoryTable(),
     countermoveTable: createCountermoveTable(),
-    lineCache: AI_FEATURES.ENABLE_LINE_CACHE ? createLineCache(board) : null,
-    candidateSet: AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES
-      ? createCandidateSet(board, forbiddenMoves)
-      : null,
+    lineCache,
+    candidateSet,
+    staticEvalCache,
     deadline,
     tt,
     aborted: false,
@@ -156,6 +206,53 @@ const isTimeUp = (ctx: SearchContext): boolean => {
   }
 
   return false;
+};
+
+// ============================================================
+// 第5弾：診断・キャッシュ用ヘルパー
+// ============================================================
+
+/**
+ * Static Eval Cache の内部統計を SearchStats へ同期する。
+ */
+const syncStaticEvalCacheStats = (ctx: SearchContext): void => {
+  const cache = ctx.staticEvalCache;
+  if (!cache) return;
+
+  const st = cache.stats;
+  const target = ctx.stats.staticEvalCache;
+
+  target.lookups = st.lookups;
+  target.hits = st.hits;
+  target.misses = st.misses;
+  target.stores = st.stores;
+  target.evictions = st.evictions;
+  target.size = st.size;
+  target.maxSize = st.maxSize;
+  target.hitRate = target.lookups > 0 ? target.hits / target.lookups : 0;
+};
+
+/**
+ * checkWin を計測付きで呼び出す。
+ * 判定ロジック自体は変更しない。
+ */
+const checkWinInstrumented = (
+  board: BoardState,
+  move: Position,
+  player: Player,
+  ctx: SearchContext
+): boolean => {
+  ctx.stats.diagnostics.checkWinCalls++;
+
+  if (!PHASE5_DEBUG.ENABLE_CHECKWIN_TIMING) {
+    return checkWin(board, move, player);
+  }
+
+  const start = performance.now();
+  const result = checkWin(board, move, player);
+  ctx.stats.diagnostics.checkWinTimeMs += performance.now() - start;
+
+  return result;
 };
 
 // ============================================================
@@ -225,26 +322,57 @@ const undoMove = (
 
 /**
  * 葉ノード評価。LineCache があれば cache 版を使う。
+ *
+ * 第5弾:
+ *   Static Eval Cache を参照し、miss 時のみ実際の葉評価を行う。
  */
 const evaluateLeaf = (
   board: BoardState,
-  ctx: SearchContext
+  ctx: SearchContext,
+  currentHash: bigint
 ): number => {
+  if (ctx.staticEvalCache) {
+    const cached = ctx.staticEvalCache.lookup(currentHash);
+    syncStaticEvalCacheStats(ctx);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+
+  ctx.stats.diagnostics.leafEvalCalls++;
+
+  const shouldTimeLeaf = PHASE5_DEBUG.ENABLE_LEAF_TIMING;
+  const start = shouldTimeLeaf ? performance.now() : 0;
+
+  let score: number;
+
   if (ctx.lineCache) {
     ctx.stats.cache.lineCacheEvalCalls++;
 
-    return evaluateBoardWithCache(
+    score = evaluateBoardWithCache(
       board,
       ctx.lineCache,
       ctx.aiPlayer,
       ctx.forbiddenMoves,
       ctx.candidateSet
     );
+  } else {
+    ctx.stats.cache.lineCacheFallbackCalls++;
+
+    score = evaluateBoard(board, ctx.aiPlayer, ctx.forbiddenMoves);
   }
 
-  ctx.stats.cache.lineCacheFallbackCalls++;
+  if (shouldTimeLeaf) {
+    ctx.stats.diagnostics.leafEvalTimeMs += performance.now() - start;
+  }
 
-  return evaluateBoard(board, ctx.aiPlayer, ctx.forbiddenMoves);
+  if (ctx.staticEvalCache && !ctx.aborted) {
+    ctx.staticEvalCache.store(currentHash, score);
+    syncStaticEvalCacheStats(ctx);
+  }
+
+  return score;
 };
 
 // ============================================================
@@ -272,8 +400,11 @@ const getReduction = (
   stats?: SearchStats
 ): number => {
   if (!AI_FEATURES.ENABLE_LMR) return 0;
+
   if (isRoot && !LMR_CONFIG.ALLOW_ROOT) return 0;
+
   if (depth < LMR_CONFIG.MIN_DEPTH) return 0;
+
   if (moveIndex < LMR_CONFIG.MIN_MOVE_INDEX) return 0;
 
   if (stats) {
@@ -325,6 +456,52 @@ const getReduction = (
 };
 
 // ============================================================
+// 第5弾：PVS null-window 判定ヘルパー
+// ============================================================
+
+/**
+ * 内部ノードの PVS null-window 可否を返す。
+ *
+ * 第5弾:
+ *   ENABLE_PVS_NULL_MODE 有効時は、quiet_only / off モードで抑制する。
+ *   baseline モードでは第4弾と同一挙動。
+ */
+const resolveInternalPvsNull = (
+  ctx: SearchContext,
+  moveIndex: number,
+  canNull: boolean,
+  isRoot: boolean,
+  flags: OrderedCandidate['flags']
+): boolean => {
+  const baselinePvsNull =
+    AI_FEATURES.ENABLE_PVS &&
+    moveIndex > 0 &&
+    canNull &&
+    !(isRoot && !PVS_CONFIG.ENABLE_ROOT_PVS);
+
+  if (!baselinePvsNull) return false;
+
+  if (!PHASE5_FEATURES.ENABLE_PVS_NULL_MODE) {
+    return true;
+  }
+
+  if (PHASE5_CONFIG.PVS_NULL_MODE === 'off') {
+    ctx.stats.pvs.tacticalNullSkips++;
+    return false;
+  }
+
+  if (
+    PHASE5_CONFIG.PVS_NULL_MODE === 'quiet_only' &&
+    !flags.reductionAllowed
+  ) {
+    ctx.stats.pvs.tacticalNullSkips++;
+    return false;
+  }
+
+  return true;
+};
+
+// ============================================================
 // ミニマックス探索本体
 // ============================================================
 
@@ -353,7 +530,7 @@ const minimax = (
     ctx.stats.nodes.total++;
     ctx.stats.nodes.leaf++;
 
-    return evaluateLeaf(board, ctx);
+    return evaluateLeaf(board, ctx, currentHash);
   }
 
   // --- Transposition Table Lookup ---
@@ -361,7 +538,6 @@ const minimax = (
   const betaOrig = beta;
 
   const ttScore = ctx.tt.lookup(currentHash, depth, alpha, beta);
-
   if (ttScore !== null) {
     ctx.stats.nodes.total++;
     ctx.stats.nodes.internal++;
@@ -395,7 +571,7 @@ const minimax = (
     ctx.stats.nodes.total++;
     ctx.stats.nodes.leaf++;
 
-    return evaluateLeaf(board, ctx);
+    return evaluateLeaf(board, ctx, currentHash);
   }
 
   ctx.stats.nodes.total++;
@@ -418,8 +594,9 @@ const minimax = (
       const currentMove: Position = { row, col };
 
       // 即時勝利検出
-      if (checkWin(board, currentMove, ctx.aiPlayer)) {
+      if (checkWinInstrumented(board, currentMove, ctx.aiPlayer, ctx)) {
         undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+
         ctx.stats.nodes.immediateWin++;
 
         return AI_SCORES.WIN;
@@ -439,11 +616,13 @@ const minimax = (
         ctx.stats.lmr.reductionTotal += reduction;
       }
 
-      const usePvsNull =
-        AI_FEATURES.ENABLE_PVS &&
-        moveIndex > 0 &&
-        canNull &&
-        !(isRoot && !PVS_CONFIG.ENABLE_ROOT_PVS);
+      const usePvsNull = resolveInternalPvsNull(
+        ctx,
+        moveIndex,
+        canNull,
+        isRoot,
+        flags
+      );
 
       let score: number;
 
@@ -453,6 +632,10 @@ const minimax = (
 
         if (usePvsNull) {
           ctx.stats.pvs.nullSearches++;
+
+          if (flags.reductionAllowed) {
+            ctx.stats.pvs.quietNullSearches++;
+          }
         }
 
         // 削減 or PVS null-window 探索
@@ -593,8 +776,9 @@ const minimax = (
       const currentMove: Position = { row, col };
 
       // 即時勝利検出（相手視点）
-      if (checkWin(board, currentMove, currentPlayer)) {
+      if (checkWinInstrumented(board, currentMove, currentPlayer, ctx)) {
         undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+
         ctx.stats.nodes.immediateLoss++;
 
         return -AI_SCORES.WIN;
@@ -614,11 +798,13 @@ const minimax = (
         ctx.stats.lmr.reductionTotal += reduction;
       }
 
-      const usePvsNull =
-        AI_FEATURES.ENABLE_PVS &&
-        moveIndex > 0 &&
-        canNull &&
-        !(isRoot && !PVS_CONFIG.ENABLE_ROOT_PVS);
+      const usePvsNull = resolveInternalPvsNull(
+        ctx,
+        moveIndex,
+        canNull,
+        isRoot,
+        flags
+      );
 
       let score: number;
 
@@ -628,6 +814,10 @@ const minimax = (
 
         if (usePvsNull) {
           ctx.stats.pvs.nullSearches++;
+
+          if (flags.reductionAllowed) {
+            ctx.stats.pvs.quietNullSearches++;
+          }
         }
 
         // 削減 or PVS null-window 探索
@@ -776,6 +966,9 @@ export interface FindBestMoveResult {
  *
  * 第4弾：stats を任意で受け取る。未指定の場合は内部で一時統計を作成するが、
  * 呼び出し元へは返さない（後方互換のため）。
+ *
+ * 第5.5.1弾：sharedStaticEvalCache を任意で受け取る。
+ * search.ts からは calculateNextMove 単位で生成した cache を渡す。
  */
 export const findBestMove = (
   board: BoardState,
@@ -787,7 +980,8 @@ export const findBestMove = (
   initialAlpha: number = -Infinity,
   initialBeta: number = Infinity,
   lastMove: Position | null = null,
-  stats?: SearchStats
+  stats?: SearchStats,
+  sharedStaticEvalCache?: StaticEvalCache | null
 ): FindBestMoveResult => {
   const searchStats =
     stats ?? createSearchStats(aiPlayer, 'fixed', depth, null, lastMove);
@@ -798,7 +992,8 @@ export const findBestMove = (
     forbiddenMoves,
     deadline,
     tt,
-    searchStats
+    searchStats,
+    sharedStaticEvalCache
   );
 
   const verboseLog = shouldLogVerboseSearch();
@@ -848,9 +1043,14 @@ export const findBestMove = (
   if (verboseLog) {
     console.log(
       `[Minimax] depth=${depth}, candidates=${candidates.length}, player=${aiPlayer}, ` +
-        `window=[${alpha}, ${beta}], ttSize=${tt.size}`
+      `window=[${alpha}, ${beta}], ttSize=${tt.size}`
     );
   }
+
+  const rootPvsAllowed =
+    PVS_CONFIG.ENABLE_ROOT_PVS ||
+    (PHASE5_FEATURES.ENABLE_ROOT_PVS_EXPERIMENT &&
+      depth >= PHASE5_CONFIG.ROOT_PVS_MIN_DEPTH);
 
   for (let moveIndex = 0; moveIndex < candidates.length; moveIndex++) {
     // 時間切れ: ルート候補を全て評価しきれていないため、この深さの結果は不採用とする
@@ -870,8 +1070,9 @@ export const findBestMove = (
     const currentMove: Position = { row, col };
 
     // ルートノード即時勝利（1 手詰め検出）
-    if (checkWin(board, currentMove, aiPlayer)) {
+    if (checkWinInstrumented(board, currentMove, aiPlayer, ctx)) {
       undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
+
       ctx.stats.nodes.immediateWin++;
 
       if (verboseLog) {
@@ -885,7 +1086,7 @@ export const findBestMove = (
 
     const useRootPvsNull =
       AI_FEATURES.ENABLE_PVS &&
-      PVS_CONFIG.ENABLE_ROOT_PVS &&
+      rootPvsAllowed &&
       moveIndex > 0 &&
       Number.isFinite(alpha);
 
@@ -922,6 +1123,7 @@ export const findBestMove = (
       if (score > alpha) {
         ctx.stats.pvs.failHighResearches++;
         ctx.stats.pvs.fullResearches++;
+        ctx.stats.pvs.rootFailHighResearches++;
 
         score = minimax(
           board,
@@ -988,7 +1190,7 @@ export const findBestMove = (
       if (verboseLog) {
         console.log(
           `[Minimax] depth=${depth} fail-high: alpha=${alpha}, beta=${beta}, ` +
-            `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
+          `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
         );
       }
 

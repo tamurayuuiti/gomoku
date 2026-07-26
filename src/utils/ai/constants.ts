@@ -8,7 +8,6 @@ import { DIRECTIONS as GAME_DIRECTIONS } from '../gameLogic';
 import type { AiLogLevel } from '../../types/ai';
 
 // --- スコア定数（攻撃基準に統一） ---
-
 export const AI_SCORES = {
   // 最優先事項
   WIN: 1_000_000,
@@ -32,7 +31,6 @@ export const AI_SCORES = {
 } as const;
 
 // --- AI探索設定 ---
-
 // depth・timeLimitMs のデフォルト値をここに一元管理し、
 // 呼び出し側が SearchOptions を明示しない限り常にこの値が使われる。
 export const AI_CONFIG = {
@@ -68,7 +66,6 @@ export const AI_CONFIG = {
 } as const;
 
 // --- 全盤評価設定 ---
-
 export const EVAL_CONFIG = {
   /**
    * evaluateBoard で集計する上位 K 手の数。
@@ -86,7 +83,6 @@ export const EVAL_CONFIG = {
 } as const;
 
 // --- Transposition Table / Aspiration Window 設定 ---
-
 export const TT_CONFIG = {
   /**
    * 置換表の最大エントリ数。
@@ -122,7 +118,6 @@ export const TT_CONFIG = {
 } as const;
 
 // --- 第2弾 feature flags ---
-
 /**
  * 第2弾・第3弾の探索機能を個別に有効/無効化するフラグ。
  *
@@ -131,7 +126,6 @@ export const TT_CONFIG = {
  */
 export const AI_FEATURES = {
   // --- 第2弾 ---
-
   /**
    * 戦術的候補手生成を有効化する。
    * - CRITICAL / Countermove / Killer / Quiet の tier 管理
@@ -150,15 +144,21 @@ export const AI_FEATURES = {
   ENABLE_PVS: true,
 
   // --- 第3弾 ---
-
   /** 差分ラインキャッシュを有効化する */
   ENABLE_LINE_CACHE: true,
 
   /** 候補集合の増分管理を有効化する */
   ENABLE_INCREMENTAL_CANDIDATES: true,
 
-  /** Aspiration Window を安全な形で再有効化する */
-  ENABLE_SAFE_ASPIRATION: true,
+  /**
+   * Aspiration Window を安全な形で再有効化する。
+   *
+   * 第5.6.1:
+   * 統計上 aspFailRate が極めて高かったため、既定では OFF にする。
+   * 実装自体は search.ts / constants.ts に維持しており、
+   * true にすれば再有効化できる。
+   */
+  ENABLE_SAFE_ASPIRATION: false,
 
   /** TT 上限到達時の oldest eviction を有効化する */
   ENABLE_TT_OLDEST_EVICTION: true,
@@ -168,7 +168,6 @@ export const AI_FEATURES = {
 } as const;
 
 // --- 候補手生成設定 ---
-
 export const CANDIDATE_CONFIG = {
   /** ルートノードの候補手上限 */
   ROOT_MAX_CANDIDATES: 16,
@@ -198,7 +197,6 @@ export const CANDIDATE_CONFIG = {
 } as const;
 
 // --- LMR 設定 ---
-
 export const LMR_CONFIG = {
   /** LMR を適用する最小残り深度 */
   MIN_DEPTH: 3,
@@ -223,7 +221,6 @@ export const LMR_CONFIG = {
 } as const;
 
 // --- PVS 設定 ---
-
 export const PVS_CONFIG = {
   /**
    * ルートノードでの PVS を許可するか。
@@ -235,7 +232,6 @@ export const PVS_CONFIG = {
 } as const;
 
 // --- 第4弾：診断用設定 ---
-
 /**
  * 第4弾で追加する診断専用設定。
  * 探索挙動を変える feature flag ではない。
@@ -252,6 +248,164 @@ export const AI_DEBUG_CONFIG: {
   ENABLE_VERBOSE_SEARCH_LOGS: false,
 };
 
-// --- 方向定数 ---
+// --- 第5弾：feature flags / config ---
+/**
+ * 第5弾で追加した探索効率・診断強化の機能フラグ。
+ *
+ * 第5.5弾では、統計分析を踏まえて以下を既定化した。
+ * - Aspiration tuning / adaptive を ON
+ * - time prediction を保守的に ON
+ * - checkWin timing を検証用に ON
+ *
+ * 第5.5.1弾では、Aspiration fail 率が極端に高かったため、
+ * quiet-only Aspiration を追加した。
+ *
+ * 第5.6.1では、Aspiration Window 自体を既定 OFF にする。
+ * ただし、Aspiration 関連実装と flag は維持する。
+ */
+export const PHASE5_FEATURES = {
+  /** 中心文字差し替え済みパターンキャッシュを有効化する */
+  ENABLE_CENTER_PATTERN_CACHE: true,
 
+  /** 候補手 tier 分類を bucket 方式で行う */
+  ENABLE_TIER_BUCKET_GENERATION: true,
+
+  /** TopK 挿入を固定長配列向け最適化に切り替える */
+  ENABLE_TOPK_FIXED_ARRAY: true,
+
+  /** 葉評価の Static Eval Cache を有効化する */
+  ENABLE_STATIC_EVAL_CACHE: true,
+
+  /**
+   * Aspiration Window 幅の再調整を有効化する。
+   *
+   * 注意:
+   * 実際の Aspiration 有効可否は AI_FEATURES.ENABLE_SAFE_ASPIRATION が最優先する。
+   * 第5.6.1では ENABLE_SAFE_ASPIRATION が false のため、この flag は inactive。
+   */
+  ENABLE_ASPIRATION_TUNING: true,
+
+  /**
+   * Aspiration Window の adaptive 拡張を有効化する。
+   *
+   * 注意:
+   * ENABLE_SAFE_ASPIRATION が false の場合は inactive。
+   */
+  ENABLE_ADAPTIVE_ASPIRATION: true,
+
+  /**
+   * Aspiration Window を静かな局面でのみ使う。
+   *
+   * 注意:
+   * ENABLE_SAFE_ASPIRATION が false の場合は inactive。
+   */
+  ENABLE_ASPIRATION_QUIET_ONLY: true,
+
+  /** PVS null-window の抑制モードを有効化する */
+  ENABLE_PVS_NULL_MODE: false,
+
+  /** 時間予測による反復深化の打ち切りを有効化する */
+  ENABLE_TIME_PREDICTION: true,
+
+  /** ルート PVS の条件付き実験を有効化する */
+  ENABLE_ROOT_PVS_EXPERIMENT: false,
+} as const;
+
+export type Phase5PvsNullMode = 'baseline' | 'quiet_only' | 'off';
+
+export const PHASE5_CONFIG: {
+  CENTER_PATTERN_CACHE_LIMIT: number;
+  STATIC_EVAL_CACHE_LIMIT: number;
+  STATIC_EVAL_CACHE_EVICTION_RATIO: number;
+  STATIC_EVAL_VERSION: bigint;
+  ASPIRATION_WINDOW_OVERRIDE: number;
+  ASPIRATION_ADAPTIVE_MAX_WINDOW: number;
+  ASPIRATION_QUIET_THRESHOLD: number;
+  PVS_NULL_MODE: Phase5PvsNullMode;
+  TIME_PREDICTION_SAFETY: number;
+  TIME_PREDICTION_MIN_DEPTH: number;
+  ROOT_PVS_MIN_DEPTH: number;
+} = {
+  CENTER_PATTERN_CACHE_LIMIT: 20_000,
+
+  /**
+   * 第5.5弾:
+   * 長期戦・中盤の葉評価重複を考慮し、20k から 50k へ拡大する。
+   */
+  STATIC_EVAL_CACHE_LIMIT: 50_000,
+
+  STATIC_EVAL_CACHE_EVICTION_RATIO: 0.2,
+
+  /**
+   * Static Eval Cache の世代。
+   * 評価関数変更時はこの値を増やし、古いキャッシュが混ざらないようにする。
+   */
+  STATIC_EVAL_VERSION: 1n,
+
+  /**
+   * 第5.5弾:
+   * Aspiration fail 率が高かったため、まず 200 へ引き上げる。
+   *
+   * 注意:
+   * 第5.6.1では Aspiration 自体が既定 OFF のため、この値は inactive。
+   */
+  ASPIRATION_WINDOW_OVERRIDE: 200,
+
+  /**
+   * 第5.5弾:
+   * adaptive 拡張の上限。広げすぎを避けつつ、fail 続きの局面に対応する。
+   *
+   * 注意:
+   * 第5.6.1では Aspiration 自体が既定 OFF のため、この値は inactive。
+   */
+  ASPIRATION_ADAPTIVE_MAX_WINDOW: 800,
+
+  /**
+   * 第5.5.1弾:
+   * Aspiration を使う上限スコア。
+   * この値以上の戦術的スコアでは full window を使う。
+   *
+   * 注意:
+   * 第5.6.1では Aspiration 自体が既定 OFF のため、この値は inactive。
+   */
+  ASPIRATION_QUIET_THRESHOLD: AI_SCORES.CLOSED_FOUR,
+
+  /** PVS null-window 抑制モード */
+  PVS_NULL_MODE: 'quiet_only',
+
+  /**
+   * 第5.5弾:
+   * 時間予測は保守的にするため、安全係数を 1.6 へ引き上げる。
+   */
+  TIME_PREDICTION_SAFETY: 1.6,
+
+  /**
+   * 第5.5弾:
+   * 浅い深度での早期打ち切りを避け、depth >= 3 から適用する。
+   */
+  TIME_PREDICTION_MIN_DEPTH: 3,
+
+  /** ルート PVS 実験を許可する最小深度 */
+  ROOT_PVS_MIN_DEPTH: 3,
+};
+
+/**
+ * 第5弾の診断専用設定。
+ * 探索挙動そのものは変更しない。
+ *
+ * 第5.5弾では、checkWin コスト可視化を優先するため
+ * ENABLE_CHECKWIN_TIMING を既定で true にする。
+ */
+export const PHASE5_DEBUG = {
+  /** checkWin の時間計測を行うか（検証フェーズのため既定 ON） */
+  ENABLE_CHECKWIN_TIMING: true,
+
+  /** 葉評価の時間計測を行うか */
+  ENABLE_LEAF_TIMING: true,
+
+  /** 第5弾設定ログを出力するか */
+  ENABLE_PHASE5_CONFIG_LOG: false,
+} as const;
+
+// --- 方向定数 ---
 export const DIRECTIONS = GAME_DIRECTIONS;

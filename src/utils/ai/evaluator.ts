@@ -13,11 +13,22 @@
 // 第4弾:
 //   - パターンキャッシュ統計を追加。
 //   - 評価ロジック・スコア体系は変更しない。
+//
+// 第5弾:
+//   - 中心文字差し替え済みパターンキャッシュを追加。
+//   - 評価ロジック・スコア体系は変更しない。
 
 import type { BoardState, Player } from '../../types/game';
 import type { PatternType, PatternCount, LineCacheState } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
-import { AI_SCORES, AI_CONFIG, DIRECTIONS, AI_FEATURES } from './constants';
+import {
+  AI_SCORES,
+  AI_CONFIG,
+  DIRECTIONS,
+  AI_FEATURES,
+  PHASE5_FEATURES,
+  PHASE5_CONFIG,
+} from './constants';
 
 // ============================================================
 // 共有ユーティリティ
@@ -148,7 +159,6 @@ const PATTERN_CACHE_LIMIT = 20_000;
 const patternCache = new Map<string, PatternType>();
 
 // --- 第4弾：パターンキャッシュ統計 ---
-
 export interface PatternCacheStats {
   hits: number;
   misses: number;
@@ -175,18 +185,91 @@ export const detectPatternFast = (s: string): PatternType => {
   }
 
   const cached = patternCache.get(s);
-
   if (cached !== undefined) {
     patternCacheHits++;
     return cached;
   }
 
   patternCacheMisses++;
-
   const ptn = detectPattern(s);
 
   if (patternCache.size < PATTERN_CACHE_LIMIT) {
     patternCache.set(s, ptn);
+  }
+
+  return ptn;
+};
+
+// ============================================================
+// 中心文字差し替えパターンキャッシュ（第5弾）
+// ============================================================
+
+/**
+ * LineCache 上の 9 文字ラインについて、中心文字だけを差し替えた後の
+ * detectPattern 結果をキャッシュする。
+ *
+ * 狙い:
+ * - ownLine.slice(0,4) + '1' + ownLine.slice(5)
+ * - oppLine.slice(0,4) + '1' + oppLine.slice(5)
+ * - oppLine.slice(0,4) + '2' + oppLine.slice(5)
+ * の文字列生成コストを削減する。
+ *
+ * 重要:
+ * - key は「元の 9 文字ライン文字列」と center 文字種。
+ * - ライン文字列そのものが内容ベースの key なので、LineCache 更新後も
+ *   古いキャッシュが不正に再利用されることはない。
+ * - 評価式・パターン判定の意味は変更しない。
+ */
+const center1PatternCache = new Map<string, PatternType>();
+const center2PatternCache = new Map<string, PatternType>();
+
+let centerPatternHits = 0;
+let centerPatternMisses = 0;
+
+export interface CenterPatternCacheStats {
+  hits: number;
+  misses: number;
+  size: number;
+}
+
+export const resetCenterPatternCacheStats = (): void => {
+  centerPatternHits = 0;
+  centerPatternMisses = 0;
+};
+
+export const getCenterPatternCacheStats = (): CenterPatternCacheStats => ({
+  hits: centerPatternHits,
+  misses: centerPatternMisses,
+  size: center1PatternCache.size + center2PatternCache.size,
+});
+
+export const detectPatternWithCenter = (
+  line: string,
+  center: '1' | '2'
+): PatternType => {
+  if (
+    !AI_FEATURES.ENABLE_PATTERN_CACHE ||
+    !PHASE5_FEATURES.ENABLE_CENTER_PATTERN_CACHE
+  ) {
+    const substituted = line.slice(0, 4) + center + line.slice(5);
+    return detectPatternFast(substituted);
+  }
+
+  const cache = center === '1' ? center1PatternCache : center2PatternCache;
+  const cached = cache.get(line);
+
+  if (cached !== undefined) {
+    centerPatternHits++;
+    return cached;
+  }
+
+  centerPatternMisses++;
+
+  const substituted = line.slice(0, 4) + center + line.slice(5);
+  const ptn = detectPatternFast(substituted);
+
+  if (cache.size < PHASE5_CONFIG.CENTER_PATTERN_CACHE_LIMIT) {
+    cache.set(line, ptn);
   }
 
   return ptn;
@@ -209,7 +292,6 @@ const computePositionBonus = (row: number, col: number): number => {
   const distance = Math.sqrt(
     (row - BOARD_CENTER) ** 2 + (col - BOARD_CENTER) ** 2
   );
-
   return (1 - distance / MAX_CENTER_DISTANCE) * POSITION_BONUS_EPSILON;
 };
 
@@ -259,7 +341,6 @@ const evaluatePositionRaw = (
   }
 
   // --- 即時評価 ---
-
   if (attackCounts.WIN > 0) return AI_SCORES.WIN;
 
   if (oppBeforeCounts.WIN > 0 && oppAfterCounts.WIN === 0)
@@ -291,9 +372,7 @@ const evaluatePositionRaw = (
     return AI_SCORES.DOUBLE_THREE;
 
   // --- 通常評価 ---
-
   let attackScore = 0;
-
   attackScore += attackCounts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
   attackScore += attackCounts.OPEN_THREE * AI_SCORES.OPEN_THREE;
   attackScore += attackCounts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
@@ -303,13 +382,11 @@ const evaluatePositionRaw = (
 
   const calcTotalOppScore = (counts: PatternCount): number => {
     let score = 0;
-
     score += counts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
     score += counts.OPEN_THREE * AI_SCORES.OPEN_THREE;
     score += counts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
     score += counts.OPEN_TWO * AI_SCORES.OPEN_TWO;
     score += counts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
-
     return score;
   };
 
@@ -344,6 +421,9 @@ export const evaluatePosition = (
  *
  * 評価ロジック・スコア体系は evaluatePosition と完全に同一。
  * 違いは、getLineString の代わりに LineCache の 9 文字ラインを使う点のみ。
+ *
+ * 第5弾:
+ *   中心文字差し替えキャッシュを使い、文字列生成コストを削減する。
  */
 export const evaluatePositionWithCache = (
   lineCache: LineCacheState,
@@ -362,23 +442,18 @@ export const evaluatePositionWithCache = (
 
   for (let d = 0; d < DIRECTIONS.length; d++) {
     const ownLine = ownCaches[d][row][col];
-    const attackLine = ownLine.slice(0, 4) + '1' + ownLine.slice(5);
-    const attackPtn = detectPatternFast(attackLine);
+    const attackPtn = detectPatternWithCenter(ownLine, '1');
     attackCounts[attackPtn]++;
 
     const oppLine = oppCaches[d][row][col];
-
-    const beforeLine = oppLine.slice(0, 4) + '1' + oppLine.slice(5);
-    const beforePtn = detectPatternFast(beforeLine);
+    const beforePtn = detectPatternWithCenter(oppLine, '1');
     oppBeforeCounts[beforePtn]++;
 
-    const afterLine = oppLine.slice(0, 4) + '2' + oppLine.slice(5);
-    const afterPtn = detectPatternFast(afterLine);
+    const afterPtn = detectPatternWithCenter(oppLine, '2');
     oppAfterCounts[afterPtn]++;
   }
 
   // --- 即時評価（evaluatePosition と同一） ---
-
   if (attackCounts.WIN > 0) {
     return AI_SCORES.WIN + computePositionBonus(row, col);
   }
@@ -426,9 +501,7 @@ export const evaluatePositionWithCache = (
   }
 
   // --- 通常評価 ---
-
   let attackScore = 0;
-
   attackScore += attackCounts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
   attackScore += attackCounts.OPEN_THREE * AI_SCORES.OPEN_THREE;
   attackScore += attackCounts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
@@ -438,13 +511,11 @@ export const evaluatePositionWithCache = (
 
   const calcTotalOppScore = (counts: PatternCount): number => {
     let score = 0;
-
     score += counts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
     score += counts.OPEN_THREE * AI_SCORES.OPEN_THREE;
     score += counts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
     score += counts.OPEN_TWO * AI_SCORES.OPEN_TWO;
     score += counts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
-
     return score;
   };
 
@@ -454,6 +525,5 @@ export const evaluatePositionWithCache = (
   );
 
   const raw = attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore;
-
   return raw + computePositionBonus(row, col);
 };

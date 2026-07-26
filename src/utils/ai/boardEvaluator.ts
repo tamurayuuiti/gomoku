@@ -13,6 +13,11 @@
 // 第3弾:
 //   - evaluateBoardWithCache を追加し、LineCache を利用した葉評価を実装。
 //   - CandidateSet があれば候補集合だけ走査し、なければ従来通り盤面走査する。
+//
+// 第5弾:
+//   - 中心文字差し替えキャッシュを利用。
+//   - TopK 挿入の固定長最適化を追加（feature flag 付き）。
+//   - 評価式・スコア体系は変更しない。
 
 import type { BoardState, Player, Cell } from '../../types/game';
 import type {
@@ -21,8 +26,18 @@ import type {
   CandidateSetState,
 } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
-import { AI_SCORES, AI_CONFIG, EVAL_CONFIG, DIRECTIONS } from './constants';
-import { detectPatternFast, hasStoneNearby, opponentOf } from './evaluator';
+import {
+  AI_SCORES,
+  AI_CONFIG,
+  EVAL_CONFIG,
+  DIRECTIONS,
+  PHASE5_FEATURES,
+} from './constants';
+import {
+  detectPatternWithCenter,
+  hasStoneNearby,
+  opponentOf,
+} from './evaluator';
 
 // ============================================================
 // ライン走査キャッシュ（フォールバック用）
@@ -84,6 +99,9 @@ const createEmptyPatternCount = (): PatternCount => ({
  * ロジックは evaluator.ts の evaluatePosition と完全に同一で、違いは
  * 事前計算済みキャッシュからウィンドウ文字列を取得する点のみ。
  *
+ * 第5弾:
+ *   detectPatternWithCenter を使い、中心文字差し替え文字列の生成を削減する。
+ *
  * @param ownLineCaches 4 方向分の「playerColor 視点」ラインキャッシュ
  * @param oppLineCaches 4 方向分の「相手視点」ラインキャッシュ
  */
@@ -101,18 +119,14 @@ const scoreFromLineCache = (
     // 中心セルは空マス前提（evaluateBoard は空きマスのみを対象に呼ぶ）のため、
     // キャッシュ済み文字列の中心文字だけを差し替えて各パターンを判定する。
     const ownLine = ownLineCaches[d][r][c];
-    const attackLine = ownLine.slice(0, 4) + '1' + ownLine.slice(5);
-    const attackPtn = detectPatternFast(attackLine);
+    const attackPtn = detectPatternWithCenter(ownLine, '1');
     attackCounts[attackPtn]++;
 
     const oppLine = oppLineCaches[d][r][c];
-
-    const beforeLine = oppLine.slice(0, 4) + '1' + oppLine.slice(5);
-    const beforePtn = detectPatternFast(beforeLine);
+    const beforePtn = detectPatternWithCenter(oppLine, '1');
     oppBeforeCounts[beforePtn]++;
 
-    const afterLine = oppLine.slice(0, 4) + '2' + oppLine.slice(5);
-    const afterPtn = detectPatternFast(afterLine);
+    const afterPtn = detectPatternWithCenter(oppLine, '2');
     oppAfterCounts[afterPtn]++;
   }
 
@@ -177,14 +191,39 @@ const scoreFromLineCache = (
 /**
  * 上位 K 要素のみを保持するソート済み降順配列へ挿入。
  * K が小さい（≤ 3）ため線形挿入 O(K) で十分。
+ *
+ * 第5弾:
+ *   ENABLE_TOPK_FIXED_ARRAY 有効時は splice を使わない固定長挿入に切り替える。
+ *   挿入順序・同点時の挙動は旧実装と一致させる。
  */
 const insertTopK = (arr: number[], val: number, k: number): void => {
+  if (!PHASE5_FEATURES.ENABLE_TOPK_FIXED_ARRAY) {
+    let i = arr.length;
+    while (i > 0 && arr[i - 1] < val) i--;
+
+    arr.splice(i, 0, val);
+    if (arr.length > k) arr.length = k;
+    return;
+  }
+
   let i = arr.length;
   while (i > 0 && arr[i - 1] < val) i--;
 
-  arr.splice(i, 0, val);
+  if (arr.length < k) {
+    arr.length = arr.length + 1;
+    for (let j = arr.length - 1; j > i; j--) {
+      arr[j] = arr[j - 1];
+    }
+    arr[i] = val;
+    return;
+  }
 
-  if (arr.length > k) arr.length = k;
+  if (i >= k) return;
+
+  for (let j = k - 1; j > i; j--) {
+    arr[j] = arr[j - 1];
+  }
+  arr[i] = val;
 };
 
 // ============================================================

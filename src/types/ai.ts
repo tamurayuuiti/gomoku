@@ -10,7 +10,6 @@
 import type { Position, Player } from './game';
 
 // --- パターン評価（evaluator.ts / boardEvaluator.ts で共有） ---
-
 export type PatternType =
   | 'WIN'
   | 'OPEN_FOUR'
@@ -24,7 +23,6 @@ export type PatternType =
 export type PatternCount = Record<PatternType, number>;
 
 // --- 探索オプション（search.ts / aiWorker.types.ts で共有） ---
-
 export interface SearchOptions {
   /** 探索深さの上書き（未指定時は AI_CONFIG.MINIMAX_DEPTH） */
   depth?: number;
@@ -46,7 +44,6 @@ export interface SearchOptions {
 }
 
 // --- 候補手（candidateGenerator.ts / minimax.ts で共有） ---
-
 /**
  * evaluatePosition の結果を保持したまま候補手を表す型。
  * minimax.ts で同一候補への再計算を避けるために使う。
@@ -100,7 +97,6 @@ export interface OrderedCandidate extends ScoredPosition {
 }
 
 // --- Killer heuristic（candidateGenerator.ts / minimax.ts で共有） ---
-
 /** 深さ 1 レベルの killer スロット（最新 / 次点） */
 export type KillerEntry = [Position | null, Position | null];
 
@@ -108,7 +104,6 @@ export type KillerEntry = [Position | null, Position | null];
 export type KillerTable = KillerEntry[];
 
 // --- History heuristic（candidateGenerator.ts / minimax.ts で共有） ---
-
 /**
  * history heuristic 用のスコアテーブル。historyTable[player][row][col] に
  * 「その手が過去にカットオフを引き起こした深さ」に基づく加点を累積する。
@@ -120,7 +115,6 @@ export type KillerTable = KillerEntry[];
 export type HistoryTable = Record<Player, number[][]>;
 
 // --- Countermove heuristic（candidateGenerator.ts / minimax.ts で共有） ---
-
 /**
  * countermove heuristic 用テーブル。
  *
@@ -134,7 +128,6 @@ export type HistoryTable = Record<Player, number[][]>;
 export type CountermoveTable = Record<Player, (Position | null)[]>;
 
 // --- Transposition Table（transpositionTable.ts / minimax.ts で共有） ---
-
 /**
  * TTエントリの種別。
  * - EXACT: 正確なスコア（α < score < β の範囲で探索完了）
@@ -165,7 +158,6 @@ export interface TTEntry {
 }
 
 // --- LineCache（lineCache.ts / evaluator.ts / boardEvaluator.ts / minimax.ts で共有） ---
-
 /**
  * 1方向分のラインキャッシュ。
  * [row][col] に 9 文字ライン文字列を保持する。
@@ -197,7 +189,6 @@ export interface LineCacheUndo {
 }
 
 // --- CandidateSet（candidateGenerator.ts / minimax.ts / boardEvaluator.ts で共有） ---
-
 /**
  * CandidateSet の差分更新で影響を受けたセルの旧状態。
  */
@@ -233,7 +224,6 @@ export interface CandidateSetState {
 }
 
 // --- 第4弾：統計・ログ用型 ---
-
 /** 診断ログの出力レベル */
 export type AiLogLevel = 'none' | 'summary' | 'detailed';
 
@@ -250,6 +240,15 @@ export interface SearchTimeStats {
 
   /** 時間切れ等で探索が中断されたか */
   aborted: boolean;
+
+  /** 直近の反復深化 1 回の所要時間 [ms] */
+  lastIterationMs: number;
+
+  /** 時間予測により次の深度をスキップした回数 */
+  predictedSkips: number;
+
+  /** 時間予測で打ち切ったときの残り時間 [ms] */
+  remainingAtSkipMs: number;
 }
 
 /** ノード関連の統計 */
@@ -331,6 +330,15 @@ export interface SearchPvsStats {
 
   /** ルート PVS null 探索回数 */
   rootNullSearches: number;
+
+  /** PVS null-window を抑制した回数（第5弾） */
+  tacticalNullSkips: number;
+
+  /** quiet 手で PVS null-window を使った回数（第5弾） */
+  quietNullSearches: number;
+
+  /** ルート PVS fail-high 再探索回数（第5弾） */
+  rootFailHighResearches: number;
 }
 
 /** LMR 関連の統計 */
@@ -373,6 +381,18 @@ export interface SearchAspirationStats {
 
   /** full window 再探索回数 */
   fullResearches: number;
+
+  /** 使用した窓幅の合計（第5弾） */
+  windowSum: number;
+
+  /** 使用した窓幅の最大値（第5弾） */
+  windowMax: number;
+
+  /** adaptive 拡張が発生した回数（第5弾） */
+  adaptiveExpansions: number;
+
+  /** WIN/LOSS 付近のため Aspiration を無効化した回数（第5弾） */
+  disabledNearWin: number;
 }
 
 /** 候補手生成関連の統計 */
@@ -397,6 +417,9 @@ export interface SearchCandidateStats {
 
   /** Quiet 剪定で捨てた数 */
   quietPrunedTotal: number;
+
+  /** 候補手生成時間合計 [ms]（第5弾） */
+  genTimeMs: number;
 }
 
 /** Move ordering 関連の統計 */
@@ -426,9 +449,19 @@ export interface SearchCacheStats {
   lineCacheUndos: number;
   lineCacheEvalCalls: number;
   lineCacheFallbackCalls: number;
+
   patternCacheHits: number;
   patternCacheMisses: number;
   patternCacheSize: number;
+
+  /** 中心文字差し替えキャッシュ hit 数（第5弾） */
+  centerPatternHits: number;
+
+  /** 中心文字差し替えキャッシュ miss 数（第5弾） */
+  centerPatternMisses: number;
+
+  /** 中心文字差し替えキャッシュサイズ（第5弾） */
+  centerPatternSize: number;
 }
 
 /** CandidateSet 関連の統計 */
@@ -453,6 +486,48 @@ export interface SearchCandidateSetStats {
 
   /** 平均計算用のサンプル数 */
   sizeSamples: number;
+}
+
+/** 第5弾：診断用統計 */
+export interface SearchDiagnosticsStats {
+  /** checkWin 呼び出し回数 */
+  checkWinCalls: number;
+
+  /** checkWin 時間合計 [ms] */
+  checkWinTimeMs: number;
+
+  /** 葉評価実行回数（Static Eval Cache miss 後の実評価回数） */
+  leafEvalCalls: number;
+
+  /** 葉評価時間合計 [ms] */
+  leafEvalTimeMs: number;
+}
+
+/** 第5弾：Static Eval Cache 統計 */
+export interface SearchStaticEvalCacheStats {
+  /** キャッシュ参照回数 */
+  lookups: number;
+
+  /** キャッシュヒット回数 */
+  hits: number;
+
+  /** キャッシュミス回数 */
+  misses: number;
+
+  /** 新規保存回数 */
+  stores: number;
+
+  /** eviction 発生回数 */
+  evictions: number;
+
+  /** 現在のサイズ */
+  size: number;
+
+  /** 最大サイズ */
+  maxSize: number;
+
+  /** hit / lookups */
+  hitRate: number;
 }
 
 /**
@@ -513,4 +588,10 @@ export interface SearchStats {
 
   /** CandidateSet 統計 */
   candidateSet: SearchCandidateSetStats;
+
+  /** 第5弾：診断統計 */
+  diagnostics: SearchDiagnosticsStats;
+
+  /** 第5弾：Static Eval Cache 統計 */
+  staticEvalCache: SearchStaticEvalCacheStats;
 }

@@ -9,11 +9,20 @@
 // 追加機能:
 //   - 対局開始から終了までの全体統計（GameSessionStats）を保持する。
 //   - 対局終了時に [AI:GameSummary] を出力する。
+//
+// 第5弾:
+//   - 診断項目・Static Eval Cache・中心パターンキャッシュ・時間予測の統計を追加。
+//   - TT サイズ診断を補正。
+//
+// 第5.5弾:
+//   - 統計ログに比率・平均系指標を追加。
+//   - Aspiration fail rate / abort rate / center hit rate / avg us 系を可視化。
+//   - schemaVersion を 3 へ引き上げ。
 
 import type { Player } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
-import type { PatternCacheStats } from './evaluator';
+import type { PatternCacheStats, CenterPatternCacheStats } from './evaluator';
 import { AI_DEBUG_CONFIG } from './constants';
 import { BOARD_SIZE } from '../gameLogic';
 
@@ -28,7 +37,7 @@ export const createSearchStats = (
   timeLimitMs: number | null,
   lastMove: import('../../types/game').Position | null
 ): SearchStats => ({
-  schemaVersion: 1,
+  schemaVersion: 3,
   turn,
   searchMode,
   selectedMove: null,
@@ -36,11 +45,16 @@ export const createSearchStats = (
   lastMove,
   maxDepth,
   completedDepth: 0,
+
   time: {
     elapsedMs: 0,
     limitMs: timeLimitMs,
     aborted: false,
+    lastIterationMs: 0,
+    predictedSkips: 0,
+    remainingAtSkipMs: 0,
   },
+
   nodes: {
     total: 0,
     internal: 0,
@@ -49,6 +63,7 @@ export const createSearchStats = (
     immediateWin: 0,
     immediateLoss: 0,
   },
+
   tt: {
     lookups: 0,
     hits: 0,
@@ -64,13 +79,18 @@ export const createSearchStats = (
     maxSize: 0,
     finalSize: 0,
   },
+
   pvs: {
     nullSearches: 0,
     failHighResearches: 0,
     failLowResearches: 0,
     fullResearches: 0,
     rootNullSearches: 0,
+    tacticalNullSkips: 0,
+    quietNullSearches: 0,
+    rootFailHighResearches: 0,
   },
+
   lmr: {
     attempted: 0,
     reduced: 0,
@@ -81,12 +101,18 @@ export const createSearchStats = (
     skippedCountermove: 0,
     skippedTTMove: 0,
   },
+
   aspiration: {
     attempts: 0,
     failHigh: 0,
     failLow: 0,
     fullResearches: 0,
+    windowSum: 0,
+    windowMax: 0,
+    adaptiveExpansions: 0,
+    disabledNearWin: 0,
   },
+
   candidates: {
     genCalls: 0,
     selectedTotal: 0,
@@ -95,7 +121,9 @@ export const createSearchStats = (
     criticalTotal: 0,
     quietTotal: 0,
     quietPrunedTotal: 0,
+    genTimeMs: 0,
   },
+
   ordering: {
     ttBestMoveUsed: 0,
     killerHits: 0,
@@ -104,6 +132,7 @@ export const createSearchStats = (
     countermoveStores: 0,
     historyStores: 0,
   },
+
   cache: {
     lineCacheUpdates: 0,
     lineCacheUndos: 0,
@@ -112,7 +141,11 @@ export const createSearchStats = (
     patternCacheHits: 0,
     patternCacheMisses: 0,
     patternCacheSize: 0,
+    centerPatternHits: 0,
+    centerPatternMisses: 0,
+    centerPatternSize: 0,
   },
+
   candidateSet: {
     used: false,
     updates: 0,
@@ -121,6 +154,24 @@ export const createSearchStats = (
     avgSize: 0,
     sizeSum: 0,
     sizeSamples: 0,
+  },
+
+  diagnostics: {
+    checkWinCalls: 0,
+    checkWinTimeMs: 0,
+    leafEvalCalls: 0,
+    leafEvalTimeMs: 0,
+  },
+
+  staticEvalCache: {
+    lookups: 0,
+    hits: 0,
+    misses: 0,
+    stores: 0,
+    evictions: 0,
+    size: 0,
+    maxSize: 0,
+    hitRate: 0,
   },
 });
 
@@ -134,7 +185,6 @@ export const recordCandidateSetSize = (
 ): void => {
   stats.candidateSet.sizeSum += size;
   stats.candidateSet.sizeSamples += 1;
-
   if (size > stats.candidateSet.maxSize) {
     stats.candidateSet.maxSize = size;
   }
@@ -174,6 +224,18 @@ export const mergePatternCacheStats = (
 };
 
 /**
+ * 中心パターンキャッシュ統計を SearchStats へ反映する（第5弾）。
+ */
+export const mergeCenterPatternCacheStats = (
+  stats: SearchStats,
+  centerStats: CenterPatternCacheStats
+): void => {
+  stats.cache.centerPatternHits = centerStats.hits;
+  stats.cache.centerPatternMisses = centerStats.misses;
+  stats.cache.centerPatternSize = centerStats.size;
+};
+
+/**
  * 派生指標の確定と JSON 安全化を行う。
  * 思考終了後、ログ出力前に呼び出す。
  */
@@ -193,6 +255,11 @@ export const finalizeSearchStats = (stats: SearchStats): void => {
       ? stats.candidateSet.sizeSum / stats.candidateSet.sizeSamples
       : 0;
 
+  stats.staticEvalCache.hitRate =
+    stats.staticEvalCache.lookups > 0
+      ? stats.staticEvalCache.hits / stats.staticEvalCache.lookups
+      : 0;
+
   if (
     stats.selectedScore !== null &&
     !Number.isFinite(stats.selectedScore)
@@ -210,6 +277,10 @@ export const finalizeSearchStats = (stats: SearchStats): void => {
 
   if (!Number.isFinite(stats.candidateSet.avgSize)) {
     stats.candidateSet.avgSize = 0;
+  }
+
+  if (!Number.isFinite(stats.staticEvalCache.hitRate)) {
+    stats.staticEvalCache.hitRate = 0;
   }
 };
 
@@ -232,6 +303,39 @@ const formatLimit = (limitMs: number | null): string =>
   limitMs === null ? 'none' : `${Math.round(limitMs)}ms`;
 
 /**
+ * 第5.5弾：安全な割合計算。
+ */
+const safeRate = (
+  numerator: number,
+  denominator: number,
+  digits: number
+): string => {
+  if (denominator <= 0) {
+    return (0).toFixed(digits);
+  }
+
+  const value = (100 * numerator) / denominator;
+
+  return Number.isFinite(value) ? value.toFixed(digits) : (0).toFixed(digits);
+};
+
+/**
+ * 第5.5弾：安全な平均時間（µs）計算。
+ */
+const safeAvgUs = (
+  timeMs: number,
+  calls: number
+): string => {
+  if (calls <= 0 || timeMs <= 0) {
+    return '0.00';
+  }
+
+  const value = (timeMs * 1000) / calls;
+
+  return Number.isFinite(value) ? value.toFixed(2) : '0.00';
+};
+
+/**
  * 思考終了後に 1 回だけログ出力する。
  *
  * - LOG_LEVEL = 'none'     : 出力しない
@@ -242,6 +346,39 @@ const formatLimit = (limitMs: number | null): string =>
 export const logSearchSummary = (stats: SearchStats): void => {
   if (!AI_DEBUG_CONFIG.ENABLE_STATS) return;
   if (AI_DEBUG_CONFIG.LOG_LEVEL === 'none') return;
+
+  const aspirationFail =
+    stats.aspiration.failHigh + stats.aspiration.failLow;
+
+  const aspFailRate = safeRate(
+    aspirationFail,
+    stats.aspiration.attempts,
+    1
+  );
+
+  const centerCalls =
+    stats.cache.centerPatternHits + stats.cache.centerPatternMisses;
+
+  const centerHitRate = safeRate(
+    stats.cache.centerPatternHits,
+    centerCalls,
+    2
+  );
+
+  const chkAvgUs = safeAvgUs(
+    stats.diagnostics.checkWinTimeMs,
+    stats.diagnostics.checkWinCalls
+  );
+
+  const leafAvgUs = safeAvgUs(
+    stats.diagnostics.leafEvalTimeMs,
+    stats.diagnostics.leafEvalCalls
+  );
+
+  const candAvgUs = safeAvgUs(
+    stats.candidates.genTimeMs,
+    stats.candidates.genCalls
+  );
 
   const summary =
     `[AI:Summary] v=${stats.schemaVersion} ` +
@@ -260,7 +397,35 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `lmrRed=${stats.lmr.reduced} ` +
     `candAvg=${stats.candidates.avgPerNode.toFixed(1)} ` +
     `csUsed=${stats.candidateSet.used} ` +
-    `csMax=${stats.candidateSet.maxSize}`;
+    `csMax=${stats.candidateSet.maxSize} ` +
+    // 第5弾追加
+    `candTime=${Math.round(stats.candidates.genTimeMs)}ms ` +
+    `secHit=${(stats.staticEvalCache.hitRate * 100).toFixed(1)}% ` +
+    `secMax=${stats.staticEvalCache.maxSize} ` +
+    `pvsNull=${stats.pvs.nullSearches} ` +
+    `pvsFH=${stats.pvs.failHighResearches} ` +
+    `pvsFL=${stats.pvs.failLowResearches} ` +
+    `pvsSkip=${stats.pvs.tacticalNullSkips} ` +
+    `lmrRS=${stats.lmr.researches} ` +
+    `ttCut=${stats.nodes.ttCutoff} ` +
+    `ttBest=${stats.tt.bestMoveUsed} ` +
+    `ttMax=${stats.tt.maxSize} ` +
+    `ttFinal=${stats.tt.finalSize} ` +
+    `chk=${stats.diagnostics.checkWinCalls} ` +
+    `chkMs=${Math.round(stats.diagnostics.checkWinTimeMs)} ` +
+    `leafEval=${stats.diagnostics.leafEvalCalls} ` +
+    `leafMs=${Math.round(stats.diagnostics.leafEvalTimeMs)} ` +
+    `centerHit=${stats.cache.centerPatternHits} ` +
+    `centerMiss=${stats.cache.centerPatternMisses} ` +
+    `timeSkip=${stats.time.predictedSkips} ` +
+    // 第5.5弾追加
+    `aspFailRate=${aspFailRate}% ` +
+    `centerHitRate=${centerHitRate}% ` +
+    `chkAvgUs=${chkAvgUs} ` +
+    `leafAvgUs=${leafAvgUs} ` +
+    `candAvgUs=${candAvgUs} ` +
+    `secMiss=${stats.staticEvalCache.misses} ` +
+    `secEvict=${stats.staticEvalCache.evictions}`;
 
   console.log(summary);
 
@@ -412,6 +577,82 @@ export interface GameSessionStats {
 
   /** パターンキャッシュミス回数 */
   patternCacheMisses: number;
+
+  // --- 第5弾追加 ---
+  /** checkWin 呼び出し回数 */
+  checkWinCalls: number;
+
+  /** checkWin 時間合計 [ms] */
+  checkWinTimeMs: number;
+
+  /** 葉評価実行回数 */
+  leafEvalCalls: number;
+
+  /** 葉評価時間合計 [ms] */
+  leafEvalTimeMs: number;
+
+  /** PVS null-window 回数 */
+  pvsNullSearches: number;
+
+  /** PVS fail-high 再探索回数 */
+  pvsFailHighResearches: number;
+
+  /** PVS fail-low 再探索回数 */
+  pvsFailLowResearches: number;
+
+  /** PVS null-window 抑制回数 */
+  pvsTacticalNullSkips: number;
+
+  /** quiet 手での PVS null-window 回数 */
+  pvsQuietNullSearches: number;
+
+  /** TT カットオフ回数 */
+  ttCutoffs: number;
+
+  /** TT bestMove が候補 tier に含まれた回数 */
+  ttBestMoveUsed: number;
+
+  /** 直近 AI 手の TT 最終サイズ（生の値） */
+  ttActualFinalSize: number;
+
+  /** 直近の非ゼロ TT 最終サイズ（ttSize=0 問題の補正用） */
+  ttLastNonZeroSize: number;
+
+  /** Aspiration 適用回数 */
+  aspirationAttempts: number;
+
+  /** Aspiration 窓幅合計 */
+  aspirationWindowSum: number;
+
+  /** Aspiration 窓幅最大 */
+  aspirationWindowMax: number;
+
+  /** Aspiration adaptive 拡張回数 */
+  aspirationAdaptiveExpansions: number;
+
+  /** Aspiration WIN/LOSS 付近無効化回数 */
+  aspirationDisabledNearWin: number;
+
+  /** Static Eval Cache 新規保存回数 */
+  staticEvalCacheStores: number;
+
+  /** Static Eval Cache ミス回数 */
+  staticEvalCacheMisses: number;
+
+  /** Static Eval Cache eviction 回数 */
+  staticEvalCacheEvictions: number;
+
+  /** Static Eval Cache 最大サイズ */
+  staticEvalCacheMaxSize: number;
+
+  /** 中心パターンキャッシュヒット回数 */
+  centerPatternHits: number;
+
+  /** 中心パターンキャッシュミス回数 */
+  centerPatternMisses: number;
+
+  /** 時間予測による打ち切り回数 */
+  timePredictedSkips: number;
 }
 
 let activeGameSession: GameSessionStats | null = null;
@@ -419,7 +660,7 @@ let activeGameSession: GameSessionStats | null = null;
 const createGameSessionStats = (
   aiPlayer: Player | null
 ): GameSessionStats => ({
-  schemaVersion: 1,
+  schemaVersion: 3,
   result: null,
   aiPlayer,
   startedAtMs: performance.now(),
@@ -437,6 +678,7 @@ const createGameSessionStats = (
   abortCount: 0,
   immediateWinCount: 0,
   immediateLossCount: 0,
+
   ttLookups: 0,
   ttHits: 0,
   ttHitRate: 0,
@@ -444,24 +686,64 @@ const createGameSessionStats = (
   ttEvictions: 0,
   ttFinalSize: 0,
   ttMaxSize: 0,
+
   aspirationFailHigh: 0,
   aspirationFailLow: 0,
   aspirationFailTotal: 0,
   aspirationFullResearches: 0,
+
   pvsFullResearches: 0,
   rootPvsResearches: 0,
   rootPvsNullSearches: 0,
+
   lmrReduced: 0,
   lmrResearches: 0,
+
   candidateGenCalls: 0,
   candidateGenTimeMs: 0,
+
   staticEvalCacheLookups: 0,
   staticEvalCacheHits: 0,
   staticEvalCacheHitRate: 0,
+
   lineCacheEvalCalls: 0,
   lineCacheFallbackCalls: 0,
+
   patternCacheHits: 0,
   patternCacheMisses: 0,
+
+  // 第5弾
+  checkWinCalls: 0,
+  checkWinTimeMs: 0,
+  leafEvalCalls: 0,
+  leafEvalTimeMs: 0,
+
+  pvsNullSearches: 0,
+  pvsFailHighResearches: 0,
+  pvsFailLowResearches: 0,
+  pvsTacticalNullSkips: 0,
+  pvsQuietNullSearches: 0,
+
+  ttCutoffs: 0,
+  ttBestMoveUsed: 0,
+  ttActualFinalSize: 0,
+  ttLastNonZeroSize: 0,
+
+  aspirationAttempts: 0,
+  aspirationWindowSum: 0,
+  aspirationWindowMax: 0,
+  aspirationAdaptiveExpansions: 0,
+  aspirationDisabledNearWin: 0,
+
+  staticEvalCacheStores: 0,
+  staticEvalCacheMisses: 0,
+  staticEvalCacheEvictions: 0,
+  staticEvalCacheMaxSize: 0,
+
+  centerPatternHits: 0,
+  centerPatternMisses: 0,
+
+  timePredictedSkips: 0,
 });
 
 export const isGameSessionActive = (): boolean =>
@@ -487,7 +769,6 @@ export const ensureGameSession = (aiPlayer: Player | null): void => {
  */
 export const recordCandidateGenTime = (ms: number): void => {
   if (!activeGameSession) return;
-
   activeGameSession.candidateGenTimeMs += ms;
 };
 
@@ -525,7 +806,12 @@ export const recordMoveToSession = (
   s.ttHits += stats.tt.hits;
   s.ttStores += stats.tt.stores;
   s.ttEvictions += stats.tt.evictions;
+
   s.ttFinalSize = stats.tt.finalSize;
+  s.ttActualFinalSize = stats.tt.finalSize;
+  if (stats.tt.finalSize > 0) {
+    s.ttLastNonZeroSize = stats.tt.finalSize;
+  }
   s.ttMaxSize = Math.max(s.ttMaxSize, stats.tt.maxSize);
 
   s.aspirationFailHigh += stats.aspiration.failHigh;
@@ -534,6 +820,7 @@ export const recordMoveToSession = (
 
   s.pvsFullResearches += stats.pvs.fullResearches;
   s.rootPvsNullSearches += stats.pvs.rootNullSearches;
+  s.rootPvsResearches += stats.pvs.rootFailHighResearches;
 
   s.lmrReduced += stats.lmr.reduced;
   s.lmrResearches += stats.lmr.researches;
@@ -542,8 +829,48 @@ export const recordMoveToSession = (
 
   s.lineCacheEvalCalls += stats.cache.lineCacheEvalCalls;
   s.lineCacheFallbackCalls += stats.cache.lineCacheFallbackCalls;
+
   s.patternCacheHits += stats.cache.patternCacheHits;
   s.patternCacheMisses += stats.cache.patternCacheMisses;
+
+  // 第5弾
+  s.checkWinCalls += stats.diagnostics.checkWinCalls;
+  s.checkWinTimeMs += stats.diagnostics.checkWinTimeMs;
+  s.leafEvalCalls += stats.diagnostics.leafEvalCalls;
+  s.leafEvalTimeMs += stats.diagnostics.leafEvalTimeMs;
+
+  s.pvsNullSearches += stats.pvs.nullSearches;
+  s.pvsFailHighResearches += stats.pvs.failHighResearches;
+  s.pvsFailLowResearches += stats.pvs.failLowResearches;
+  s.pvsTacticalNullSkips += stats.pvs.tacticalNullSkips;
+  s.pvsQuietNullSearches += stats.pvs.quietNullSearches;
+
+  s.ttCutoffs += stats.nodes.ttCutoff;
+  s.ttBestMoveUsed += stats.tt.bestMoveUsed;
+
+  s.aspirationAttempts += stats.aspiration.attempts;
+  s.aspirationWindowSum += stats.aspiration.windowSum;
+  s.aspirationWindowMax = Math.max(
+    s.aspirationWindowMax,
+    stats.aspiration.windowMax
+  );
+  s.aspirationAdaptiveExpansions += stats.aspiration.adaptiveExpansions;
+  s.aspirationDisabledNearWin += stats.aspiration.disabledNearWin;
+
+  s.staticEvalCacheLookups += stats.staticEvalCache.lookups;
+  s.staticEvalCacheHits += stats.staticEvalCache.hits;
+  s.staticEvalCacheMisses += stats.staticEvalCache.misses;
+  s.staticEvalCacheStores += stats.staticEvalCache.stores;
+  s.staticEvalCacheEvictions += stats.staticEvalCache.evictions;
+  s.staticEvalCacheMaxSize = Math.max(
+    s.staticEvalCacheMaxSize,
+    stats.staticEvalCache.maxSize
+  );
+
+  s.centerPatternHits += stats.cache.centerPatternHits;
+  s.centerPatternMisses += stats.cache.centerPatternMisses;
+
+  s.timePredictedSkips += stats.time.predictedSkips;
 };
 
 /**
@@ -566,21 +893,19 @@ export const finalizeGameSession = (
   // 基本は最後に観測した AI 着手後の石数。
   // 人間の手で終わった場合は +1 して推定する。
   let totalMoves = s.lastObservedPlies;
-
   if (result === 'Loss') {
     totalMoves += 1;
   }
-
   if (result === 'Draw' && totalMoves < BOARD_SIZE * BOARD_SIZE) {
     totalMoves += 1;
   }
-
   s.totalMoves = totalMoves;
 
   s.avgDepth = s.aiMoves > 0 ? s.completedDepthSum / s.aiMoves : 0;
   s.avgTimeMs = s.aiMoves > 0 ? s.elapsedSumMs / s.aiMoves : 0;
 
   s.ttHitRate = s.ttLookups > 0 ? s.ttHits / s.ttLookups : 0;
+
   s.aspirationFailTotal = s.aspirationFailHigh + s.aspirationFailLow;
 
   s.staticEvalCacheHitRate =
@@ -588,8 +913,47 @@ export const finalizeGameSession = (
       ? s.staticEvalCacheHits / s.staticEvalCacheLookups
       : 0;
 
+  if (!Number.isFinite(s.ttHitRate)) {
+    s.ttHitRate = 0;
+  }
+
+  if (!Number.isFinite(s.staticEvalCacheHitRate)) {
+    s.staticEvalCacheHitRate = 0;
+  }
+
   if (!AI_DEBUG_CONFIG.ENABLE_STATS) return;
   if (AI_DEBUG_CONFIG.LOG_LEVEL === 'none') return;
+
+  const aspWinAvg =
+    s.aspirationAttempts > 0
+      ? s.aspirationWindowSum / s.aspirationAttempts
+      : 0;
+
+  const abortRate = safeRate(s.abortCount, s.aiMoves, 1);
+
+  const aspFailRate = safeRate(
+    s.aspirationFailTotal,
+    s.aspirationAttempts,
+    1
+  );
+
+  const centerCalls =
+    s.centerPatternHits + s.centerPatternMisses;
+
+  const centerHitRate = safeRate(
+    s.centerPatternHits,
+    centerCalls,
+    2
+  );
+
+  const chkAvgUs = safeAvgUs(s.checkWinTimeMs, s.checkWinCalls);
+
+  const leafAvgUs = safeAvgUs(s.leafEvalTimeMs, s.leafEvalCalls);
+
+  const candAvgUs = safeAvgUs(
+    s.candidateGenTimeMs,
+    s.candidateGenCalls
+  );
 
   const summary =
     `[AI:GameSummary] v=${s.schemaVersion} ` +
@@ -607,7 +971,7 @@ export const finalizeGameSession = (
     `ttHit=${(s.ttHitRate * 100).toFixed(1)}% ` +
     `ttStores=${s.ttStores} ` +
     `ttEvictions=${s.ttEvictions} ` +
-    `ttSize=${s.ttFinalSize} ` +
+    `ttSize=${s.ttLastNonZeroSize} ` +
     `aspFail=${s.aspirationFailTotal} ` +
     `pvsRS=${s.pvsFullResearches} ` +
     `rootPvsRS=${s.rootPvsResearches} ` +
@@ -615,7 +979,41 @@ export const finalizeGameSession = (
     `candGenCalls=${s.candidateGenCalls} ` +
     `candGenTime=${Math.round(s.candidateGenTimeMs)}ms ` +
     `secLookups=${s.staticEvalCacheLookups} ` +
-    `secHit=${(s.staticEvalCacheHitRate * 100).toFixed(1)}%`;
+    `secHit=${(s.staticEvalCacheHitRate * 100).toFixed(1)}% ` +
+    // 第5弾追加
+    `ttCut=${s.ttCutoffs} ` +
+    `ttBest=${s.ttBestMoveUsed} ` +
+    `ttMax=${s.ttMaxSize} ` +
+    `ttFinal=${s.ttActualFinalSize} ` +
+    `pvsNull=${s.pvsNullSearches} ` +
+    `pvsFH=${s.pvsFailHighResearches} ` +
+    `pvsFL=${s.pvsFailLowResearches} ` +
+    `pvsSkip=${s.pvsTacticalNullSkips} ` +
+    `lmrRS=${s.lmrResearches} ` +
+    `aspAttempts=${s.aspirationAttempts} ` +
+    `aspWinAvg=${aspWinAvg.toFixed(1)} ` +
+    `aspWinMax=${s.aspirationWindowMax} ` +
+    `aspAdapt=${s.aspirationAdaptiveExpansions} ` +
+    `aspNearOff=${s.aspirationDisabledNearWin} ` +
+    `chk=${s.checkWinCalls} ` +
+    `chkMs=${Math.round(s.checkWinTimeMs)} ` +
+    `leafEval=${s.leafEvalCalls} ` +
+    `leafMs=${Math.round(s.leafEvalTimeMs)} ` +
+    `secStores=${s.staticEvalCacheStores} ` +
+    `secMiss=${s.staticEvalCacheMisses} ` +
+    `secEvict=${s.staticEvalCacheEvictions} ` +
+    `secMax=${s.staticEvalCacheMaxSize} ` +
+    `centerHit=${s.centerPatternHits} ` +
+    `centerMiss=${s.centerPatternMisses} ` +
+    `timeSkip=${s.timePredictedSkips} ` +
+    // 第5.5弾追加
+    `abortRate=${abortRate}% ` +
+    `aspFailRate=${aspFailRate}% ` +
+    `centerHitRate=${centerHitRate}% ` +
+    `chkAvgUs=${chkAvgUs} ` +
+    `leafAvgUs=${leafAvgUs} ` +
+    `candAvgUs=${candAvgUs} ` +
+    `secHits=${s.staticEvalCacheHits}`;
 
   console.log(summary);
 
