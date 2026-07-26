@@ -5,6 +5,7 @@
 // 共有されるため types/ai.ts に集約している。このファイルは定数のみを扱う。
 
 import { DIRECTIONS as GAME_DIRECTIONS } from '../gameLogic';
+import type { AiLogLevel } from '../../types/ai';
 
 // --- スコア定数（攻撃基準に統一） ---
 
@@ -232,6 +233,24 @@ export const PVS_CONFIG = {
    */
   ENABLE_ROOT_PVS: false,
 } as const;
+
+// --- 第4弾：診断用設定 ---
+
+/**
+ * 第4弾で追加する診断専用設定。
+ * 探索挙動を変える feature flag ではない。
+ */
+export const AI_DEBUG_CONFIG: {
+  LOG_LEVEL: AiLogLevel;
+  ENABLE_STATS: boolean;
+  ENABLE_DETAILED_JSON: boolean;
+  ENABLE_VERBOSE_SEARCH_LOGS: boolean;
+} = {
+  LOG_LEVEL: 'summary',
+  ENABLE_STATS: true,
+  ENABLE_DETAILED_JSON: false,
+  ENABLE_VERBOSE_SEARCH_LOGS: false,
+};
 
 // --- 方向定数 ---
 

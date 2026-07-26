@@ -13,6 +13,10 @@
 // 第3弾:
 //   - 上限到達時の全クリアではなく oldest eviction を導入
 //   - 既存エントリ更新時は insertion order を刷新し、最近の深い情報を残しやすくする
+//
+// 第4弾:
+//   - TT 拡張統計を追加
+//   - lookup / store / getBestMove の意味は変更しない
 
 import type { Position } from '../../types/game';
 import type { TTEntry, TTFlag } from '../../types/ai';
@@ -43,6 +47,30 @@ export interface TTStats {
   evictions: number;
 }
 
+/**
+ * 第4弾で追加する TT 拡張統計。
+ * 既存 TTStats は後方互換のため維持する。
+ */
+export interface TTExtendedStats extends TTStats {
+  /** EXACT 保存数 */
+  storesExact: number;
+
+  /** LOWERBOUND 保存数 */
+  storesLower: number;
+
+  /** UPPERBOUND 保存数 */
+  storesUpper: number;
+
+  /** 既存エントリが深かったため保存を見送った回数 */
+  storesRejectedShallow: number;
+
+  /** getBestMove が非 null の bestMove を返した回数 */
+  bestMoveProvided: number;
+
+  /** 最大サイズ */
+  maxSize: number;
+}
+
 // ============================================================
 // Transposition Table 本体
 // ============================================================
@@ -63,6 +91,14 @@ export class TranspositionTable {
   private hitCount = 0;
   private storeCount = 0;
   private evictionCount = 0;
+
+  // --- 第4弾拡張カウンタ ---
+  private storeExactCount = 0;
+  private storeLowerCount = 0;
+  private storeUpperCount = 0;
+  private storeRejectedShallowCount = 0;
+  private bestMoveProvidedCount = 0;
+  private maxSize = 0;
 
   constructor() {
     this.table = new Map<bigint, TTEntry>();
@@ -114,6 +150,10 @@ export class TranspositionTable {
     const entry = this.table.get(hash);
     if (!entry || entry.hash !== hash) return null;
 
+    if (entry.bestMove) {
+      this.bestMoveProvidedCount++;
+    }
+
     return entry.bestMove;
   }
 
@@ -141,12 +181,17 @@ export class TranspositionTable {
 
     // Depth Preferred: 既存より浅い結果は保存しない
     if (existing && existing.depth > depth) {
+      this.storeRejectedShallowCount++;
       return;
     }
 
     // 新規エントリの場合のみサイズ制限をチェックする。
     // 既存エントリの更新はサイズを増やさない。
     if (!existing && this.table.size >= TT_CONFIG.MAX_ENTRIES) {
+      if (this.table.size > this.maxSize) {
+        this.maxSize = this.table.size;
+      }
+
       if (AI_FEATURES.ENABLE_TT_OLDEST_EVICTION) {
         const deleteCount = Math.max(
           1,
@@ -159,7 +204,6 @@ export class TranspositionTable {
         for (const key of this.table.keys()) {
           this.table.delete(key);
           deleted++;
-
           if (deleted >= deleteCount) break;
         }
       } else {
@@ -183,6 +227,18 @@ export class TranspositionTable {
     });
 
     this.storeCount++;
+
+    if (flag === 'EXACT') {
+      this.storeExactCount++;
+    } else if (flag === 'LOWERBOUND') {
+      this.storeLowerCount++;
+    } else {
+      this.storeUpperCount++;
+    }
+
+    if (this.table.size > this.maxSize) {
+      this.maxSize = this.table.size;
+    }
   }
 
   /** 置換表を空にする */
@@ -199,13 +255,19 @@ export class TranspositionTable {
    * 現在の統計情報を返す。
    * search.ts 等から探索終了時にログ出力するために使用する。
    */
-  get stats(): TTStats {
+  get stats(): TTExtendedStats {
     return {
       lookups: this.lookupCount,
       hits: this.hitCount,
       stores: this.storeCount,
       size: this.table.size,
       evictions: this.evictionCount,
+      storesExact: this.storeExactCount,
+      storesLower: this.storeLowerCount,
+      storesUpper: this.storeUpperCount,
+      storesRejectedShallow: this.storeRejectedShallowCount,
+      bestMoveProvided: this.bestMoveProvidedCount,
+      maxSize: this.maxSize,
     };
   }
 }

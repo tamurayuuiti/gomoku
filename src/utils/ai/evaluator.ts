@@ -9,6 +9,10 @@
 //   - detectPatternFast（パターンキャッシュ）
 //   - evaluatePositionWithCache（LineCache 利用版）
 //   を追加。評価スコアの意味は変更しない。
+//
+// 第4弾:
+//   - パターンキャッシュ統計を追加。
+//   - 評価ロジック・スコア体系は変更しない。
 
 import type { BoardState, Player } from '../../types/game';
 import type { PatternType, PatternCount, LineCacheState } from '../../types/ai';
@@ -143,15 +147,41 @@ export const detectPattern = (s: string): PatternType => {
 const PATTERN_CACHE_LIMIT = 20_000;
 const patternCache = new Map<string, PatternType>();
 
+// --- 第4弾：パターンキャッシュ統計 ---
+
+export interface PatternCacheStats {
+  hits: number;
+  misses: number;
+  size: number;
+}
+
+let patternCacheHits = 0;
+let patternCacheMisses = 0;
+
+export const resetPatternCacheStats = (): void => {
+  patternCacheHits = 0;
+  patternCacheMisses = 0;
+};
+
+export const getPatternCacheStats = (): PatternCacheStats => ({
+  hits: patternCacheHits,
+  misses: patternCacheMisses,
+  size: patternCache.size,
+});
+
 export const detectPatternFast = (s: string): PatternType => {
   if (!AI_FEATURES.ENABLE_PATTERN_CACHE) {
     return detectPattern(s);
   }
 
   const cached = patternCache.get(s);
+
   if (cached !== undefined) {
+    patternCacheHits++;
     return cached;
   }
+
+  patternCacheMisses++;
 
   const ptn = detectPattern(s);
 
@@ -229,6 +259,7 @@ const evaluatePositionRaw = (
   }
 
   // --- 即時評価 ---
+
   if (attackCounts.WIN > 0) return AI_SCORES.WIN;
 
   if (oppBeforeCounts.WIN > 0 && oppAfterCounts.WIN === 0)
@@ -260,7 +291,9 @@ const evaluatePositionRaw = (
     return AI_SCORES.DOUBLE_THREE;
 
   // --- 通常評価 ---
+
   let attackScore = 0;
+
   attackScore += attackCounts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
   attackScore += attackCounts.OPEN_THREE * AI_SCORES.OPEN_THREE;
   attackScore += attackCounts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
@@ -270,11 +303,13 @@ const evaluatePositionRaw = (
 
   const calcTotalOppScore = (counts: PatternCount): number => {
     let score = 0;
+
     score += counts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
     score += counts.OPEN_THREE * AI_SCORES.OPEN_THREE;
     score += counts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
     score += counts.OPEN_TWO * AI_SCORES.OPEN_TWO;
     score += counts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
+
     return score;
   };
 
@@ -343,6 +378,7 @@ export const evaluatePositionWithCache = (
   }
 
   // --- 即時評価（evaluatePosition と同一） ---
+
   if (attackCounts.WIN > 0) {
     return AI_SCORES.WIN + computePositionBonus(row, col);
   }
@@ -390,7 +426,9 @@ export const evaluatePositionWithCache = (
   }
 
   // --- 通常評価 ---
+
   let attackScore = 0;
+
   attackScore += attackCounts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
   attackScore += attackCounts.OPEN_THREE * AI_SCORES.OPEN_THREE;
   attackScore += attackCounts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
@@ -400,11 +438,13 @@ export const evaluatePositionWithCache = (
 
   const calcTotalOppScore = (counts: PatternCount): number => {
     let score = 0;
+
     score += counts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
     score += counts.OPEN_THREE * AI_SCORES.OPEN_THREE;
     score += counts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
     score += counts.OPEN_TWO * AI_SCORES.OPEN_TWO;
     score += counts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
+
     return score;
   };
 

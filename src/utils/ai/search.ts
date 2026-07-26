@@ -10,13 +10,39 @@
 //   - Aspiration Window を安全な形で再有効化
 //   - fail-high / fail-low 時は必ず full window で再探索
 //   - WIN / LOSS 付近では Aspiration を使わない
+//
+// 第4弾:
+//   - 思考単位で統計情報を生成し、思考終了後にサマリログを出力する。
+//   - 探索挙動・時間制御・Aspiration の有効/無効条件は変更しない。
+//
+// 追加:
+//   - 対局全体統計セッションを開始・記録・終了する。
+//   - AI が勝った場合はその場で GameSession を終了する。
+//   - 人間勝ち・引き分けは UI からの制御メッセージで終了する。
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions } from '../../types/ai';
-import { BOARD_SIZE } from '../gameLogic';
+import { BOARD_SIZE, checkWin } from '../gameLogic';
 import { AI_CONFIG, AI_SCORES, TT_CONFIG, AI_FEATURES } from './constants';
 import { findBestMove } from './minimax';
 import { TranspositionTable } from './transpositionTable';
+import {
+  resetPatternCacheStats,
+  getPatternCacheStats,
+} from './evaluator';
+import {
+  createSearchStats,
+  mergeTTStats,
+  mergePatternCacheStats,
+  finalizeSearchStats,
+  logSearchSummary,
+  shouldLogVerboseSearch,
+  ensureGameSession,
+  isGameSessionActive,
+  getActiveGameSession,
+  recordMoveToSession,
+  finalizeGameSession,
+} from './searchStats';
 
 /**
  * Aspiration Window を適用してよいか判定する。
@@ -38,6 +64,68 @@ const shouldUseAspiration = (
 };
 
 /**
+ * 盤上の石数を数える。
+ * 対局統計の推定総手数に使う。
+ */
+const countStones = (board: BoardState): number => {
+  let count = 0;
+
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (board[r][c] !== null) count++;
+    }
+  }
+
+  return count;
+};
+
+/**
+ * 対局セッションを開始する。
+ *
+ * 基本は AI の着手要求が来た時点でセッションを確保する。
+ * ただし、以下のような場合は別対局とみなして直前のセッションを Reset 終了する。
+ *
+ * - 盤面が空になっている
+ * - 盤面の石が 1 個だけ（人間先手の新規対局開始直後とみなす）
+ * - AI 手番色が前セッションと異なる
+ */
+const startGameSessionForMove = (
+  aiPlayer: Player,
+  stonesBefore: number
+): void => {
+  if (isGameSessionActive()) {
+    const active = getActiveGameSession();
+
+    if (
+      !active ||
+      active.aiPlayer !== aiPlayer ||
+      stonesBefore === 0 ||
+      stonesBefore === 1
+    ) {
+      finalizeGameSession('Reset');
+    }
+  }
+
+  ensureGameSession(aiPlayer);
+};
+
+/**
+ * AI の着手が勝利かどうかを判定する。
+ * board を一時的に書き換えて checkWin を呼び、すぐ復元する。
+ */
+const isWinningMove = (
+  board: BoardState,
+  move: Position,
+  player: Player
+): boolean => {
+  board[move.row][move.col] = player;
+  const win = checkWin(board, move, player);
+  board[move.row][move.col] = null;
+
+  return win;
+};
+
+/**
  * AIの次の一手を計算して返す。
  *
  * 公開インターフェース: この関数のシグネチャは変更禁止。
@@ -48,12 +136,33 @@ export const calculateNextMove = (
   currentTurn: Player,
   options?: SearchOptions
 ): Position | null => {
-  const isBoardEmpty = board.flat().every((cell) => cell === null);
+  const startTime = performance.now();
+
+  resetPatternCacheStats();
+
+  const stonesBefore = countStones(board);
+  startGameSessionForMove(currentTurn, stonesBefore);
+
+  const isBoardEmpty = stonesBefore === 0;
 
   // 初手は中央
   if (isBoardEmpty) {
     const center = Math.floor(BOARD_SIZE / 2);
-    return { row: center, col: center };
+    const centerMove: Position = { row: center, col: center };
+
+    const stats = createSearchStats(currentTurn, 'center', 0, null, null);
+    stats.selectedMove = centerMove;
+    stats.selectedScore = 0;
+    stats.completedDepth = 0;
+    stats.time.elapsedMs = performance.now() - startTime;
+
+    mergePatternCacheStats(stats, getPatternCacheStats());
+    finalizeSearchStats(stats);
+    logSearchSummary(stats);
+
+    recordMoveToSession(stats, 1, true);
+
+    return centerMove;
   }
 
   const explicitDepth = options?.depth !== undefined;
@@ -83,6 +192,7 @@ export const calculateNextMove = (
 
   // --- timeLimitMs 未指定: 従来通りの固定深さ探索 ---
   if (timeLimitMs === undefined) {
+    const stats = createSearchStats(currentTurn, 'fixed', maxDepth, null, lastMove);
     const tt = new TranspositionTable();
 
     const result = findBestMove(
@@ -94,20 +204,44 @@ export const calculateNextMove = (
       tt,
       -Infinity,
       Infinity,
-      lastMove
+      lastMove,
+      stats
     );
 
-    if (result.move) {
-      console.log(
-        `AI selected: (${result.move.row}, ${result.move.col}) via minimax depth=${maxDepth} ` +
-        `score=${result.score}, tt=${JSON.stringify(tt.stats)} (turn: ${currentTurn})`
-      );
+    stats.selectedMove = result.move;
+    stats.selectedScore = result.move ? result.score : null;
+    stats.completedDepth = result.move ? maxDepth : 0;
+    stats.time.elapsedMs = performance.now() - startTime;
+
+    mergeTTStats(stats, tt.stats);
+    mergePatternCacheStats(stats, getPatternCacheStats());
+    finalizeSearchStats(stats);
+    logSearchSummary(stats);
+
+    const movePlayed = result.move !== null;
+
+    recordMoveToSession(
+      stats,
+      stonesBefore + (movePlayed ? 1 : 0),
+      movePlayed
+    );
+
+    if (result.move && isWinningMove(board, result.move, currentTurn)) {
+      finalizeGameSession('Win');
     }
 
     return result.move;
   }
 
   // --- timeLimitMs 指定: 反復深化（iterative deepening） ---
+  const stats = createSearchStats(
+    currentTurn,
+    'iterative',
+    maxDepth,
+    timeLimitMs,
+    lastMove
+  );
+
   const deadline = performance.now() + timeLimitMs;
   const tt = new TranspositionTable();
 
@@ -128,6 +262,8 @@ export const calculateNextMove = (
       const window = TT_CONFIG.ASPIRATION_WINDOW;
       alpha = (prevScore as number) - window;
       beta = (prevScore as number) + window;
+
+      stats.aspiration.attempts++;
     }
 
     // 探索実行
@@ -140,7 +276,8 @@ export const calculateNextMove = (
       tt,
       alpha,
       beta,
-      lastMove
+      lastMove,
+      stats
     );
 
     // ------------------------------------------------------------
@@ -148,11 +285,16 @@ export const calculateNextMove = (
     // 安全側: どちらかに触れたら原則 full window で再探索する。
     // ------------------------------------------------------------
     if (useAspiration && result.move !== null) {
-      if (result.score >= beta || result.score <= alpha) {
-        console.log(
-          `[Search] depth=${d} aspiration fail (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-          `re-searching with full window`
-        );
+      if (result.score >= beta) {
+        stats.aspiration.failHigh++;
+        stats.aspiration.fullResearches++;
+
+        if (shouldLogVerboseSearch()) {
+          console.log(
+            `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
+              `re-searching with full window`
+          );
+        }
 
         result = findBestMove(
           board,
@@ -163,7 +305,31 @@ export const calculateNextMove = (
           tt,
           -Infinity,
           Infinity,
-          lastMove
+          lastMove,
+          stats
+        );
+      } else if (result.score <= alpha) {
+        stats.aspiration.failLow++;
+        stats.aspiration.fullResearches++;
+
+        if (shouldLogVerboseSearch()) {
+          console.log(
+            `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
+              `re-searching with full window`
+          );
+        }
+
+        result = findBestMove(
+          board,
+          forbiddenMoves,
+          currentTurn,
+          d,
+          effectiveDeadline,
+          tt,
+          -Infinity,
+          Infinity,
+          lastMove,
+          stats
         );
       }
     }
@@ -179,12 +345,26 @@ export const calculateNextMove = (
     if (performance.now() >= deadline) break;
   }
 
-  if (best) {
-    console.log(
-      `AI selected: (${best.row}, ${best.col}) via iterative deepening ` +
-      `completedDepth=${completedDepth}/${maxDepth}, score=${prevScore}, ` +
-      `tt=${JSON.stringify(tt.stats)} (turn: ${currentTurn})`
-    );
+  stats.selectedMove = best;
+  stats.selectedScore = best ? prevScore : null;
+  stats.completedDepth = completedDepth;
+  stats.time.elapsedMs = performance.now() - startTime;
+
+  mergeTTStats(stats, tt.stats);
+  mergePatternCacheStats(stats, getPatternCacheStats());
+  finalizeSearchStats(stats);
+  logSearchSummary(stats);
+
+  const movePlayed = best !== null;
+
+  recordMoveToSession(
+    stats,
+    stonesBefore + (movePlayed ? 1 : 0),
+    movePlayed
+  );
+
+  if (best && isWinningMove(board, best, currentTurn)) {
+    finalizeGameSession('Win');
   }
 
   return best;

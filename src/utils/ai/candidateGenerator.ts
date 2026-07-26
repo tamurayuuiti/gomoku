@@ -9,6 +9,13 @@
 //   - LineCache を利用した候補手評価
 //   - CandidateSet による候補集合の増分管理
 //   を追加。
+//
+// 第4弾:
+//   - 候補手生成統計・ordering 統計・CandidateSet サイズ統計を追加。
+//   - 候補手生成結果や順序は変更しない。
+//
+// 追加:
+//   - 対局統計用の候補手生成時間計測を追加。
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
@@ -20,6 +27,7 @@ import type {
   LineCacheState,
   CandidateSetState,
   CandidateSetUndo,
+  SearchStats,
 } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
 import {
@@ -33,6 +41,11 @@ import {
   hasStoneNearby,
   evaluatePositionWithCache,
 } from './evaluator';
+import {
+  recordCandidateSetSize,
+  isGameSessionActive,
+  recordCandidateGenTime,
+} from './searchStats';
 
 // ============================================================
 // Killer table 生成・操作
@@ -127,7 +140,6 @@ export const storeKiller = (
   if (depth >= MAX_KILLER_DEPTH) return;
 
   const slot = killerTable[depth];
-
   if (slot[0]?.row === pos.row && slot[0]?.col === pos.col) return;
 
   slot[1] = slot[0];
@@ -261,6 +273,7 @@ export const applyCandidateSet = (
     if (seen.has(idx)) return;
 
     seen.add(idx);
+
     affected.push({
       index: idx,
       oldRefCount: state.refCount[r][c],
@@ -344,29 +357,33 @@ export const undoCandidateSet = (
 };
 
 // ============================================================
-// 候補手生成（戦術的最適化 + 5 tier move ordering）
+// 第4弾：候補手統計用ヘルパー
 // ============================================================
 
 /**
- * 候補手を戦術的に分類し、LMR / PVS が機能しやすい形で ordered な候補手配列を返す。
- *
- * Tier 0 (TT MOVE):
- *   Transposition Table に登録された「過去の最善手」。
- *
- * Tier 1 (CRITICAL):
- *   WIN / DEFEND_WIN / OPEN_FOUR / DOUBLE_FOUR / FOUR_THREE / DOUBLE_THREE 相当。
- *   戦術的に最重要であり、絶対に切り捨てない。
- *
- * Tier 2 (COUNTERMOVE):
- *   直前手に対して過去カットオフを起こした応手。
- *
- * Tier 3 (KILLER):
- *   killer table に登録された静かな手。
- *
- * Tier 4 (QUIET):
- *   上記以外。score 降順 + history 補助でソートし、必要に応じてマージン剪定する。
+ * 実際に探索へ渡す候補手配列の長さを統計へ記録する。
+ * 戻り値はそのまま返すだけで、候補手の中身は変更しない。
  */
-export const generateOrderedCandidates = (
+const recordReturnedCandidates = (
+  stats: SearchStats | undefined,
+  candidates: OrderedCandidate[]
+): OrderedCandidate[] => {
+  if (stats) {
+    stats.candidates.selectedTotal += candidates.length;
+
+    if (candidates.length > stats.candidates.maxPerNode) {
+      stats.candidates.maxPerNode = candidates.length;
+    }
+  }
+
+  return candidates;
+};
+
+// ============================================================
+// 候補手生成本体（戦術的最適化 + 5 tier move ordering）
+// ============================================================
+
+const generateOrderedCandidatesInternal = (
   board: BoardState,
   player: Player,
   forbiddenMoves: boolean[][],
@@ -378,8 +395,13 @@ export const generateOrderedCandidates = (
   ttBestMove: Position | null = null,
   isRoot: boolean = false,
   lineCache: LineCacheState | null = null,
-  candidateSet: CandidateSetState | null = null
+  candidateSet: CandidateSetState | null = null,
+  stats?: SearchStats
 ): OrderedCandidate[] => {
+  if (stats) {
+    stats.candidates.genCalls++;
+  }
+
   const scored: OrderedCandidate[] = [];
 
   const ttKey = ttBestMove ? toIndex(ttBestMove) : -1;
@@ -391,8 +413,14 @@ export const generateOrderedCandidates = (
   const counterKey = counterPos ? toIndex(counterPos) : -1;
 
   const useLineCache = AI_FEATURES.ENABLE_LINE_CACHE && lineCache !== null;
+
   const useCandidateSet =
     AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES && candidateSet !== null;
+
+  if (stats && useCandidateSet && candidateSet) {
+    stats.candidateSet.used = true;
+    recordCandidateSetSize(stats, candidateSet.candidates.size);
+  }
 
   const addCandidate = (r: number, c: number): void => {
     const score = useLineCache
@@ -449,7 +477,9 @@ export const generateOrderedCandidates = (
     }
   }
 
-  if (scored.length === 0) return [];
+  if (scored.length === 0) {
+    return recordReturnedCandidates(stats, []);
+  }
 
   // score 降順（WIN > DEFEND_WIN > ... の自然な tier 順を維持）
   scored.sort((a, b) => b.score - a.score);
@@ -509,6 +539,18 @@ export const generateOrderedCandidates = (
     );
   }
 
+  // 第4弾：tier 集計（生成された候補の構成を記録する）
+  if (stats) {
+    stats.candidates.criticalTotal += criticalTier.length;
+    stats.candidates.quietTotal += finalQuietTier.length;
+    stats.candidates.quietPrunedTotal += quietTier.length - finalQuietTier.length;
+
+    stats.tt.bestMoveUsed += ttTier.length;
+    stats.ordering.ttBestMoveUsed += ttTier.length;
+    stats.ordering.killerHits += killerTier.length;
+    stats.ordering.countermoveHits += counterTier.length;
+  }
+
   // feature flag OFF: 従来の固定上限に近い挙動。
   if (!AI_FEATURES.ENABLE_TACTICAL_CANDIDATES) {
     const ordered = [
@@ -519,7 +561,7 @@ export const generateOrderedCandidates = (
       ...quietTier,
     ];
 
-    return ordered.slice(0, AI_CONFIG.MAX_CANDIDATES);
+    return recordReturnedCandidates(stats, ordered.slice(0, AI_CONFIG.MAX_CANDIDATES));
   }
 
   const maxCandidates = isRoot
@@ -538,10 +580,13 @@ export const generateOrderedCandidates = (
     const extras = [...counterTier, ...killerTier, ...finalQuietTier];
 
     if (essential.length >= maxCandidates) {
-      return essential;
+      return recordReturnedCandidates(stats, essential);
     }
 
-    return [...essential, ...extras.slice(0, maxCandidates - essential.length)];
+    return recordReturnedCandidates(
+      stats,
+      [...essential, ...extras.slice(0, maxCandidates - essential.length)]
+    );
   }
 
   /**
@@ -552,8 +597,73 @@ export const generateOrderedCandidates = (
   const essential = [...ttTier, ...counterTier, ...killerTier];
 
   if (essential.length >= maxCandidates) {
-    return essential.slice(0, maxCandidates);
+    return recordReturnedCandidates(stats, essential.slice(0, maxCandidates));
   }
 
-  return [...essential, ...finalQuietTier.slice(0, maxCandidates - essential.length)];
+  return recordReturnedCandidates(
+    stats,
+    [...essential, ...finalQuietTier.slice(0, maxCandidates - essential.length)]
+  );
+};
+
+/**
+ * 候補手生成の公開 API。
+ *
+ * 本体は generateOrderedCandidatesInternal に委譲し、
+ * 対局統計用に生成時間だけを計測する。
+ */
+export const generateOrderedCandidates = (
+  board: BoardState,
+  player: Player,
+  forbiddenMoves: boolean[][],
+  killerTable: KillerTable,
+  historyTable: HistoryTable,
+  countermoveTable: CountermoveTable,
+  depth: number,
+  lastMove: Position | null = null,
+  ttBestMove: Position | null = null,
+  isRoot: boolean = false,
+  lineCache: LineCacheState | null = null,
+  candidateSet: CandidateSetState | null = null,
+  stats?: SearchStats
+): OrderedCandidate[] => {
+  if (!isGameSessionActive()) {
+    return generateOrderedCandidatesInternal(
+      board,
+      player,
+      forbiddenMoves,
+      killerTable,
+      historyTable,
+      countermoveTable,
+      depth,
+      lastMove,
+      ttBestMove,
+      isRoot,
+      lineCache,
+      candidateSet,
+      stats
+    );
+  }
+
+  const start = performance.now();
+
+  try {
+    return generateOrderedCandidatesInternal(
+      board,
+      player,
+      forbiddenMoves,
+      killerTable,
+      historyTable,
+      countermoveTable,
+      depth,
+      lastMove,
+      ttBestMove,
+      isRoot,
+      lineCache,
+      candidateSet,
+      stats
+    );
+  } finally {
+    recordCandidateGenTime(performance.now() - start);
+  }
 };

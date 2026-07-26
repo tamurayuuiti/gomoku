@@ -14,6 +14,9 @@
 //   - LineCache 差分ラインキャッシュ
 //   - CandidateSet 候補集合増分管理
 //   - evaluateBoardWithCache / evaluatePositionWithCache への接続
+//
+// 第4弾:
+//   - SearchContext に統計情報を保持し、探索挙動を変えずに計測する。
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
@@ -25,6 +28,7 @@ import type {
   LineCacheState,
   CandidateSetState,
   CandidateSetUndo,
+  SearchStats,
 } from '../../types/ai';
 import { checkWin } from '../gameLogic';
 import {
@@ -56,6 +60,11 @@ import {
   updateLineCache,
   undoLineCache,
 } from './lineCache';
+import {
+  createSearchStats,
+  shouldLogVerboseSearch,
+  recordCandidateSetSize,
+} from './searchStats';
 
 // ============================================================
 // SearchContext
@@ -92,6 +101,9 @@ interface SearchContext {
    * true の場合、不完全な結果を TT に保存してはならない。
    */
   aborted: boolean;
+
+  /** 第4弾：統計情報（探索判断には使わない） */
+  stats: SearchStats;
 }
 
 const createSearchContext = (
@@ -99,21 +111,32 @@ const createSearchContext = (
   aiPlayer: Player,
   forbiddenMoves: boolean[][],
   deadline: number = Infinity,
-  tt: TranspositionTable
-): SearchContext => ({
-  aiPlayer,
-  forbiddenMoves,
-  killerTable: createKillerTable(),
-  historyTable: createHistoryTable(),
-  countermoveTable: createCountermoveTable(),
-  lineCache: AI_FEATURES.ENABLE_LINE_CACHE ? createLineCache(board) : null,
-  candidateSet: AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES
-    ? createCandidateSet(board, forbiddenMoves)
-    : null,
-  deadline,
-  tt,
-  aborted: false,
-});
+  tt: TranspositionTable,
+  stats: SearchStats
+): SearchContext => {
+  const ctx: SearchContext = {
+    aiPlayer,
+    forbiddenMoves,
+    killerTable: createKillerTable(),
+    historyTable: createHistoryTable(),
+    countermoveTable: createCountermoveTable(),
+    lineCache: AI_FEATURES.ENABLE_LINE_CACHE ? createLineCache(board) : null,
+    candidateSet: AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES
+      ? createCandidateSet(board, forbiddenMoves)
+      : null,
+    deadline,
+    tt,
+    aborted: false,
+    stats,
+  };
+
+  if (ctx.candidateSet) {
+    ctx.stats.candidateSet.used = true;
+    recordCandidateSetSize(ctx.stats, ctx.candidateSet.candidates.size);
+  }
+
+  return ctx;
+};
 
 /**
  * 時間切れ判定。
@@ -121,10 +144,14 @@ const createSearchContext = (
  * 以降の探索結果が TT に保存されないようにする。
  */
 const isTimeUp = (ctx: SearchContext): boolean => {
-  if (ctx.aborted) return true;
+  if (ctx.aborted) {
+    ctx.stats.time.aborted = true;
+    return true;
+  }
 
   if (ctx.deadline !== Infinity && performance.now() >= ctx.deadline) {
     ctx.aborted = true;
+    ctx.stats.time.aborted = true;
     return true;
   }
 
@@ -150,10 +177,22 @@ const applyMove = (
 
   if (ctx.lineCache) {
     updateLineCache(ctx.lineCache, row, col, player);
+    ctx.stats.cache.lineCacheUpdates++;
   }
 
   if (ctx.candidateSet) {
-    return applyCandidateSet(ctx.candidateSet, board, ctx.forbiddenMoves, row, col);
+    const undo = applyCandidateSet(
+      ctx.candidateSet,
+      board,
+      ctx.forbiddenMoves,
+      row,
+      col
+    );
+
+    ctx.stats.candidateSet.updates++;
+    recordCandidateSetSize(ctx.stats, ctx.candidateSet.candidates.size);
+
+    return undo;
   }
 
   return null;
@@ -175,10 +214,12 @@ const undoMove = (
 
   if (ctx.lineCache) {
     undoLineCache(ctx.lineCache, { row, col, player });
+    ctx.stats.cache.lineCacheUndos++;
   }
 
   if (ctx.candidateSet && candidateUndo) {
     undoCandidateSet(ctx.candidateSet, candidateUndo);
+    ctx.stats.candidateSet.undos++;
   }
 };
 
@@ -190,6 +231,8 @@ const evaluateLeaf = (
   ctx: SearchContext
 ): number => {
   if (ctx.lineCache) {
+    ctx.stats.cache.lineCacheEvalCalls++;
+
     return evaluateBoardWithCache(
       board,
       ctx.lineCache,
@@ -198,6 +241,8 @@ const evaluateLeaf = (
       ctx.candidateSet
     );
   }
+
+  ctx.stats.cache.lineCacheFallbackCalls++;
 
   return evaluateBoard(board, ctx.aiPlayer, ctx.forbiddenMoves);
 };
@@ -215,18 +260,41 @@ const evaluateLeaf = (
  * - 序盤の move index
  * - TT Move / Killer / Countermove
  * - CRITICAL / 戦術手
+ *
+ * 第4弾：stats を任意で受け取り、LMR 判定回数を計測する。
+ * ただし、実際の reduced 回数は呼び出し側で canNull 判定後に計測する。
  */
 const getReduction = (
   depth: number,
   moveIndex: number,
   flags: OrderedCandidate['flags'],
-  isRoot: boolean
+  isRoot: boolean,
+  stats?: SearchStats
 ): number => {
   if (!AI_FEATURES.ENABLE_LMR) return 0;
   if (isRoot && !LMR_CONFIG.ALLOW_ROOT) return 0;
   if (depth < LMR_CONFIG.MIN_DEPTH) return 0;
   if (moveIndex < LMR_CONFIG.MIN_MOVE_INDEX) return 0;
-  if (!flags.reductionAllowed) return 0;
+
+  if (stats) {
+    stats.lmr.attempted++;
+  }
+
+  if (!flags.reductionAllowed) {
+    if (stats) {
+      if (flags.isTTMove) {
+        stats.lmr.skippedTTMove++;
+      } else if (flags.isKiller) {
+        stats.lmr.skippedKiller++;
+      } else if (flags.isCountermove) {
+        stats.lmr.skippedCountermove++;
+      } else if (flags.isTactical || flags.isCritical) {
+        stats.lmr.skippedTactical++;
+      }
+    }
+
+    return 0;
+  }
 
   if (
     flags.isTTMove ||
@@ -282,6 +350,9 @@ const minimax = (
 
   // --- 葉ノード評価 ---
   if (depth === 0) {
+    ctx.stats.nodes.total++;
+    ctx.stats.nodes.leaf++;
+
     return evaluateLeaf(board, ctx);
   }
 
@@ -290,7 +361,12 @@ const minimax = (
   const betaOrig = beta;
 
   const ttScore = ctx.tt.lookup(currentHash, depth, alpha, beta);
+
   if (ttScore !== null) {
+    ctx.stats.nodes.total++;
+    ctx.stats.nodes.internal++;
+    ctx.stats.nodes.ttCutoff++;
+
     return ttScore;
   }
 
@@ -310,13 +386,20 @@ const minimax = (
     ttBestMove,
     isRoot,
     ctx.lineCache,
-    ctx.candidateSet
+    ctx.candidateSet,
+    ctx.stats
   );
 
   // 候補なし（盤面満杯等）→ 葉ノード評価にフォールバック
   if (candidates.length === 0) {
+    ctx.stats.nodes.total++;
+    ctx.stats.nodes.leaf++;
+
     return evaluateLeaf(board, ctx);
   }
+
+  ctx.stats.nodes.total++;
+  ctx.stats.nodes.internal++;
 
   let bestMove: Position | null = null;
 
@@ -337,15 +420,23 @@ const minimax = (
       // 即時勝利検出
       if (checkWin(board, currentMove, ctx.aiPlayer)) {
         undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+        ctx.stats.nodes.immediateWin++;
+
         return AI_SCORES.WIN;
       }
 
-      let reduction = getReduction(depth, moveIndex, flags, isRoot);
+      let reduction = getReduction(depth, moveIndex, flags, isRoot, ctx.stats);
 
       // null-window 探索は alpha が有限でないと安全に使えない。
       const canNull = Number.isFinite(alpha);
+
       if (reduction > 0 && !canNull) {
         reduction = 0;
+      }
+
+      if (reduction > 0) {
+        ctx.stats.lmr.reduced++;
+        ctx.stats.lmr.reductionTotal += reduction;
       }
 
       const usePvsNull =
@@ -359,6 +450,10 @@ const minimax = (
       if (usePvsNull || reduction > 0) {
         const childDepth = Math.max(0, depth - 1 - reduction);
         const nullBeta = alpha + 1;
+
+        if (usePvsNull) {
+          ctx.stats.pvs.nullSearches++;
+        }
 
         // 削減 or PVS null-window 探索
         score = minimax(
@@ -381,6 +476,15 @@ const minimax = (
 
         // fail-high: 通常深度・通常ウィンドウで再探索
         if (score > alpha) {
+          if (usePvsNull) {
+            ctx.stats.pvs.failHighResearches++;
+            ctx.stats.pvs.fullResearches++;
+          }
+
+          if (reduction > 0) {
+            ctx.stats.lmr.researches++;
+          }
+
           score = minimax(
             board,
             depth - 1,
@@ -436,7 +540,10 @@ const minimax = (
       if (beta <= alpha) {
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, currentMove);
+          ctx.stats.ordering.killerStores++;
+
           storeHistory(ctx.historyTable, currentPlayer, depth, currentMove);
+          ctx.stats.ordering.historyStores++;
 
           if (AI_FEATURES.ENABLE_COUNTERMOVE && lastMove) {
             storeCountermove(
@@ -445,6 +552,7 @@ const minimax = (
               lastMove,
               currentMove
             );
+            ctx.stats.ordering.countermoveStores++;
           }
         }
 
@@ -468,6 +576,7 @@ const minimax = (
     }
 
     ctx.tt.store(currentHash, ttStoreDepth, maxScore, flag, bestMove);
+
     return maxScore;
   } else {
     let minScore = Infinity;
@@ -486,15 +595,23 @@ const minimax = (
       // 即時勝利検出（相手視点）
       if (checkWin(board, currentMove, currentPlayer)) {
         undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+        ctx.stats.nodes.immediateLoss++;
+
         return -AI_SCORES.WIN;
       }
 
-      let reduction = getReduction(depth, moveIndex, flags, isRoot);
+      let reduction = getReduction(depth, moveIndex, flags, isRoot, ctx.stats);
 
       // null-window 探索は beta が有限でないと安全に使えない。
       const canNull = Number.isFinite(beta);
+
       if (reduction > 0 && !canNull) {
         reduction = 0;
+      }
+
+      if (reduction > 0) {
+        ctx.stats.lmr.reduced++;
+        ctx.stats.lmr.reductionTotal += reduction;
       }
 
       const usePvsNull =
@@ -508,6 +625,10 @@ const minimax = (
       if (usePvsNull || reduction > 0) {
         const childDepth = Math.max(0, depth - 1 - reduction);
         const nullAlpha = beta - 1;
+
+        if (usePvsNull) {
+          ctx.stats.pvs.nullSearches++;
+        }
 
         // 削減 or PVS null-window 探索
         score = minimax(
@@ -530,6 +651,15 @@ const minimax = (
 
         // fail-low: 通常深度・通常ウィンドウで再探索
         if (score < beta) {
+          if (usePvsNull) {
+            ctx.stats.pvs.failLowResearches++;
+            ctx.stats.pvs.fullResearches++;
+          }
+
+          if (reduction > 0) {
+            ctx.stats.lmr.researches++;
+          }
+
           score = minimax(
             board,
             depth - 1,
@@ -585,7 +715,10 @@ const minimax = (
       if (beta <= alpha) {
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, currentMove);
+          ctx.stats.ordering.killerStores++;
+
           storeHistory(ctx.historyTable, currentPlayer, depth, currentMove);
+          ctx.stats.ordering.historyStores++;
 
           if (AI_FEATURES.ENABLE_COUNTERMOVE && lastMove) {
             storeCountermove(
@@ -594,6 +727,7 @@ const minimax = (
               lastMove,
               currentMove
             );
+            ctx.stats.ordering.countermoveStores++;
           }
         }
 
@@ -617,6 +751,7 @@ const minimax = (
     }
 
     ctx.tt.store(currentHash, ttStoreDepth, minScore, flag, bestMove);
+
     return minScore;
   }
 };
@@ -638,6 +773,9 @@ export interface FindBestMoveResult {
 
 /**
  * ミニマックス探索で最善手を求めて返す（TT / PVS / LMR / Countermove / LineCache 対応版）。
+ *
+ * 第4弾：stats を任意で受け取る。未指定の場合は内部で一時統計を作成するが、
+ * 呼び出し元へは返さない（後方互換のため）。
  */
 export const findBestMove = (
   board: BoardState,
@@ -648,9 +786,22 @@ export const findBestMove = (
   tt: TranspositionTable,
   initialAlpha: number = -Infinity,
   initialBeta: number = Infinity,
-  lastMove: Position | null = null
+  lastMove: Position | null = null,
+  stats?: SearchStats
 ): FindBestMoveResult => {
-  const ctx = createSearchContext(board, aiPlayer, forbiddenMoves, deadline, tt);
+  const searchStats =
+    stats ?? createSearchStats(aiPlayer, 'fixed', depth, null, lastMove);
+
+  const ctx = createSearchContext(
+    board,
+    aiPlayer,
+    forbiddenMoves,
+    deadline,
+    tt,
+    searchStats
+  );
+
+  const verboseLog = shouldLogVerboseSearch();
 
   // 初期盤面ハッシュを計算（思考開始時に1回のみ）
   const initialHash = calculateInitialHash(board);
@@ -670,12 +821,19 @@ export const findBestMove = (
     ttBestMove,
     true,
     ctx.lineCache,
-    ctx.candidateSet
+    ctx.candidateSet,
+    ctx.stats
   );
 
   if (candidates.length === 0) {
+    ctx.stats.nodes.total++;
+    ctx.stats.nodes.leaf++;
+
     return { move: null, score: -Infinity };
   }
+
+  ctx.stats.nodes.total++;
+  ctx.stats.nodes.internal++;
 
   let bestPos: Position = candidates[0].pos;
   let bestScore = -Infinity;
@@ -687,15 +845,20 @@ export const findBestMove = (
   let alpha = initialAlpha;
   const beta = initialBeta;
 
-  console.log(
-    `[Minimax] depth=${depth}, candidates=${candidates.length}, player=${aiPlayer}, ` +
-    `window=[${alpha}, ${beta}], ttSize=${tt.size}`
-  );
+  if (verboseLog) {
+    console.log(
+      `[Minimax] depth=${depth}, candidates=${candidates.length}, player=${aiPlayer}, ` +
+        `window=[${alpha}, ${beta}], ttSize=${tt.size}`
+    );
+  }
 
   for (let moveIndex = 0; moveIndex < candidates.length; moveIndex++) {
     // 時間切れ: ルート候補を全て評価しきれていないため、この深さの結果は不採用とする
     if (isTimeUp(ctx)) {
-      console.log(`[Minimax] depth=${depth} timed out before completion`);
+      if (verboseLog) {
+        console.log(`[Minimax] depth=${depth} timed out before completion`);
+      }
+
       return { move: null, score: -Infinity };
     }
 
@@ -709,7 +872,12 @@ export const findBestMove = (
     // ルートノード即時勝利（1 手詰め検出）
     if (checkWin(board, currentMove, aiPlayer)) {
       undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
-      console.log(`[Minimax] Immediate Win at (${row}, ${col})`);
+      ctx.stats.nodes.immediateWin++;
+
+      if (verboseLog) {
+        console.log(`[Minimax] Immediate Win at (${row}, ${col})`);
+      }
+
       return { move: currentMove, score: AI_SCORES.WIN };
     }
 
@@ -723,6 +891,9 @@ export const findBestMove = (
 
     if (useRootPvsNull) {
       const nullBeta = alpha + 1;
+
+      ctx.stats.pvs.rootNullSearches++;
+      ctx.stats.pvs.nullSearches++;
 
       score = minimax(
         board,
@@ -739,12 +910,19 @@ export const findBestMove = (
 
       if (ctx.aborted) {
         undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
-        console.log(`[Minimax] depth=${depth} aborted during child search`);
+
+        if (verboseLog) {
+          console.log(`[Minimax] depth=${depth} aborted during child search`);
+        }
+
         return { move: null, score: -Infinity };
       }
 
       // fail-high: full window で再探索
       if (score > alpha) {
+        ctx.stats.pvs.failHighResearches++;
+        ctx.stats.pvs.fullResearches++;
+
         score = minimax(
           board,
           depth - 1,
@@ -760,7 +938,11 @@ export const findBestMove = (
 
         if (ctx.aborted) {
           undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
-          console.log(`[Minimax] depth=${depth} aborted during child search`);
+
+          if (verboseLog) {
+            console.log(`[Minimax] depth=${depth} aborted during child search`);
+          }
+
           return { move: null, score: -Infinity };
         }
       }
@@ -780,7 +962,11 @@ export const findBestMove = (
 
       if (ctx.aborted) {
         undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
-        console.log(`[Minimax] depth=${depth} aborted during child search`);
+
+        if (verboseLog) {
+          console.log(`[Minimax] depth=${depth} aborted during child search`);
+        }
+
         return { move: null, score: -Infinity };
       }
     }
@@ -799,10 +985,12 @@ export const findBestMove = (
     if (alpha >= beta) {
       ctx.tt.store(initialHash, depth, bestScore, 'LOWERBOUND', bestPos);
 
-      console.log(
-        `[Minimax] depth=${depth} fail-high: alpha=${alpha}, beta=${beta}, ` +
-        `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
-      );
+      if (verboseLog) {
+        console.log(
+          `[Minimax] depth=${depth} fail-high: alpha=${alpha}, beta=${beta}, ` +
+            `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
+        );
+      }
 
       return { move: bestPos, score: bestScore };
     }
@@ -824,9 +1012,11 @@ export const findBestMove = (
 
   ctx.tt.store(initialHash, depth, bestScore, flag, bestPos);
 
-  console.log(
-    `[Minimax] best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}, flag=${flag}`
-  );
+  if (verboseLog) {
+    console.log(
+      `[Minimax] best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}, flag=${flag}`
+    );
+  }
 
   return { move: bestPos, score: bestScore };
 };

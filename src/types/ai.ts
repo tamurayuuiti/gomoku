@@ -231,3 +231,286 @@ export interface CandidateSetState {
   isCandidate: boolean[][];
   refCount: number[][];
 }
+
+// --- 第4弾：統計・ログ用型 ---
+
+/** 診断ログの出力レベル */
+export type AiLogLevel = 'none' | 'summary' | 'detailed';
+
+/** 思考モード */
+export type SearchMode = 'center' | 'fixed' | 'iterative';
+
+/** 時間関連の統計 */
+export interface SearchTimeStats {
+  /** 思考時間 [ms] */
+  elapsedMs: number;
+
+  /** 時間制限 [ms]。固定深度探索では null */
+  limitMs: number | null;
+
+  /** 時間切れ等で探索が中断されたか */
+  aborted: boolean;
+}
+
+/** ノード関連の統計 */
+export interface SearchNodeStats {
+  /** 探索ノード総数 */
+  total: number;
+
+  /** 内部ノード数（TT カットオフを含む） */
+  internal: number;
+
+  /** 葉ノード数（静的評価で終了したノード） */
+  leaf: number;
+
+  /** TT カットオフ回数 */
+  ttCutoff: number;
+
+  /** 即時勝利検出回数 */
+  immediateWin: number;
+
+  /** 即時負け検出回数 */
+  immediateLoss: number;
+}
+
+/** TT 関連の統計 */
+export interface SearchTTStats {
+  /** TT 参照試行回数 */
+  lookups: number;
+
+  /** TT hit 回数 */
+  hits: number;
+
+  /** hit / lookups */
+  hitRate: number;
+
+  /** 保存回数 */
+  stores: number;
+
+  /** EXACT 保存数 */
+  storesExact: number;
+
+  /** LOWERBOUND 保存数 */
+  storesLower: number;
+
+  /** UPPERBOUND 保存数 */
+  storesUpper: number;
+
+  /** 既存エントリが深かったため保存を見送った回数 */
+  storesRejectedShallow: number;
+
+  /** TT から bestMove を取得した回数 */
+  bestMoveProvided: number;
+
+  /** TT Move が候補手 tier に実際に含まれた回数 */
+  bestMoveUsed: number;
+
+  /** サイズ上限超過による退避（eviction / clear）が発生した回数 */
+  evictions: number;
+
+  /** 最大サイズ */
+  maxSize: number;
+
+  /** 最終サイズ */
+  finalSize: number;
+}
+
+/** PVS 関連の統計 */
+export interface SearchPvsStats {
+  /** null-window 探索回数 */
+  nullSearches: number;
+
+  /** 最大化側 fail-high 再探索回数 */
+  failHighResearches: number;
+
+  /** 最小化側 fail-low 再探索回数 */
+  failLowResearches: number;
+
+  /** full window 再探索回数 */
+  fullResearches: number;
+
+  /** ルート PVS null 探索回数 */
+  rootNullSearches: number;
+}
+
+/** LMR 関連の統計 */
+export interface SearchLmrStats {
+  /** LMR 判定が行われた回数 */
+  attempted: number;
+
+  /** 実際に削減された回数 */
+  reduced: number;
+
+  /** 削減された深度の合計 */
+  reductionTotal: number;
+
+  /** 削減後の再探索回数 */
+  researches: number;
+
+  /** 戦術手としてスキップした回数 */
+  skippedTactical: number;
+
+  /** Killer のためスキップした回数 */
+  skippedKiller: number;
+
+  /** Countermove のためスキップした回数 */
+  skippedCountermove: number;
+
+  /** TT Move のためスキップした回数 */
+  skippedTTMove: number;
+}
+
+/** Aspiration Window 関連の統計 */
+export interface SearchAspirationStats {
+  /** Aspiration 適用回数 */
+  attempts: number;
+
+  /** fail-high 回数 */
+  failHigh: number;
+
+  /** fail-low 回数 */
+  failLow: number;
+
+  /** full window 再探索回数 */
+  fullResearches: number;
+}
+
+/** 候補手生成関連の統計 */
+export interface SearchCandidateStats {
+  /** 候補手生成呼び出し回数 */
+  genCalls: number;
+
+  /** 実際に探索へ渡した候補手の総数 */
+  selectedTotal: number;
+
+  /** 1ノードあたり平均候補手数 */
+  avgPerNode: number;
+
+  /** 最大候補手数 */
+  maxPerNode: number;
+
+  /** CRITICAL 候補の総数 */
+  criticalTotal: number;
+
+  /** Quiet 候補の総数 */
+  quietTotal: number;
+
+  /** Quiet 剪定で捨てた数 */
+  quietPrunedTotal: number;
+}
+
+/** Move ordering 関連の統計 */
+export interface SearchOrderingStats {
+  /** TT Move が候補 tier に上がった回数（tt.bestMoveUsed と同一情報を ordering 側にも保持） */
+  ttBestMoveUsed: number;
+
+  /** Killer が候補 tier に上がった回数 */
+  killerHits: number;
+
+  /** Killer 保存回数 */
+  killerStores: number;
+
+  /** Countermove が候補 tier に上がった回数 */
+  countermoveHits: number;
+
+  /** Countermove 保存回数 */
+  countermoveStores: number;
+
+  /** History 保存回数 */
+  historyStores: number;
+}
+
+/** LineCache / パターンキャッシュ関連の統計 */
+export interface SearchCacheStats {
+  lineCacheUpdates: number;
+  lineCacheUndos: number;
+  lineCacheEvalCalls: number;
+  lineCacheFallbackCalls: number;
+  patternCacheHits: number;
+  patternCacheMisses: number;
+  patternCacheSize: number;
+}
+
+/** CandidateSet 関連の統計 */
+export interface SearchCandidateSetStats {
+  /** CandidateSet が使われたか */
+  used: boolean;
+
+  /** 増分更新回数 */
+  updates: number;
+
+  /** 復元回数 */
+  undos: number;
+
+  /** 最大候補集合サイズ */
+  maxSize: number;
+
+  /** 平均候補集合サイズ */
+  avgSize: number;
+
+  /** 平均計算用のサイズ合計 */
+  sizeSum: number;
+
+  /** 平均計算用のサンプル数 */
+  sizeSamples: number;
+}
+
+/**
+ * 1回の calculateNextMove 呼び出し単位で集計する統計情報。
+ * 統計値は探索の意思決定には使用しない。
+ */
+export interface SearchStats {
+  /** 統計スキーマ版本 */
+  schemaVersion: number;
+
+  /** 手番 */
+  turn: Player | null;
+
+  /** 思考モード */
+  searchMode: SearchMode;
+
+  /** 最終的に選んだ手 */
+  selectedMove: Position | null;
+
+  /** 最終スコア */
+  selectedScore: number | null;
+
+  /** 入力された直前手 */
+  lastMove: Position | null;
+
+  /** 設定上の最大深度 */
+  maxDepth: number;
+
+  /** 完了した反復深化深度 */
+  completedDepth: number;
+
+  /** 時間統計 */
+  time: SearchTimeStats;
+
+  /** ノード統計 */
+  nodes: SearchNodeStats;
+
+  /** TT 統計 */
+  tt: SearchTTStats;
+
+  /** PVS 統計 */
+  pvs: SearchPvsStats;
+
+  /** LMR 統計 */
+  lmr: SearchLmrStats;
+
+  /** Aspiration 統計 */
+  aspiration: SearchAspirationStats;
+
+  /** 候補手生成統計 */
+  candidates: SearchCandidateStats;
+
+  /** ordering 統計 */
+  ordering: SearchOrderingStats;
+
+  /** cache 統計 */
+  cache: SearchCacheStats;
+
+  /** CandidateSet 統計 */
+  candidateSet: SearchCandidateSetStats;
+}

@@ -25,6 +25,11 @@
 // --- lastMove（第2弾追加） ---
 // 任意で lastMove を受け取り、Worker へ options.lastMove として渡す。
 // 未指定の場合は従来通り options なしで Worker を呼び出す。
+//
+// --- 対局終了通知（追加） ---
+// gameStatus が Playing から終了状態へ遷移したとき、Worker へ
+// finalizeGameSession 制御メッセージを送信する。
+// これにより、人間勝ち・引き分け時にも対局全体統計を確定できる。
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type {
@@ -34,7 +39,12 @@ import type {
   GameMode,
   Position,
 } from '../types/game';
-import type { AiWorkerRequest, AiWorkerResponse } from '../workers/aiWorker.types';
+import type {
+  AiWorkerRequest,
+  AiWorkerResponse,
+  AiWorkerControlMessage,
+  AiGameResult,
+} from '../workers/aiWorker.types';
 
 interface UseAiPlayerProps {
   board: BoardState;
@@ -73,6 +83,9 @@ export const useAiPlayer = ({
 
   const workerRef = useRef<Worker | null>(null);
 
+  // 対局終了通知の二重送信防止用。
+  const prevGameStatusRef = useRef<GameStatus>(gameStatus);
+
   // AIの手番かどうかは props から同期的に導出できるため useMemo で計算する
   const isAiTurn = useMemo(
     () =>
@@ -105,6 +118,38 @@ export const useAiPlayer = ({
       workerRef.current = null;
     };
   }, []);
+
+  // --- 対局終了通知 ---
+  useEffect(() => {
+    const prev = prevGameStatusRef.current;
+    prevGameStatusRef.current = gameStatus;
+
+    if (gameMode !== 'PvE') return;
+
+    // Playing -> 終了状態への遷移だけを対象にする。
+    if (prev === 'Playing' && gameStatus !== 'Playing') {
+      const worker = workerRef.current;
+      if (!worker) return;
+
+      let aiResult: AiGameResult = 'Unknown';
+
+      if (gameStatus === 'Draw') {
+        aiResult = 'Draw';
+      } else if (gameStatus === 'BlackWins') {
+        // playerColor は人間の色。AI はその反対。
+        aiResult = playerColor === 'Black' ? 'Loss' : 'Win';
+      } else if (gameStatus === 'WhiteWins') {
+        aiResult = playerColor === 'White' ? 'Loss' : 'Win';
+      }
+
+      const message: AiWorkerControlMessage = {
+        control: 'finalizeGameSession',
+        aiResult,
+      };
+
+      worker.postMessage(message);
+    }
+  }, [gameStatus, gameMode, playerColor]);
 
   // --- AI実行ロジック ---
   useEffect(() => {
@@ -167,6 +212,7 @@ export const useAiPlayer = ({
     // これにより、既存の呼び出し側（lastMove 未指定）は完全に従来動作となる。
     if (lastMoveKey) {
       const [row, col] = lastMoveKey.split(',').map(Number);
+
       request.options = {
         lastMove: { row, col },
       };
