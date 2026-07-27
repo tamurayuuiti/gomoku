@@ -6,10 +6,10 @@
 //   - 単一ファイル内でしか使われない型（例: minimax.ts の SearchContext）は定義元に残す。
 //   - 型の生成ファクトリ関数（createKillerTable 等）や定数・スコア値はロジックであり
 //     型ではないため、従来通り定義元のファイルに残す。
-
 import type { Position, Player } from './game';
 
 // --- パターン評価（evaluator.ts / boardEvaluator.ts で共有） ---
+
 export type PatternType =
   | 'WIN'
   | 'OPEN_FOUR'
@@ -22,7 +22,76 @@ export type PatternType =
 
 export type PatternCount = Record<PatternType, number>;
 
+// --- 第6.1弾：Threat Model / forced move list ---
+
+/**
+ * 第6.1弾で導入する forced move の分類。
+ *
+ * 既存の PatternType / AI_SCORES / CandidateFlags の意味は変更しない。
+ * これは「ある着手の戦術的役割」を表す追加分類である。
+ */
+export type ForcedCategory =
+  | 'OWN_WIN'
+  | 'BLOCK_WIN'
+  | 'OWN_OPEN_FOUR'
+  | 'BLOCK_OPEN_FOUR'
+  | 'OWN_FOUR'
+  | 'BLOCK_FOUR'
+  | 'OPEN_THREE_DEFENSE'
+  | 'NONE';
+
+/**
+ * Threat Model 上の脅威種別。
+ *
+ * 第6.1弾では forced move list の分類・診断に使う。
+ * QUIET は強制性の低い手を表す。
+ */
+export type ThreatType =
+  | 'OWN_WIN'
+  | 'OWN_OPEN_FOUR'
+  | 'OWN_FOUR'
+  | 'BLOCK_WIN'
+  | 'BLOCK_OPEN_FOUR'
+  | 'BLOCK_FOUR'
+  | 'OPEN_THREE_DEFENSE'
+  | 'QUIET';
+
+/**
+ * 1つの forced move を表す。
+ *
+ * 1手が複数のカテゴリに該当することがある。
+ * 例: 自分の勝ち手であり、同時に相手の勝ち受けでもある。
+ */
+export interface ForcedMove {
+  pos: Position;
+  categories: ForcedCategory[];
+  priority: ForcedCategory;
+  legal: boolean;
+  forbiddenChecked: boolean;
+}
+
+/**
+ * forced move list 全体の結果。
+ *
+ * generatedAtHash は、将来のキャッシュ/診断用キーとして保持する。
+ * 第6.1弾では探索挙動に直接使わない。
+ */
+export interface ForcedMoveList {
+  moves: ForcedMove[];
+  byCategory: Record<ForcedCategory, Position[]>;
+  hasOwnWin: boolean;
+  hasBlockWin: boolean;
+  hasOwnOpenFour: boolean;
+  hasBlockOpenFour: boolean;
+  hasOwnFour: boolean;
+  hasBlockFour: boolean;
+  maxPriority: ForcedCategory | null;
+  nodeKind: 'tactical' | 'quiet';
+  generatedAtHash: bigint;
+}
+
 // --- 探索オプション（search.ts / aiWorker.types.ts で共有） ---
+
 export interface SearchOptions {
   /** 探索深さの上書き（未指定時は AI_CONFIG.MINIMAX_DEPTH） */
   depth?: number;
@@ -44,6 +113,7 @@ export interface SearchOptions {
 }
 
 // --- 候補手（candidateGenerator.ts / minimax.ts で共有） ---
+
 /**
  * evaluatePosition の結果を保持したまま候補手を表す型。
  * minimax.ts で同一候補への再計算を避けるために使う。
@@ -86,6 +156,20 @@ export interface CandidateFlags {
 
   /** LMR を適用してよいか */
   reductionAllowed: boolean;
+
+  /**
+   * 第6.1弾追加: forced move list に含まれる手。
+   *
+   * 既存の isCritical / isTactical / isQuiet / reductionAllowed の意味は変更しない。
+   * あくまで追加の診断・保護・将来の戦術 solver 用フラグである。
+   */
+  isForced?: boolean;
+
+  /** 第6.1弾追加: forced move 内の最高優先度 */
+  forcedPriority?: ForcedCategory | null;
+
+  /** 第6.1弾追加: forced move カテゴリ一覧 */
+  forcedCategories?: ForcedCategory[];
 }
 
 /**
@@ -97,6 +181,7 @@ export interface OrderedCandidate extends ScoredPosition {
 }
 
 // --- Killer heuristic（candidateGenerator.ts / minimax.ts で共有） ---
+
 /** 深さ 1 レベルの killer スロット（最新 / 次点） */
 export type KillerEntry = [Position | null, Position | null];
 
@@ -104,6 +189,7 @@ export type KillerEntry = [Position | null, Position | null];
 export type KillerTable = KillerEntry[];
 
 // --- History heuristic（candidateGenerator.ts / minimax.ts で共有） ---
+
 /**
  * history heuristic 用のスコアテーブル。historyTable[player][row][col] に
  * 「その手が過去にカットオフを引き起こした深さ」に基づく加点を累積する。
@@ -115,6 +201,7 @@ export type KillerTable = KillerEntry[];
 export type HistoryTable = Record<Player, number[][]>;
 
 // --- Countermove heuristic（candidateGenerator.ts / minimax.ts で共有） ---
+
 /**
  * countermove heuristic 用テーブル。
  *
@@ -128,6 +215,7 @@ export type HistoryTable = Record<Player, number[][]>;
 export type CountermoveTable = Record<Player, (Position | null)[]>;
 
 // --- Transposition Table（transpositionTable.ts / minimax.ts で共有） ---
+
 /**
  * TTエントリの種別。
  * - EXACT: 正確なスコア（α < score < β の範囲で探索完了）
@@ -158,6 +246,7 @@ export interface TTEntry {
 }
 
 // --- LineCache（lineCache.ts / evaluator.ts / boardEvaluator.ts / minimax.ts で共有） ---
+
 /**
  * 1方向分のラインキャッシュ。
  * [row][col] に 9 文字ライン文字列を保持する。
@@ -189,6 +278,7 @@ export interface LineCacheUndo {
 }
 
 // --- CandidateSet（candidateGenerator.ts / minimax.ts / boardEvaluator.ts で共有） ---
+
 /**
  * CandidateSet の差分更新で影響を受けたセルの旧状態。
  */
@@ -224,6 +314,7 @@ export interface CandidateSetState {
 }
 
 // --- 第4弾：統計・ログ用型 ---
+
 /** 診断ログの出力レベル */
 export type AiLogLevel = 'none' | 'summary' | 'detailed';
 
@@ -449,7 +540,6 @@ export interface SearchCacheStats {
   lineCacheUndos: number;
   lineCacheEvalCalls: number;
   lineCacheFallbackCalls: number;
-
   patternCacheHits: number;
   patternCacheMisses: number;
   patternCacheSize: number;
@@ -530,6 +620,60 @@ export interface SearchStaticEvalCacheStats {
   hitRate: number;
 }
 
+/** 第6.1弾：Threat Model / forced move list 統計 */
+export interface SearchThreatStats {
+  /** Threat Model / forced move list 生成呼び出し回数 */
+  modelCalls: number;
+
+  /** Threat Model / forced move list 生成時間合計 [ms] */
+  modelTimeMs: number;
+
+  /** forced move list を生成した回数（空リストでも生成として数える） */
+  forcedGenerated: number;
+
+  /** 生成された forced move の延べ件数 */
+  forcedMovesTotal: number;
+
+  /** OWN_WIN に分類された手の延べ件数 */
+  ownWinMoves: number;
+
+  /** BLOCK_WIN に分類された手の延べ件数 */
+  blockWinMoves: number;
+
+  /** OWN_OPEN_FOUR に分類された手の延べ件数 */
+  ownOpenFourMoves: number;
+
+  /** BLOCK_OPEN_FOUR に分類された手の延べ件数 */
+  blockOpenFourMoves: number;
+
+  /** OWN_FOUR に分類された手の延べ件数 */
+  ownFourMoves: number;
+
+  /** BLOCK_FOUR に分類された手の延べ件数 */
+  blockFourMoves: number;
+
+  /** OPEN_THREE_DEFENSE に分類された手の延べ件数 */
+  openThreeDefenseMoves: number;
+
+  /** root で既存候補に不足していた必須 forced move を追加した件数 */
+  rootForcedIncluded: number;
+
+  /** root で既存候補に不足していた必須 forced move の件数 */
+  rootForcedMissing: number;
+
+  /** root で容量上限により追加できなかった必須 forced move の件数 */
+  rootForcedDropped: number;
+
+  /** internal node で forced move list 生成を呼び出した回数 */
+  internalForcedCalls: number;
+
+  /** tactical node と分類された回数 */
+  tacticalNodes: number;
+
+  /** quiet node と分類された回数 */
+  quietNodes: number;
+}
+
 /**
  * 1回の calculateNextMove 呼び出し単位で集計する統計情報。
  * 統計値は探索の意思決定には使用しない。
@@ -594,4 +738,7 @@ export interface SearchStats {
 
   /** 第5弾：Static Eval Cache 統計 */
   staticEvalCache: SearchStaticEvalCacheStats;
+
+  /** 第6.1弾：Threat Model / forced move list 統計 */
+  threat: SearchThreatStats;
 }

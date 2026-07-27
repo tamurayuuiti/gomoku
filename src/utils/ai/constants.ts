@@ -3,11 +3,11 @@
 //
 // 型定義（PatternType / PatternCount / SearchOptions）は複数ファイルから
 // 共有されるため types/ai.ts に集約している。このファイルは定数のみを扱う。
-
 import { DIRECTIONS as GAME_DIRECTIONS } from '../gameLogic';
 import type { AiLogLevel } from '../../types/ai';
 
 // --- スコア定数（攻撃基準に統一） ---
+
 export const AI_SCORES = {
   // 最優先事項
   WIN: 1_000_000,
@@ -31,6 +31,7 @@ export const AI_SCORES = {
 } as const;
 
 // --- AI探索設定 ---
+
 // depth・timeLimitMs のデフォルト値をここに一元管理し、
 // 呼び出し側が SearchOptions を明示しない限り常にこの値が使われる。
 export const AI_CONFIG = {
@@ -66,6 +67,7 @@ export const AI_CONFIG = {
 } as const;
 
 // --- 全盤評価設定 ---
+
 export const EVAL_CONFIG = {
   /**
    * evaluateBoard で集計する上位 K 手の数。
@@ -83,6 +85,7 @@ export const EVAL_CONFIG = {
 } as const;
 
 // --- Transposition Table / Aspiration Window 設定 ---
+
 export const TT_CONFIG = {
   /**
    * 置換表の最大エントリ数。
@@ -118,6 +121,7 @@ export const TT_CONFIG = {
 } as const;
 
 // --- 第2弾 feature flags ---
+
 /**
  * 第2弾・第3弾の探索機能を個別に有効/無効化するフラグ。
  *
@@ -126,6 +130,7 @@ export const TT_CONFIG = {
  */
 export const AI_FEATURES = {
   // --- 第2弾 ---
+
   /**
    * 戦術的候補手生成を有効化する。
    * - CRITICAL / Countermove / Killer / Quiet の tier 管理
@@ -144,6 +149,7 @@ export const AI_FEATURES = {
   ENABLE_PVS: true,
 
   // --- 第3弾 ---
+
   /** 差分ラインキャッシュを有効化する */
   ENABLE_LINE_CACHE: true,
 
@@ -168,6 +174,7 @@ export const AI_FEATURES = {
 } as const;
 
 // --- 候補手生成設定 ---
+
 export const CANDIDATE_CONFIG = {
   /** ルートノードの候補手上限 */
   ROOT_MAX_CANDIDATES: 16,
@@ -197,6 +204,7 @@ export const CANDIDATE_CONFIG = {
 } as const;
 
 // --- LMR 設定 ---
+
 export const LMR_CONFIG = {
   /** LMR を適用する最小残り深度 */
   MIN_DEPTH: 3,
@@ -221,6 +229,7 @@ export const LMR_CONFIG = {
 } as const;
 
 // --- PVS 設定 ---
+
 export const PVS_CONFIG = {
   /**
    * ルートノードでの PVS を許可するか。
@@ -232,6 +241,7 @@ export const PVS_CONFIG = {
 } as const;
 
 // --- 第4弾：診断用設定 ---
+
 /**
  * 第4弾で追加する診断専用設定。
  * 探索挙動を変える feature flag ではない。
@@ -249,6 +259,7 @@ export const AI_DEBUG_CONFIG: {
 };
 
 // --- 第5弾：feature flags / config ---
+
 /**
  * 第5弾で追加した探索効率・診断強化の機能フラグ。
  *
@@ -407,5 +418,84 @@ export const PHASE5_DEBUG = {
   ENABLE_PHASE5_CONFIG_LOG: false,
 } as const;
 
+// --- 第6.1弾：feature flags / config ---
+
+/**
+ * 第6.1弾で追加する Threat Model / forced move list 関連の機能フラグ。
+ *
+ * 第6.2弾の動的禁手・状態管理共通化は含まない。
+ * 既存の評価値・tier・LMR / PVS の意味は変更しない。
+ */
+export const PHASE6_FEATURES = {
+  /** Threat Model を有効化する */
+  ENABLE_THREAT_MODEL: true,
+
+  /** forced move list 生成を有効化する */
+  ENABLE_FORCED_MOVE_LIST: true,
+
+  /**
+   * root で必須 forced move が候補から欠落している場合、
+   * 既存候補の末尾へ追加して保護する。
+   *
+   * 既定では既存候補の並び順を変更しない。
+   */
+  ENABLE_ROOT_FORCED_PROTECTION: true,
+
+  /**
+   * forced move に基づく並び順変更を有効化する。
+   *
+   * 探索挙動が変わるため、第6.1弾では既定 OFF。
+   */
+  ENABLE_FORCED_ORDERING: false,
+
+  /**
+   * internal node で forced move list 生成を有効化する。
+   *
+   * 性能影響を分離するため、第6.1弾では既定 OFF。
+   */
+  ENABLE_INTERNAL_FORCED_LIST: false,
+
+  /**
+   * OPEN_THREE_DEFENSE を forced move list に含める。
+   *
+   * 過剰な強制手判定を避けるため、第6.1弾では既定 OFF。
+   */
+  ENABLE_OPEN_THREE_DEFENSE: false,
+} as const;
+
+/**
+ * 第6.1弾の設定値。
+ * 探索挙動そのものではなく、forced move list の生成範囲・保護容量を制御する。
+ */
+export const PHASE6_CONFIG = {
+  /** Threat Model / forced move list の世代（診断・将来キャッシュ用） */
+  THREAT_MODEL_VERSION: 1n,
+
+  /**
+   * root で必須 forced move を追加するための追加容量。
+   * 既存の ROOT_MAX_CANDIDATES に加えて、この件数まで追加を許容する。
+   */
+  ROOT_FORCED_EXTRA_CAPACITY: 2,
+
+  /**
+   * internal forced move list を有効化した場合の最大残り深度。
+   * ENABLE_INTERNAL_FORCED_LIST が false の場合は使用しない。
+   */
+  INTERNAL_FORCED_MAX_DEPTH: 4,
+
+  /**
+   * internal forced move list 生成時に走査する候補手の上限。
+   * ENABLE_INTERNAL_FORCED_LIST が false の場合は使用しない。
+   */
+  INTERNAL_FORCED_MAX_CANDIDATES: 32,
+
+  /**
+   * OPEN_THREE_DEFENSE を有効化した場合の最大追加件数。
+   * ENABLE_OPEN_THREE_DEFENSE が false の場合は使用しない。
+   */
+  OPEN_THREE_DEFENSE_MAX_MOVES: 4,
+} as const;
+
 // --- 方向定数 ---
+
 export const DIRECTIONS = GAME_DIRECTIONS;

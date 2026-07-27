@@ -18,7 +18,10 @@
 //   - 統計ログに比率・平均系指標を追加。
 //   - Aspiration fail rate / abort rate / center hit rate / avg us 系を可視化。
 //   - schemaVersion を 3 へ引き上げ。
-
+//
+// 第6.1弾:
+//   - Threat Model / forced move list 統計を追加。
+//   - schemaVersion を 4 へ引き上げ。
 import type { Player } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
@@ -37,7 +40,7 @@ export const createSearchStats = (
   timeLimitMs: number | null,
   lastMove: import('../../types/game').Position | null
 ): SearchStats => ({
-  schemaVersion: 3,
+  schemaVersion: 4,
   turn,
   searchMode,
   selectedMove: null,
@@ -45,7 +48,6 @@ export const createSearchStats = (
   lastMove,
   maxDepth,
   completedDepth: 0,
-
   time: {
     elapsedMs: 0,
     limitMs: timeLimitMs,
@@ -54,7 +56,6 @@ export const createSearchStats = (
     predictedSkips: 0,
     remainingAtSkipMs: 0,
   },
-
   nodes: {
     total: 0,
     internal: 0,
@@ -63,7 +64,6 @@ export const createSearchStats = (
     immediateWin: 0,
     immediateLoss: 0,
   },
-
   tt: {
     lookups: 0,
     hits: 0,
@@ -79,7 +79,6 @@ export const createSearchStats = (
     maxSize: 0,
     finalSize: 0,
   },
-
   pvs: {
     nullSearches: 0,
     failHighResearches: 0,
@@ -90,7 +89,6 @@ export const createSearchStats = (
     quietNullSearches: 0,
     rootFailHighResearches: 0,
   },
-
   lmr: {
     attempted: 0,
     reduced: 0,
@@ -101,7 +99,6 @@ export const createSearchStats = (
     skippedCountermove: 0,
     skippedTTMove: 0,
   },
-
   aspiration: {
     attempts: 0,
     failHigh: 0,
@@ -112,7 +109,6 @@ export const createSearchStats = (
     adaptiveExpansions: 0,
     disabledNearWin: 0,
   },
-
   candidates: {
     genCalls: 0,
     selectedTotal: 0,
@@ -123,7 +119,6 @@ export const createSearchStats = (
     quietPrunedTotal: 0,
     genTimeMs: 0,
   },
-
   ordering: {
     ttBestMoveUsed: 0,
     killerHits: 0,
@@ -132,7 +127,6 @@ export const createSearchStats = (
     countermoveStores: 0,
     historyStores: 0,
   },
-
   cache: {
     lineCacheUpdates: 0,
     lineCacheUndos: 0,
@@ -145,7 +139,6 @@ export const createSearchStats = (
     centerPatternMisses: 0,
     centerPatternSize: 0,
   },
-
   candidateSet: {
     used: false,
     updates: 0,
@@ -155,14 +148,12 @@ export const createSearchStats = (
     sizeSum: 0,
     sizeSamples: 0,
   },
-
   diagnostics: {
     checkWinCalls: 0,
     checkWinTimeMs: 0,
     leafEvalCalls: 0,
     leafEvalTimeMs: 0,
   },
-
   staticEvalCache: {
     lookups: 0,
     hits: 0,
@@ -172,6 +163,25 @@ export const createSearchStats = (
     size: 0,
     maxSize: 0,
     hitRate: 0,
+  },
+  threat: {
+    modelCalls: 0,
+    modelTimeMs: 0,
+    forcedGenerated: 0,
+    forcedMovesTotal: 0,
+    ownWinMoves: 0,
+    blockWinMoves: 0,
+    ownOpenFourMoves: 0,
+    blockOpenFourMoves: 0,
+    ownFourMoves: 0,
+    blockFourMoves: 0,
+    openThreeDefenseMoves: 0,
+    rootForcedIncluded: 0,
+    rootForcedMissing: 0,
+    rootForcedDropped: 0,
+    internalForcedCalls: 0,
+    tacticalNodes: 0,
+    quietNodes: 0,
   },
 });
 
@@ -282,6 +292,10 @@ export const finalizeSearchStats = (stats: SearchStats): void => {
   if (!Number.isFinite(stats.staticEvalCache.hitRate)) {
     stats.staticEvalCache.hitRate = 0;
   }
+
+  if (!Number.isFinite(stats.threat.modelTimeMs)) {
+    stats.threat.modelTimeMs = 0;
+  }
 };
 
 /**
@@ -315,7 +329,6 @@ const safeRate = (
   }
 
   const value = (100 * numerator) / denominator;
-
   return Number.isFinite(value) ? value.toFixed(digits) : (0).toFixed(digits);
 };
 
@@ -331,7 +344,6 @@ const safeAvgUs = (
   }
 
   const value = (timeMs * 1000) / calls;
-
   return Number.isFinite(value) ? value.toFixed(2) : '0.00';
 };
 
@@ -380,6 +392,11 @@ export const logSearchSummary = (stats: SearchStats): void => {
     stats.candidates.genCalls
   );
 
+  const threatAvgUs = safeAvgUs(
+    stats.threat.modelTimeMs,
+    stats.threat.modelCalls
+  );
+
   const summary =
     `[AI:Summary] v=${stats.schemaVersion} ` +
     `mode=${stats.searchMode} ` +
@@ -425,7 +442,21 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `leafAvgUs=${leafAvgUs} ` +
     `candAvgUs=${candAvgUs} ` +
     `secMiss=${stats.staticEvalCache.misses} ` +
-    `secEvict=${stats.staticEvalCache.evictions}`;
+    `secEvict=${stats.staticEvalCache.evictions} ` +
+    // 第6.1弾追加
+    `threatCalls=${stats.threat.modelCalls} ` +
+    `threatAvgUs=${threatAvgUs} ` +
+    `forced=${stats.threat.forcedMovesTotal} ` +
+    `fw=${stats.threat.ownWinMoves} ` +
+    `bfw=${stats.threat.blockWinMoves} ` +
+    `fof=${stats.threat.ownOpenFourMoves} ` +
+    `bfof=${stats.threat.blockOpenFourMoves} ` +
+    `f4=${stats.threat.ownFourMoves} ` +
+    `bf4=${stats.threat.blockFourMoves} ` +
+    `rfInc=${stats.threat.rootForcedIncluded} ` +
+    `rfMiss=${stats.threat.rootForcedMissing} ` +
+    `rfDrop=${stats.threat.rootForcedDropped} ` +
+    `tNodes=${stats.threat.tacticalNodes}/${stats.threat.quietNodes}`;
 
   console.log(summary);
 
@@ -579,6 +610,7 @@ export interface GameSessionStats {
   patternCacheMisses: number;
 
   // --- 第5弾追加 ---
+
   /** checkWin 呼び出し回数 */
   checkWinCalls: number;
 
@@ -653,6 +685,59 @@ export interface GameSessionStats {
 
   /** 時間予測による打ち切り回数 */
   timePredictedSkips: number;
+
+  // --- 第6.1弾追加 ---
+
+  /** Threat Model / forced move list 生成呼び出し回数 */
+  threatModelCalls: number;
+
+  /** Threat Model / forced move list 生成時間合計 [ms] */
+  threatModelTimeMs: number;
+
+  /** forced move list を生成した回数 */
+  forcedGenerated: number;
+
+  /** 生成された forced move の延べ件数 */
+  forcedMovesTotal: number;
+
+  /** OWN_WIN に分類された手の延べ件数 */
+  ownWinMoves: number;
+
+  /** BLOCK_WIN に分類された手の延べ件数 */
+  blockWinMoves: number;
+
+  /** OWN_OPEN_FOUR に分類された手の延べ件数 */
+  ownOpenFourMoves: number;
+
+  /** BLOCK_OPEN_FOUR に分類された手の延べ件数 */
+  blockOpenFourMoves: number;
+
+  /** OWN_FOUR に分類された手の延べ件数 */
+  ownFourMoves: number;
+
+  /** BLOCK_FOUR に分類された手の延べ件数 */
+  blockFourMoves: number;
+
+  /** OPEN_THREE_DEFENSE に分類された手の延べ件数 */
+  openThreeDefenseMoves: number;
+
+  /** root で既存候補に不足していた必須 forced move を追加した件数 */
+  rootForcedIncluded: number;
+
+  /** root で既存候補に不足していた必須 forced move の件数 */
+  rootForcedMissing: number;
+
+  /** root で容量上限により追加できなかった必須 forced move の件数 */
+  rootForcedDropped: number;
+
+  /** internal node で forced move list 生成を呼び出した回数 */
+  internalForcedCalls: number;
+
+  /** tactical node と分類された回数 */
+  tacticalNodes: number;
+
+  /** quiet node と分類された回数 */
+  quietNodes: number;
 }
 
 let activeGameSession: GameSessionStats | null = null;
@@ -660,7 +745,7 @@ let activeGameSession: GameSessionStats | null = null;
 const createGameSessionStats = (
   aiPlayer: Player | null
 ): GameSessionStats => ({
-  schemaVersion: 3,
+  schemaVersion: 4,
   result: null,
   aiPlayer,
   startedAtMs: performance.now(),
@@ -678,7 +763,6 @@ const createGameSessionStats = (
   abortCount: 0,
   immediateWinCount: 0,
   immediateLossCount: 0,
-
   ttLookups: 0,
   ttHits: 0,
   ttHitRate: 0,
@@ -686,29 +770,22 @@ const createGameSessionStats = (
   ttEvictions: 0,
   ttFinalSize: 0,
   ttMaxSize: 0,
-
   aspirationFailHigh: 0,
   aspirationFailLow: 0,
   aspirationFailTotal: 0,
   aspirationFullResearches: 0,
-
   pvsFullResearches: 0,
   rootPvsResearches: 0,
   rootPvsNullSearches: 0,
-
   lmrReduced: 0,
   lmrResearches: 0,
-
   candidateGenCalls: 0,
   candidateGenTimeMs: 0,
-
   staticEvalCacheLookups: 0,
   staticEvalCacheHits: 0,
   staticEvalCacheHitRate: 0,
-
   lineCacheEvalCalls: 0,
   lineCacheFallbackCalls: 0,
-
   patternCacheHits: 0,
   patternCacheMisses: 0,
 
@@ -717,33 +794,46 @@ const createGameSessionStats = (
   checkWinTimeMs: 0,
   leafEvalCalls: 0,
   leafEvalTimeMs: 0,
-
   pvsNullSearches: 0,
   pvsFailHighResearches: 0,
   pvsFailLowResearches: 0,
   pvsTacticalNullSkips: 0,
   pvsQuietNullSearches: 0,
-
   ttCutoffs: 0,
   ttBestMoveUsed: 0,
   ttActualFinalSize: 0,
   ttLastNonZeroSize: 0,
-
   aspirationAttempts: 0,
   aspirationWindowSum: 0,
   aspirationWindowMax: 0,
   aspirationAdaptiveExpansions: 0,
   aspirationDisabledNearWin: 0,
-
   staticEvalCacheStores: 0,
   staticEvalCacheMisses: 0,
   staticEvalCacheEvictions: 0,
   staticEvalCacheMaxSize: 0,
-
   centerPatternHits: 0,
   centerPatternMisses: 0,
-
   timePredictedSkips: 0,
+
+  // 第6.1弾
+  threatModelCalls: 0,
+  threatModelTimeMs: 0,
+  forcedGenerated: 0,
+  forcedMovesTotal: 0,
+  ownWinMoves: 0,
+  blockWinMoves: 0,
+  ownOpenFourMoves: 0,
+  blockOpenFourMoves: 0,
+  ownFourMoves: 0,
+  blockFourMoves: 0,
+  openThreeDefenseMoves: 0,
+  rootForcedIncluded: 0,
+  rootForcedMissing: 0,
+  rootForcedDropped: 0,
+  internalForcedCalls: 0,
+  tacticalNodes: 0,
+  quietNodes: 0,
 });
 
 export const isGameSessionActive = (): boolean =>
@@ -806,12 +896,13 @@ export const recordMoveToSession = (
   s.ttHits += stats.tt.hits;
   s.ttStores += stats.tt.stores;
   s.ttEvictions += stats.tt.evictions;
-
   s.ttFinalSize = stats.tt.finalSize;
   s.ttActualFinalSize = stats.tt.finalSize;
+
   if (stats.tt.finalSize > 0) {
     s.ttLastNonZeroSize = stats.tt.finalSize;
   }
+
   s.ttMaxSize = Math.max(s.ttMaxSize, stats.tt.maxSize);
 
   s.aspirationFailHigh += stats.aspiration.failHigh;
@@ -836,6 +927,7 @@ export const recordMoveToSession = (
   // 第5弾
   s.checkWinCalls += stats.diagnostics.checkWinCalls;
   s.checkWinTimeMs += stats.diagnostics.checkWinTimeMs;
+
   s.leafEvalCalls += stats.diagnostics.leafEvalCalls;
   s.leafEvalTimeMs += stats.diagnostics.leafEvalTimeMs;
 
@@ -871,6 +963,25 @@ export const recordMoveToSession = (
   s.centerPatternMisses += stats.cache.centerPatternMisses;
 
   s.timePredictedSkips += stats.time.predictedSkips;
+
+  // 第6.1弾
+  s.threatModelCalls += stats.threat.modelCalls;
+  s.threatModelTimeMs += stats.threat.modelTimeMs;
+  s.forcedGenerated += stats.threat.forcedGenerated;
+  s.forcedMovesTotal += stats.threat.forcedMovesTotal;
+  s.ownWinMoves += stats.threat.ownWinMoves;
+  s.blockWinMoves += stats.threat.blockWinMoves;
+  s.ownOpenFourMoves += stats.threat.ownOpenFourMoves;
+  s.blockOpenFourMoves += stats.threat.blockOpenFourMoves;
+  s.ownFourMoves += stats.threat.ownFourMoves;
+  s.blockFourMoves += stats.threat.blockFourMoves;
+  s.openThreeDefenseMoves += stats.threat.openThreeDefenseMoves;
+  s.rootForcedIncluded += stats.threat.rootForcedIncluded;
+  s.rootForcedMissing += stats.threat.rootForcedMissing;
+  s.rootForcedDropped += stats.threat.rootForcedDropped;
+  s.internalForcedCalls += stats.threat.internalForcedCalls;
+  s.tacticalNodes += stats.threat.tacticalNodes;
+  s.quietNodes += stats.threat.quietNodes;
 };
 
 /**
@@ -893,12 +1004,15 @@ export const finalizeGameSession = (
   // 基本は最後に観測した AI 着手後の石数。
   // 人間の手で終わった場合は +1 して推定する。
   let totalMoves = s.lastObservedPlies;
+
   if (result === 'Loss') {
     totalMoves += 1;
   }
+
   if (result === 'Draw' && totalMoves < BOARD_SIZE * BOARD_SIZE) {
     totalMoves += 1;
   }
+
   s.totalMoves = totalMoves;
 
   s.avgDepth = s.aiMoves > 0 ? s.completedDepthSum / s.aiMoves : 0;
@@ -953,6 +1067,11 @@ export const finalizeGameSession = (
   const candAvgUs = safeAvgUs(
     s.candidateGenTimeMs,
     s.candidateGenCalls
+  );
+
+  const threatAvgUs = safeAvgUs(
+    s.threatModelTimeMs,
+    s.threatModelCalls
   );
 
   const summary =
@@ -1013,7 +1132,21 @@ export const finalizeGameSession = (
     `chkAvgUs=${chkAvgUs} ` +
     `leafAvgUs=${leafAvgUs} ` +
     `candAvgUs=${candAvgUs} ` +
-    `secHits=${s.staticEvalCacheHits}`;
+    `secHits=${s.staticEvalCacheHits} ` +
+    // 第6.1弾追加
+    `threatCalls=${s.threatModelCalls} ` +
+    `threatAvgUs=${threatAvgUs} ` +
+    `forced=${s.forcedMovesTotal} ` +
+    `fw=${s.ownWinMoves} ` +
+    `bfw=${s.blockWinMoves} ` +
+    `fof=${s.ownOpenFourMoves} ` +
+    `bfof=${s.blockOpenFourMoves} ` +
+    `f4=${s.ownFourMoves} ` +
+    `bf4=${s.blockFourMoves} ` +
+    `rfInc=${s.rootForcedIncluded} ` +
+    `rfMiss=${s.rootForcedMissing} ` +
+    `rfDrop=${s.rootForcedDropped} ` +
+    `tNodes=${s.tacticalNodes}/${s.quietNodes}`;
 
   console.log(summary);
 
