@@ -110,6 +110,18 @@ export interface SearchOptions {
    * - Worker 通信との後方互換のため任意項目とする。
    */
   lastMove?: Position | null;
+
+  /**
+   * 第6.2弾追加: 禁手ルールが有効かどうか。
+   *
+   * - true: Black 禁手の限定動的再判定を有効化できる。
+   * - false: 動的禁手を明示的に無効化する。
+   * - undefined: PHASE6_CONFIG.REQUIRE_EXPLICIT_FORBIDDEN_RULE に従う。
+   *
+   * 既定では UI 後方互換のため、undefined を禁手有効として扱う。
+   * 禁手ルール OFF の UI から使う場合は false を渡すことが望ましい。
+   */
+  forbiddenRuleEnabled?: boolean;
 }
 
 // --- 候補手（candidateGenerator.ts / minimax.ts で共有） ---
@@ -674,6 +686,48 @@ export interface SearchThreatStats {
   quietNodes: number;
 }
 
+/** 第6.2弾：限定動的禁手統計 */
+export interface SearchForbiddenStats {
+  /** 動的禁手判定を実行した回数 */
+  dynamicChecks: number;
+
+  /** 動的禁手判定により禁手と判定された回数 */
+  dynamicForbiddenMoves: number;
+
+  /** White 手番のため動的禁手をスキップしたノード数 */
+  dynamicSkippedWhite: number;
+
+  /** 深度条件により動的禁手をスキップしたノード数 */
+  dynamicSkippedDeep: number;
+
+  /** flag / ルール設定により動的禁手をスキップしたノード数 */
+  dynamicSkippedDisabled: number;
+
+  /** 禁手キャッシュ hit 回数 */
+  cacheHits: number;
+
+  /** 禁手キャッシュ miss 回数 */
+  cacheMisses: number;
+
+  /** 禁手キャッシュ eviction 回数 */
+  cacheEvictions: number;
+
+  /** 禁手キャッシュ現在サイズ */
+  cacheSize: number;
+
+  /** 禁手キャッシュ最大サイズ */
+  cacheMaxSize: number;
+
+  /** root 最終着手が禁手と判定され、フォールバックした回数 */
+  rootMoveRejectedByForbidden: number;
+
+  /** 静的 forbiddenMoves では合法だが動的禁手で禁手となった回数 */
+  mismatchWithStaticForbidden: number;
+
+  /** 動的禁手の前提として禁手ルールが有効と解決されたか */
+  forbiddenRuleEnabled: boolean;
+}
+
 /**
  * 1回の calculateNextMove 呼び出し単位で集計する統計情報。
  * 統計値は探索の意思決定には使用しない。
@@ -741,4 +795,7 @@ export interface SearchStats {
 
   /** 第6.1弾：Threat Model / forced move list 統計 */
   threat: SearchThreatStats;
+
+  /** 第6.2弾：限定動的禁手統計 */
+  forbidden: SearchForbiddenStats;
 }

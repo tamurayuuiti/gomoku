@@ -26,7 +26,11 @@
 //
 // 第5.5.1弾:
 //   - Static Eval Cache を外部から注入可能にし、思考単位で共有できるようにする。
-
+//
+// 第6.2弾:
+//   - apply / undo を searchState.ts へ共通化する。
+//   - DynamicForbiddenController を注入可能にする。
+//   - 候補手生成へ currentHash と dynamicForbidden を渡す。
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
   KillerTable,
@@ -36,7 +40,6 @@ import type {
   OrderedCandidate,
   LineCacheState,
   CandidateSetState,
-  CandidateSetUndo,
   SearchStats,
 } from '../../types/ai';
 import { checkWin } from '../gameLogic';
@@ -58,20 +61,14 @@ import {
   createHistoryTable,
   createCountermoveTable,
   createCandidateSet,
-  applyCandidateSet,
-  undoCandidateSet,
   storeKiller,
   storeHistory,
   storeCountermove,
   generateOrderedCandidates,
 } from './candidateGenerator';
 import { TranspositionTable } from './transpositionTable';
-import { calculateInitialHash, updateHash } from './zobrist';
-import {
-  createLineCache,
-  updateLineCache,
-  undoLineCache,
-} from './lineCache';
+import { calculateInitialHash } from './zobrist';
+import { createLineCache } from './lineCache';
 import {
   createSearchStats,
   shouldLogVerboseSearch,
@@ -81,6 +78,11 @@ import {
   createStaticEvalCache,
   type StaticEvalCache,
 } from './staticEvalCache';
+import {
+  applySearchMove,
+  undoSearchMove,
+} from './searchState';
+import type { DynamicForbiddenController } from './dynamicForbidden';
 
 // ============================================================
 // SearchContext
@@ -90,39 +92,29 @@ import {
  * 探索コンテキスト。探索木全体を通じて共有される状態をまとめる。
  */
 interface SearchContext {
+  /**
+   * 探索対象盤面。
+   * minimax / findBestMove に渡される board と同一参照を保持する。
+   *
+   * 第6.2弾で searchState.ts の applySearchMove / undoSearchMove が
+   * SearchStateContainers を受け取る設計になったため、
+   * SearchContext 側も board を保持して構造的に互換にする。
+   */
+  board: BoardState;
+
   aiPlayer: Player;
   forbiddenMoves: boolean[][];
   killerTable: KillerTable;
-
-  /** history heuristic 用テーブル。generateOrderedCandidates の REST tier 内ソートの補助に使う */
   historyTable: HistoryTable;
-
-  /** countermove heuristic 用テーブル。直前手に対する応手を記録する */
   countermoveTable: CountermoveTable;
-
-  /** 第3弾: 差分ラインキャッシュ。無効時は null */
   lineCache: LineCacheState | null;
-
-  /** 第3弾: 候補集合の増分管理。無効時は null */
   candidateSet: CandidateSetState | null;
-
-  /** 第5弾: 葉評価キャッシュ。無効時は null */
   staticEvalCache: StaticEvalCache | null;
-
-  /** 探索打ち切り時刻（performance.now() 基準の絶対時刻 [ms]）。Infinity なら時間制御なし */
   deadline: number;
-
-  /** Transposition Table（置換表）。反復深化の全深さで共有する */
   tt: TranspositionTable;
-
-  /**
-   * 時間切れなどで探索が中断されたかどうか。
-   * true の場合、不完全な結果を TT に保存してはならない。
-   */
   aborted: boolean;
-
-  /** 第4弾：統計情報（探索判断には使わない） */
   stats: SearchStats;
+  dynamicForbidden: DynamicForbiddenController | null;
 }
 
 const createSearchContext = (
@@ -132,7 +124,8 @@ const createSearchContext = (
   deadline: number = Infinity,
   tt: TranspositionTable,
   stats: SearchStats,
-  sharedStaticEvalCache?: StaticEvalCache | null
+  sharedStaticEvalCache?: StaticEvalCache | null,
+  dynamicForbidden: DynamicForbiddenController | null = null
 ): SearchContext => {
   const lineCache = AI_FEATURES.ENABLE_LINE_CACHE
     ? createLineCache(board)
@@ -166,6 +159,7 @@ const createSearchContext = (
         : null;
 
   const ctx: SearchContext = {
+    board,
     aiPlayer,
     forbiddenMoves,
     killerTable: createKillerTable(),
@@ -178,6 +172,7 @@ const createSearchContext = (
     tt,
     aborted: false,
     stats,
+    dynamicForbidden,
   };
 
   if (ctx.candidateSet) {
@@ -251,74 +246,12 @@ const checkWinInstrumented = (
   const start = performance.now();
   const result = checkWin(board, move, player);
   ctx.stats.diagnostics.checkWinTimeMs += performance.now() - start;
-
   return result;
 };
 
 // ============================================================
-// 着手 / 復元ヘルパー（第3弾）
+// 葉ノード評価
 // ============================================================
-
-/**
- * board / LineCache / CandidateSet を一括で着手状態へ進める。
- * Zobrist hash は呼び出し側で updateHash する。
- */
-const applyMove = (
-  ctx: SearchContext,
-  board: BoardState,
-  row: number,
-  col: number,
-  player: Player
-): CandidateSetUndo | null => {
-  board[row][col] = player;
-
-  if (ctx.lineCache) {
-    updateLineCache(ctx.lineCache, row, col, player);
-    ctx.stats.cache.lineCacheUpdates++;
-  }
-
-  if (ctx.candidateSet) {
-    const undo = applyCandidateSet(
-      ctx.candidateSet,
-      board,
-      ctx.forbiddenMoves,
-      row,
-      col
-    );
-
-    ctx.stats.candidateSet.updates++;
-    recordCandidateSetSize(ctx.stats, ctx.candidateSet.candidates.size);
-
-    return undo;
-  }
-
-  return null;
-};
-
-/**
- * applyMove の逆操作。
- * board を空に戻してから LineCache / CandidateSet を復元する。
- */
-const undoMove = (
-  ctx: SearchContext,
-  board: BoardState,
-  row: number,
-  col: number,
-  player: Player,
-  candidateUndo: CandidateSetUndo | null
-): void => {
-  board[row][col] = null;
-
-  if (ctx.lineCache) {
-    undoLineCache(ctx.lineCache, { row, col, player });
-    ctx.stats.cache.lineCacheUndos++;
-  }
-
-  if (ctx.candidateSet && candidateUndo) {
-    undoCandidateSet(ctx.candidateSet, candidateUndo);
-    ctx.stats.candidateSet.undos++;
-  }
-};
 
 /**
  * 葉ノード評価。LineCache があれば cache 版を使う。
@@ -349,7 +282,6 @@ const evaluateLeaf = (
 
   if (ctx.lineCache) {
     ctx.stats.cache.lineCacheEvalCalls++;
-
     score = evaluateBoardWithCache(
       board,
       ctx.lineCache,
@@ -359,7 +291,6 @@ const evaluateLeaf = (
     );
   } else {
     ctx.stats.cache.lineCacheFallbackCalls++;
-
     score = evaluateBoard(board, ctx.aiPlayer, ctx.forbiddenMoves);
   }
 
@@ -400,11 +331,8 @@ const getReduction = (
   stats?: SearchStats
 ): number => {
   if (!AI_FEATURES.ENABLE_LMR) return 0;
-
   if (isRoot && !LMR_CONFIG.ALLOW_ROOT) return 0;
-
   if (depth < LMR_CONFIG.MIN_DEPTH) return 0;
-
   if (moveIndex < LMR_CONFIG.MIN_MOVE_INDEX) return 0;
 
   if (stats) {
@@ -423,7 +351,6 @@ const getReduction = (
         stats.lmr.skippedTactical++;
       }
     }
-
     return 0;
   }
 
@@ -529,7 +456,6 @@ const minimax = (
   if (depth === 0) {
     ctx.stats.nodes.total++;
     ctx.stats.nodes.leaf++;
-
     return evaluateLeaf(board, ctx, currentHash);
   }
 
@@ -542,7 +468,6 @@ const minimax = (
     ctx.stats.nodes.total++;
     ctx.stats.nodes.internal++;
     ctx.stats.nodes.ttCutoff++;
-
     return ttScore;
   }
 
@@ -563,14 +488,15 @@ const minimax = (
     isRoot,
     ctx.lineCache,
     ctx.candidateSet,
-    ctx.stats
+    ctx.stats,
+    currentHash,
+    ctx.dynamicForbidden
   );
 
   // 候補なし（盤面満杯等）→ 葉ノード評価にフォールバック
   if (candidates.length === 0) {
     ctx.stats.nodes.total++;
     ctx.stats.nodes.leaf++;
-
     return evaluateLeaf(board, ctx, currentHash);
   }
 
@@ -588,17 +514,19 @@ const minimax = (
 
       const { pos, score: moveScore, flags } = candidates[moveIndex];
       const { row, col } = pos;
-
-      const candidateUndo = applyMove(ctx, board, row, col, currentPlayer);
-      const nextHash = updateHash(currentHash, row, col, currentPlayer);
       const currentMove: Position = { row, col };
+
+      const { undo: moveUndo, nextHash } = applySearchMove(
+        ctx,
+        currentHash,
+        currentMove,
+        currentPlayer
+      );
 
       // 即時勝利検出
       if (checkWinInstrumented(board, currentMove, ctx.aiPlayer, ctx)) {
-        undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
-
+        undoSearchMove(ctx, moveUndo);
         ctx.stats.nodes.immediateWin++;
-
         return AI_SCORES.WIN;
       }
 
@@ -606,7 +534,6 @@ const minimax = (
 
       // null-window 探索は alpha が有限でないと安全に使えない。
       const canNull = Number.isFinite(alpha);
-
       if (reduction > 0 && !canNull) {
         reduction = 0;
       }
@@ -632,7 +559,6 @@ const minimax = (
 
         if (usePvsNull) {
           ctx.stats.pvs.nullSearches++;
-
           if (flags.reductionAllowed) {
             ctx.stats.pvs.quietNullSearches++;
           }
@@ -653,7 +579,7 @@ const minimax = (
         );
 
         if (ctx.aborted) {
-          undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+          undoSearchMove(ctx, moveUndo);
           return score;
         }
 
@@ -682,7 +608,7 @@ const minimax = (
           );
 
           if (ctx.aborted) {
-            undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+            undoSearchMove(ctx, moveUndo);
             return score;
           }
         } else if (reduction > 0) {
@@ -705,12 +631,12 @@ const minimax = (
         );
 
         if (ctx.aborted) {
-          undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+          undoSearchMove(ctx, moveUndo);
           return score;
         }
       }
 
-      undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+      undoSearchMove(ctx, moveUndo);
 
       if (score > maxScore) {
         maxScore = score;
@@ -751,7 +677,6 @@ const minimax = (
 
     // --- Transposition Table Store ---
     let flag: TTFlag = 'EXACT';
-
     if (maxScore <= alphaOrig) {
       flag = 'UPPERBOUND';
     } else if (maxScore >= betaOrig) {
@@ -759,7 +684,6 @@ const minimax = (
     }
 
     ctx.tt.store(currentHash, ttStoreDepth, maxScore, flag, bestMove);
-
     return maxScore;
   } else {
     let minScore = Infinity;
@@ -770,17 +694,19 @@ const minimax = (
 
       const { pos, score: moveScore, flags } = candidates[moveIndex];
       const { row, col } = pos;
-
-      const candidateUndo = applyMove(ctx, board, row, col, currentPlayer);
-      const nextHash = updateHash(currentHash, row, col, currentPlayer);
       const currentMove: Position = { row, col };
+
+      const { undo: moveUndo, nextHash } = applySearchMove(
+        ctx,
+        currentHash,
+        currentMove,
+        currentPlayer
+      );
 
       // 即時勝利検出（相手視点）
       if (checkWinInstrumented(board, currentMove, currentPlayer, ctx)) {
-        undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
-
+        undoSearchMove(ctx, moveUndo);
         ctx.stats.nodes.immediateLoss++;
-
         return -AI_SCORES.WIN;
       }
 
@@ -788,7 +714,6 @@ const minimax = (
 
       // null-window 探索は beta が有限でないと安全に使えない。
       const canNull = Number.isFinite(beta);
-
       if (reduction > 0 && !canNull) {
         reduction = 0;
       }
@@ -814,7 +739,6 @@ const minimax = (
 
         if (usePvsNull) {
           ctx.stats.pvs.nullSearches++;
-
           if (flags.reductionAllowed) {
             ctx.stats.pvs.quietNullSearches++;
           }
@@ -835,7 +759,7 @@ const minimax = (
         );
 
         if (ctx.aborted) {
-          undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+          undoSearchMove(ctx, moveUndo);
           return score;
         }
 
@@ -864,7 +788,7 @@ const minimax = (
           );
 
           if (ctx.aborted) {
-            undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+            undoSearchMove(ctx, moveUndo);
             return score;
           }
         } else if (reduction > 0) {
@@ -887,12 +811,12 @@ const minimax = (
         );
 
         if (ctx.aborted) {
-          undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+          undoSearchMove(ctx, moveUndo);
           return score;
         }
       }
 
-      undoMove(ctx, board, row, col, currentPlayer, candidateUndo);
+      undoSearchMove(ctx, moveUndo);
 
       if (score < minScore) {
         minScore = score;
@@ -933,7 +857,6 @@ const minimax = (
 
     // --- Transposition Table Store ---
     let flag: TTFlag = 'EXACT';
-
     if (minScore <= alphaOrig) {
       flag = 'UPPERBOUND';
     } else if (minScore >= betaOrig) {
@@ -941,7 +864,6 @@ const minimax = (
     }
 
     ctx.tt.store(currentHash, ttStoreDepth, minScore, flag, bestMove);
-
     return minScore;
   }
 };
@@ -969,6 +891,9 @@ export interface FindBestMoveResult {
  *
  * 第5.5.1弾：sharedStaticEvalCache を任意で受け取る。
  * search.ts からは calculateNextMove 単位で生成した cache を渡す。
+ *
+ * 第6.2弾：dynamicForbidden を任意で受け取る。
+ * search.ts からは calculateNextMove 単位で生成した controller を渡す。
  */
 export const findBestMove = (
   board: BoardState,
@@ -981,7 +906,8 @@ export const findBestMove = (
   initialBeta: number = Infinity,
   lastMove: Position | null = null,
   stats?: SearchStats,
-  sharedStaticEvalCache?: StaticEvalCache | null
+  sharedStaticEvalCache?: StaticEvalCache | null,
+  dynamicForbidden: DynamicForbiddenController | null = null
 ): FindBestMoveResult => {
   const searchStats =
     stats ?? createSearchStats(aiPlayer, 'fixed', depth, null, lastMove);
@@ -993,7 +919,8 @@ export const findBestMove = (
     deadline,
     tt,
     searchStats,
-    sharedStaticEvalCache
+    sharedStaticEvalCache,
+    dynamicForbidden
   );
 
   const verboseLog = shouldLogVerboseSearch();
@@ -1017,13 +944,14 @@ export const findBestMove = (
     true,
     ctx.lineCache,
     ctx.candidateSet,
-    ctx.stats
+    ctx.stats,
+    initialHash,
+    ctx.dynamicForbidden
   );
 
   if (candidates.length === 0) {
     ctx.stats.nodes.total++;
     ctx.stats.nodes.leaf++;
-
     return { move: null, score: -Infinity };
   }
 
@@ -1043,7 +971,7 @@ export const findBestMove = (
   if (verboseLog) {
     console.log(
       `[Minimax] depth=${depth}, candidates=${candidates.length}, player=${aiPlayer}, ` +
-      `window=[${alpha}, ${beta}], ttSize=${tt.size}`
+        `window=[${alpha}, ${beta}], ttSize=${tt.size}`
     );
   }
 
@@ -1058,21 +986,23 @@ export const findBestMove = (
       if (verboseLog) {
         console.log(`[Minimax] depth=${depth} timed out before completion`);
       }
-
       return { move: null, score: -Infinity };
     }
 
     const { pos } = candidates[moveIndex];
     const { row, col } = pos;
-
-    const candidateUndo = applyMove(ctx, board, row, col, aiPlayer);
-    const nextHash = updateHash(initialHash, row, col, aiPlayer);
     const currentMove: Position = { row, col };
+
+    const { undo: moveUndo, nextHash } = applySearchMove(
+      ctx,
+      initialHash,
+      currentMove,
+      aiPlayer
+    );
 
     // ルートノード即時勝利（1 手詰め検出）
     if (checkWinInstrumented(board, currentMove, aiPlayer, ctx)) {
-      undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
-
+      undoSearchMove(ctx, moveUndo);
       ctx.stats.nodes.immediateWin++;
 
       if (verboseLog) {
@@ -1110,7 +1040,7 @@ export const findBestMove = (
       );
 
       if (ctx.aborted) {
-        undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
+        undoSearchMove(ctx, moveUndo);
 
         if (verboseLog) {
           console.log(`[Minimax] depth=${depth} aborted during child search`);
@@ -1139,7 +1069,7 @@ export const findBestMove = (
         );
 
         if (ctx.aborted) {
-          undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
+          undoSearchMove(ctx, moveUndo);
 
           if (verboseLog) {
             console.log(`[Minimax] depth=${depth} aborted during child search`);
@@ -1163,7 +1093,7 @@ export const findBestMove = (
       );
 
       if (ctx.aborted) {
-        undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
+        undoSearchMove(ctx, moveUndo);
 
         if (verboseLog) {
           console.log(`[Minimax] depth=${depth} aborted during child search`);
@@ -1173,7 +1103,7 @@ export const findBestMove = (
       }
     }
 
-    undoMove(ctx, board, row, col, aiPlayer, candidateUndo);
+    undoSearchMove(ctx, moveUndo);
 
     if (score > bestScore) {
       bestScore = score;
@@ -1190,7 +1120,7 @@ export const findBestMove = (
       if (verboseLog) {
         console.log(
           `[Minimax] depth=${depth} fail-high: alpha=${alpha}, beta=${beta}, ` +
-          `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
+            `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
         );
       }
 
@@ -1205,7 +1135,6 @@ export const findBestMove = (
 
   // ルートノードの結果を TT に保存。
   let flag: TTFlag = 'EXACT';
-
   if (bestScore <= alphaOrig) {
     flag = 'UPPERBOUND';
   } else if (bestScore >= betaOrig) {

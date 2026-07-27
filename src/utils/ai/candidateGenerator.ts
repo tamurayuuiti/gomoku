@@ -26,6 +26,11 @@
 //   - Threat Model / forced move list を後段から付与する。
 //   - root で必須 forced move の欠落を保護する。
 //   - 既存 tier・評価値・LMR / PVS 判定の意味は変更しない。
+//
+// 第6.2弾:
+//   - Black 手番時の限定動的禁手フィルタを追加。
+//   - 静的 forbiddenMoves で合法とされている手でも、動的禁手で禁手なら候補から除外する。
+//   - 既存 tier・評価値・forced move list の意味は変更しない。
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
   KillerEntry,
@@ -64,6 +69,7 @@ import {
   isEssentialForcedCategory,
   getForcedPriorityRank,
 } from './forcedMoveGenerator';
+import type { DynamicForbiddenController } from './dynamicForbidden';
 
 // ============================================================
 // Killer table 生成・操作
@@ -398,7 +404,9 @@ const generateOrderedCandidatesInternal = (
   isRoot: boolean = false,
   lineCache: LineCacheState | null = null,
   candidateSet: CandidateSetState | null = null,
-  stats?: SearchStats
+  stats?: SearchStats,
+  currentHash: bigint = 0n,
+  dynamicForbidden: DynamicForbiddenController | null = null
 ): OrderedCandidate[] => {
   if (stats) {
     stats.candidates.genCalls++;
@@ -418,6 +426,31 @@ const generateOrderedCandidatesInternal = (
     stats.candidateSet.used = true;
     recordCandidateSetSize(stats, candidateSet.candidates.size);
   }
+
+  // 第6.2弾：このノードで動的禁手フィルタを使うか判定する。
+  const applyDynamicForbidden = dynamicForbidden
+    ? dynamicForbidden.shouldFilterNode(player, isRoot, depth, stats)
+    : false;
+
+  const isDynamicForbiddenMove = (r: number, c: number): boolean => {
+    if (!applyDynamicForbidden || !dynamicForbidden) return false;
+
+    const pos: Position = { row: r, col: c };
+    const forbidden = dynamicForbidden.check(
+      board,
+      pos,
+      player,
+      currentHash,
+      stats
+    );
+
+    // 静的 forbiddenMoves では合法だったが、動的禁手で除外された場合。
+    if (forbidden && stats) {
+      stats.forbidden.mismatchWithStaticForbidden++;
+    }
+
+    return forbidden;
+  };
 
   // ============================================================
   // 第5弾：bucket 方式候補手生成
@@ -486,6 +519,7 @@ const generateOrderedCandidatesInternal = (
         const r = Math.floor(idx / BOARD_SIZE);
         const c = idx % BOARD_SIZE;
         if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
+        if (isDynamicForbiddenMove(r, c)) continue;
         addBucketCandidate(r, c);
       }
     } else {
@@ -493,6 +527,7 @@ const generateOrderedCandidatesInternal = (
         for (let c = 0; c < BOARD_SIZE; c++) {
           if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
           if (!hasStoneNearby(board, r, c)) continue;
+          if (isDynamicForbiddenMove(r, c)) continue;
           addBucketCandidate(r, c);
         }
       }
@@ -656,6 +691,7 @@ const generateOrderedCandidatesInternal = (
       const r = Math.floor(idx / BOARD_SIZE);
       const c = idx % BOARD_SIZE;
       if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
+      if (isDynamicForbiddenMove(r, c)) continue;
       addCandidate(r, c);
     }
   } else {
@@ -663,6 +699,7 @@ const generateOrderedCandidatesInternal = (
       for (let c = 0; c < BOARD_SIZE; c++) {
         if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
         if (!hasStoneNearby(board, r, c)) continue;
+        if (isDynamicForbiddenMove(r, c)) continue;
         addCandidate(r, c);
       }
     }
@@ -998,6 +1035,9 @@ const applyPhase6ForcedMoves = (
  * 第6.1弾:
  *   - currentHash を任意で受け取り、forced move list へ渡す。
  *   - 未指定時の既定は 0n。既存呼び出しと後方互換。
+ *
+ * 第6.2弾:
+ *   - dynamicForbidden を任意で受け取り、Black 手番の限定動的禁手に使う。
  */
 export const generateOrderedCandidates = (
   board: BoardState,
@@ -1013,7 +1053,8 @@ export const generateOrderedCandidates = (
   lineCache: LineCacheState | null = null,
   candidateSet: CandidateSetState | null = null,
   stats?: SearchStats,
-  currentHash: bigint = 0n
+  currentHash: bigint = 0n,
+  dynamicForbidden: DynamicForbiddenController | null = null
 ): OrderedCandidate[] => {
   const finalizeWithPhase6 = (
     result: OrderedCandidate[]
@@ -1047,7 +1088,9 @@ export const generateOrderedCandidates = (
       isRoot,
       lineCache,
       candidateSet,
-      stats
+      stats,
+      currentHash,
+      dynamicForbidden
     );
     return finalizeWithPhase6(result);
   }
@@ -1069,7 +1112,9 @@ export const generateOrderedCandidates = (
       isRoot,
       lineCache,
       candidateSet,
-      stats
+      stats,
+      currentHash,
+      dynamicForbidden
     );
     result = finalizeWithPhase6(result);
     return result;

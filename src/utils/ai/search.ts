@@ -34,10 +34,13 @@
 // 第5.5.1弾:
 //   - Static Eval Cache を calculateNextMove 単位で生成し、全 findBestMove で共有
 //   - Aspiration quiet-only 条件を追加
-
+//
+// 第6.2弾:
+//   - DynamicForbiddenController を calculateNextMove 単位で生成し、全 findBestMove で共有
+//   - root 最終着手の禁手再検証と安全フォールバックを追加
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions } from '../../types/ai';
-import { BOARD_SIZE, checkWin } from '../gameLogic';
+import { BOARD_SIZE, checkWin, checkForbiddenMove } from '../gameLogic';
 import {
   AI_CONFIG,
   AI_SCORES,
@@ -45,6 +48,7 @@ import {
   AI_FEATURES,
   PHASE5_FEATURES,
   PHASE5_CONFIG,
+  PHASE6_FEATURES,
 } from './constants';
 import { findBestMove } from './minimax';
 import { TranspositionTable } from './transpositionTable';
@@ -53,11 +57,16 @@ import {
   getPatternCacheStats,
   resetCenterPatternCacheStats,
   getCenterPatternCacheStats,
+  hasStoneNearby,
 } from './evaluator';
 import {
   createStaticEvalCache,
   type StaticEvalCache,
 } from './staticEvalCache';
+import {
+  createDynamicForbiddenController,
+  type DynamicForbiddenController,
+} from './dynamicForbidden';
 import {
   createSearchStats,
   mergeTTStats,
@@ -114,13 +123,11 @@ const shouldUseAspiration = (
  */
 const countStones = (board: BoardState): number => {
   let count = 0;
-
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c] !== null) count++;
     }
   }
-
   return count;
 };
 
@@ -166,7 +173,6 @@ const isWinningMove = (
   board[move.row][move.col] = player;
   const win = checkWin(board, move, player);
   board[move.row][move.col] = null;
-
   return win;
 };
 
@@ -194,6 +200,95 @@ const createPerMoveStaticEvalCache = (
 };
 
 /**
+ * 第6.2弾:
+ * 1回の calculateNextMove 全体で共有する DynamicForbiddenController を生成する。
+ */
+const createPerMoveDynamicForbidden = (
+  options?: SearchOptions
+): DynamicForbiddenController =>
+  createDynamicForbiddenController({
+    forbiddenRuleEnabled: options?.forbiddenRuleEnabled,
+  });
+
+/**
+ * 第6.2弾:
+ * root 最終着手が動的禁手に抵触するか簡易再検証する。
+ *
+ * 本来は候補手生成段階で除外されるが、
+ * UI 静的禁手との不一致や将来拡張に備えて安全側で入れる。
+ */
+const isRootMoveDynamicallyForbidden = (
+  board: BoardState,
+  move: Position,
+  player: Player,
+  dynamicForbidden: DynamicForbiddenController
+): boolean => {
+  if (player !== 'Black') return false;
+  if (!dynamicForbidden.ruleEnabled) return false;
+
+  if (
+    !PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN ||
+    !PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
+  ) {
+    return false;
+  }
+
+  return checkForbiddenMove(board, move, player).isForbidden;
+};
+
+/**
+ * 第6.2弾:
+ * root 最終着手が禁手だった場合の安全フォールバック。
+ *
+ * 通常は発火しないことを想定する。
+ * 発火した場合は統計 rootMoveRejectedByForbidden を増やし、
+ * 静的禁手でも動的禁手でもない空マスから単純に選ぶ。
+ */
+const findLegalFallbackMove = (
+  board: BoardState,
+  forbiddenMoves: boolean[][],
+  player: Player,
+  dynamicForbidden: DynamicForbiddenController
+): Position | null => {
+  const isLegal = (row: number, col: number): boolean => {
+    if (board[row][col] !== null) return false;
+    if (forbiddenMoves[row][col]) return false;
+
+    if (
+      player === 'Black' &&
+      dynamicForbidden.ruleEnabled &&
+      PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN &&
+      PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
+    ) {
+      if (checkForbiddenMove(board, { row, col }, player).isForbidden) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  // 1st pass: 石の近くを優先。
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (!isLegal(r, c)) continue;
+      if (!hasStoneNearby(board, r, c)) continue;
+      return { row: r, col: c };
+    }
+  }
+
+  // 2nd pass: 任意の空マス。
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (!isLegal(r, c)) continue;
+      return { row: r, col: c };
+    }
+  }
+
+  return null;
+};
+
+/**
  * AIの次の一手を計算して返す。
  *
  * 公開インターフェース: この関数のシグネチャは変更禁止。
@@ -212,6 +307,8 @@ export const calculateNextMove = (
   const stonesBefore = countStones(board);
   startGameSessionForMove(currentTurn, stonesBefore);
 
+  const dynamicForbidden = createPerMoveDynamicForbidden(options);
+
   const isBoardEmpty = stonesBefore === 0;
 
   // 初手は中央
@@ -220,7 +317,7 @@ export const calculateNextMove = (
     const centerMove: Position = { row: center, col: center };
 
     const stats = createSearchStats(currentTurn, 'center', 0, null, null);
-
+    stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
     stats.selectedMove = centerMove;
     stats.selectedScore = 0;
     stats.completedDepth = 0;
@@ -231,7 +328,6 @@ export const calculateNextMove = (
 
     finalizeSearchStats(stats);
     logSearchSummary(stats);
-
     recordMoveToSession(stats, 1, true);
 
     return centerMove;
@@ -265,6 +361,8 @@ export const calculateNextMove = (
   // --- timeLimitMs 未指定: 従来通りの固定深さ探索 ---
   if (timeLimitMs === undefined) {
     const stats = createSearchStats(currentTurn, 'fixed', maxDepth, null, lastMove);
+    stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
+
     const tt = new TranspositionTable();
 
     const staticEvalCache = createPerMoveStaticEvalCache(
@@ -283,12 +381,35 @@ export const calculateNextMove = (
       Infinity,
       lastMove,
       stats,
-      staticEvalCache
+      staticEvalCache,
+      dynamicForbidden
     );
 
-    stats.selectedMove = result.move;
-    stats.selectedScore = result.move ? result.score : null;
-    stats.completedDepth = result.move ? maxDepth : 0;
+    let finalMove = result.move;
+    let finalScore: number | null = result.move ? result.score : null;
+
+    if (
+      finalMove &&
+      isRootMoveDynamicallyForbidden(
+        board,
+        finalMove,
+        currentTurn,
+        dynamicForbidden
+      )
+    ) {
+      stats.forbidden.rootMoveRejectedByForbidden++;
+      finalMove = findLegalFallbackMove(
+        board,
+        forbiddenMoves,
+        currentTurn,
+        dynamicForbidden
+      );
+      finalScore = null;
+    }
+
+    stats.selectedMove = finalMove;
+    stats.selectedScore = finalScore;
+    stats.completedDepth = finalMove ? maxDepth : 0;
     stats.time.elapsedMs = performance.now() - startTime;
 
     mergeTTStats(stats, tt.stats);
@@ -298,19 +419,18 @@ export const calculateNextMove = (
     finalizeSearchStats(stats);
     logSearchSummary(stats);
 
-    const movePlayed = result.move !== null;
-
+    const movePlayed = finalMove !== null;
     recordMoveToSession(
       stats,
       stonesBefore + (movePlayed ? 1 : 0),
       movePlayed
     );
 
-    if (result.move && isWinningMove(board, result.move, currentTurn)) {
+    if (finalMove && isWinningMove(board, finalMove, currentTurn)) {
       finalizeGameSession('Win');
     }
 
-    return result.move;
+    return finalMove;
   }
 
   // --- timeLimitMs 指定: 反復深化（iterative deepening） ---
@@ -321,6 +441,7 @@ export const calculateNextMove = (
     timeLimitMs,
     lastMove
   );
+  stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
   const deadline = performance.now() + timeLimitMs;
   const tt = new TranspositionTable();
@@ -388,7 +509,6 @@ export const calculateNextMove = (
           PHASE5_CONFIG.ASPIRATION_ADAPTIVE_MAX_WINDOW,
           window * 2
         );
-
         adaptiveAspirationWindow = window;
         stats.aspiration.adaptiveExpansions++;
       }
@@ -416,7 +536,8 @@ export const calculateNextMove = (
       beta,
       lastMove,
       stats,
-      staticEvalCache
+      staticEvalCache,
+      dynamicForbidden
     );
 
     // ------------------------------------------------------------
@@ -432,7 +553,7 @@ export const calculateNextMove = (
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-            `re-searching with full window`
+              `re-searching with full window`
           );
         }
 
@@ -447,7 +568,8 @@ export const calculateNextMove = (
           Infinity,
           lastMove,
           stats,
-          staticEvalCache
+          staticEvalCache,
+          dynamicForbidden
         );
       } else if (result.score <= alpha) {
         stats.aspiration.failLow++;
@@ -457,7 +579,7 @@ export const calculateNextMove = (
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-            `re-searching with full window`
+              `re-searching with full window`
           );
         }
 
@@ -472,7 +594,8 @@ export const calculateNextMove = (
           Infinity,
           lastMove,
           stats,
-          staticEvalCache
+          staticEvalCache,
+          dynamicForbidden
         );
       }
     }
@@ -526,8 +649,30 @@ export const calculateNextMove = (
     prevAspirationFailed = depthAspirationFailed && useAspiration;
   }
 
-  stats.selectedMove = best;
-  stats.selectedScore = best ? prevScore : null;
+  let finalBest = best;
+  let finalScore: number | null = best ? prevScore : null;
+
+  if (
+    finalBest &&
+    isRootMoveDynamicallyForbidden(
+      board,
+      finalBest,
+      currentTurn,
+      dynamicForbidden
+    )
+  ) {
+    stats.forbidden.rootMoveRejectedByForbidden++;
+    finalBest = findLegalFallbackMove(
+      board,
+      forbiddenMoves,
+      currentTurn,
+      dynamicForbidden
+    );
+    finalScore = null;
+  }
+
+  stats.selectedMove = finalBest;
+  stats.selectedScore = finalScore;
   stats.completedDepth = completedDepth;
   stats.time.elapsedMs = performance.now() - startTime;
 
@@ -538,17 +683,16 @@ export const calculateNextMove = (
   finalizeSearchStats(stats);
   logSearchSummary(stats);
 
-  const movePlayed = best !== null;
-
+  const movePlayed = finalBest !== null;
   recordMoveToSession(
     stats,
     stonesBefore + (movePlayed ? 1 : 0),
     movePlayed
   );
 
-  if (best && isWinningMove(board, best, currentTurn)) {
+  if (finalBest && isWinningMove(board, finalBest, currentTurn)) {
     finalizeGameSession('Win');
   }
 
-  return best;
+  return finalBest;
 };

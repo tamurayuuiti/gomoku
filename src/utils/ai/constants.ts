@@ -461,6 +461,38 @@ export const PHASE6_FEATURES = {
    * 過剰な強制手判定を避けるため、第6.1弾では既定 OFF。
    */
   ENABLE_OPEN_THREE_DEFENSE: false,
+
+  // --- 第6.2弾 ---
+
+  /**
+   * 限定動的禁手を有効化する。
+   *
+   * Black 手番時のみ、root / shallow node で候補手生成時に禁手を再判定する。
+   * 完全増分禁手ではなく、静的 forbiddenMoves を補完する限定対応。
+   */
+  ENABLE_DYNAMIC_FORBIDDEN: true,
+
+  /** root node で動的禁手を適用するか */
+  ENABLE_DYNAMIC_FORBIDDEN_ROOT: true,
+
+  /**
+   * internal node で動的禁手を適用するか。
+   *
+   * 性能影響を分離するため、第6.2弾では既定 OFF。
+   * 有効化する場合も DYNAMIC_FORBIDDEN_INTERNAL_MAX_DEPTH で shallow 限定にする。
+   */
+  ENABLE_DYNAMIC_FORBIDDEN_INTERNAL: false,
+
+  /** 動的禁手判定結果のキャッシュを有効化する */
+  ENABLE_FORBIDDEN_CACHE: true,
+
+  /**
+   * 状態管理共通化のデバッグ監査を有効化する。
+   *
+   * undo 後の board 状態などを検査する。
+   * 探索挙動は変更しないが、開発時以外は OFF を推奨。
+   */
+  ENABLE_STATE_AUDIT: false,
 } as const;
 
 /**
@@ -494,6 +526,33 @@ export const PHASE6_CONFIG = {
    * ENABLE_OPEN_THREE_DEFENSE が false の場合は使用しない。
    */
   OPEN_THREE_DEFENSE_MAX_MOVES: 4,
+
+  // --- 第6.2弾 ---
+
+  /**
+   * internal 動的禁手を有効化した場合の最大残り深度。
+   * ENABLE_DYNAMIC_FORBIDDEN_INTERNAL が false の場合は使用しない。
+   */
+  DYNAMIC_FORBIDDEN_INTERNAL_MAX_DEPTH: 2,
+
+  /** 禁手キャッシュの最大エントリ数 */
+  FORBIDDEN_CACHE_LIMIT: 20_000,
+
+  /** 禁手キャッシュ上限到達時の eviction 割合 */
+  FORBIDDEN_CACHE_EVICTION_RATIO: 0.2,
+
+  /** 禁手キャッシュ世代。禁手判定ロジック変更時に bump する */
+  FORBIDDEN_CACHE_VERSION: 1n,
+
+  /**
+   * true の場合、SearchOptions.forbiddenRuleEnabled === true が明示されたときだけ
+   * 動的禁手を有効化する。
+   *
+   * false の場合、undefined を禁手有効として扱う。
+   * 既存 UI との後方互換を重視する場合は false、
+   * 禁手 OFF 設定との誤整合を完全に避けたい場合は true を推奨。
+   */
+  REQUIRE_EXPLICIT_FORBIDDEN_RULE: false,
 } as const;
 
 // --- 方向定数 ---

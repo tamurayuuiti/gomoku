@@ -22,6 +22,10 @@
 // 第6.1弾:
 //   - Threat Model / forced move list 統計を追加。
 //   - schemaVersion を 4 へ引き上げ。
+//
+// 第6.2弾:
+//   - 限定動的禁手統計を追加。
+//   - schemaVersion を 5 へ引き上げ。
 import type { Player } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
@@ -40,7 +44,7 @@ export const createSearchStats = (
   timeLimitMs: number | null,
   lastMove: import('../../types/game').Position | null
 ): SearchStats => ({
-  schemaVersion: 4,
+  schemaVersion: 5,
   turn,
   searchMode,
   selectedMove: null,
@@ -182,6 +186,21 @@ export const createSearchStats = (
     internalForcedCalls: 0,
     tacticalNodes: 0,
     quietNodes: 0,
+  },
+  forbidden: {
+    dynamicChecks: 0,
+    dynamicForbiddenMoves: 0,
+    dynamicSkippedWhite: 0,
+    dynamicSkippedDeep: 0,
+    dynamicSkippedDisabled: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    cacheEvictions: 0,
+    cacheSize: 0,
+    cacheMaxSize: 0,
+    rootMoveRejectedByForbidden: 0,
+    mismatchWithStaticForbidden: 0,
+    forbiddenRuleEnabled: false,
   },
 });
 
@@ -397,6 +416,15 @@ export const logSearchSummary = (stats: SearchStats): void => {
     stats.threat.modelCalls
   );
 
+  const forbiddenCacheCalls =
+    stats.forbidden.cacheHits + stats.forbidden.cacheMisses;
+
+  const forbiddenCacheHitRate = safeRate(
+    stats.forbidden.cacheHits,
+    forbiddenCacheCalls,
+    1
+  );
+
   const summary =
     `[AI:Summary] v=${stats.schemaVersion} ` +
     `mode=${stats.searchMode} ` +
@@ -456,7 +484,14 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `rfInc=${stats.threat.rootForcedIncluded} ` +
     `rfMiss=${stats.threat.rootForcedMissing} ` +
     `rfDrop=${stats.threat.rootForcedDropped} ` +
-    `tNodes=${stats.threat.tacticalNodes}/${stats.threat.quietNodes}`;
+    `tNodes=${stats.threat.tacticalNodes}/${stats.threat.quietNodes} ` +
+    // 第6.2弾追加
+    `fbRule=${stats.forbidden.forbiddenRuleEnabled ? 1 : 0} ` +
+    `dynFb=${stats.forbidden.dynamicForbiddenMoves} ` +
+    `dynChk=${stats.forbidden.dynamicChecks} ` +
+    `fbHit=${forbiddenCacheHitRate}% ` +
+    `fbMis=${stats.forbidden.mismatchWithStaticForbidden} ` +
+    `fbRej=${stats.forbidden.rootMoveRejectedByForbidden}`;
 
   console.log(summary);
 
@@ -738,6 +773,41 @@ export interface GameSessionStats {
 
   /** quiet node と分類された回数 */
   quietNodes: number;
+
+  // --- 第6.2弾追加 ---
+
+  /** 動的禁手判定を実行した回数 */
+  dynamicChecks: number;
+
+  /** 動的禁手判定により禁手と判定された回数 */
+  dynamicForbiddenMoves: number;
+
+  /** White 手番のため動的禁手をスキップしたノード数 */
+  dynamicSkippedWhite: number;
+
+  /** 深度条件により動的禁手をスキップしたノード数 */
+  dynamicSkippedDeep: number;
+
+  /** flag / ルール設定により動的禁手をスキップしたノード数 */
+  dynamicSkippedDisabled: number;
+
+  /** 禁手キャッシュ hit 回数 */
+  forbiddenCacheHits: number;
+
+  /** 禁手キャッシュ miss 回数 */
+  forbiddenCacheMisses: number;
+
+  /** 禁手キャッシュ eviction 回数 */
+  forbiddenCacheEvictions: number;
+
+  /** 禁手キャッシュ最大サイズ */
+  forbiddenCacheMaxSize: number;
+
+  /** root 最終着手が禁手と判定され、フォールバックした回数 */
+  rootMoveRejectedByForbidden: number;
+
+  /** 静的 forbiddenMoves では合法だが動的禁手で禁手となった回数 */
+  forbiddenMismatch: number;
 }
 
 let activeGameSession: GameSessionStats | null = null;
@@ -745,7 +815,7 @@ let activeGameSession: GameSessionStats | null = null;
 const createGameSessionStats = (
   aiPlayer: Player | null
 ): GameSessionStats => ({
-  schemaVersion: 4,
+  schemaVersion: 5,
   result: null,
   aiPlayer,
   startedAtMs: performance.now(),
@@ -834,6 +904,19 @@ const createGameSessionStats = (
   internalForcedCalls: 0,
   tacticalNodes: 0,
   quietNodes: 0,
+
+  // 第6.2弾
+  dynamicChecks: 0,
+  dynamicForbiddenMoves: 0,
+  dynamicSkippedWhite: 0,
+  dynamicSkippedDeep: 0,
+  dynamicSkippedDisabled: 0,
+  forbiddenCacheHits: 0,
+  forbiddenCacheMisses: 0,
+  forbiddenCacheEvictions: 0,
+  forbiddenCacheMaxSize: 0,
+  rootMoveRejectedByForbidden: 0,
+  forbiddenMismatch: 0,
 });
 
 export const isGameSessionActive = (): boolean =>
@@ -982,6 +1065,23 @@ export const recordMoveToSession = (
   s.internalForcedCalls += stats.threat.internalForcedCalls;
   s.tacticalNodes += stats.threat.tacticalNodes;
   s.quietNodes += stats.threat.quietNodes;
+
+  // 第6.2弾
+  s.dynamicChecks += stats.forbidden.dynamicChecks;
+  s.dynamicForbiddenMoves += stats.forbidden.dynamicForbiddenMoves;
+  s.dynamicSkippedWhite += stats.forbidden.dynamicSkippedWhite;
+  s.dynamicSkippedDeep += stats.forbidden.dynamicSkippedDeep;
+  s.dynamicSkippedDisabled += stats.forbidden.dynamicSkippedDisabled;
+  s.forbiddenCacheHits += stats.forbidden.cacheHits;
+  s.forbiddenCacheMisses += stats.forbidden.cacheMisses;
+  s.forbiddenCacheEvictions += stats.forbidden.cacheEvictions;
+  s.forbiddenCacheMaxSize = Math.max(
+    s.forbiddenCacheMaxSize,
+    stats.forbidden.cacheMaxSize
+  );
+  s.rootMoveRejectedByForbidden +=
+    stats.forbidden.rootMoveRejectedByForbidden;
+  s.forbiddenMismatch += stats.forbidden.mismatchWithStaticForbidden;
 };
 
 /**
@@ -1074,6 +1174,15 @@ export const finalizeGameSession = (
     s.threatModelCalls
   );
 
+  const forbiddenCacheCalls =
+    s.forbiddenCacheHits + s.forbiddenCacheMisses;
+
+  const forbiddenCacheHitRate = safeRate(
+    s.forbiddenCacheHits,
+    forbiddenCacheCalls,
+    1
+  );
+
   const summary =
     `[AI:GameSummary] v=${s.schemaVersion} ` +
     `result=${s.result} ` +
@@ -1146,7 +1255,13 @@ export const finalizeGameSession = (
     `rfInc=${s.rootForcedIncluded} ` +
     `rfMiss=${s.rootForcedMissing} ` +
     `rfDrop=${s.rootForcedDropped} ` +
-    `tNodes=${s.tacticalNodes}/${s.quietNodes}`;
+    `tNodes=${s.tacticalNodes}/${s.quietNodes} ` +
+    // 第6.2弾追加
+    `dynFb=${s.dynamicForbiddenMoves} ` +
+    `dynChk=${s.dynamicChecks} ` +
+    `fbHit=${forbiddenCacheHitRate}% ` +
+    `fbMis=${s.forbiddenMismatch} ` +
+    `fbRej=${s.rootMoveRejectedByForbidden}`;
 
   console.log(summary);
 
