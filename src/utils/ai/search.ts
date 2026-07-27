@@ -43,7 +43,9 @@
 //   - Root VCF を通常探索前に実行
 //   - VCF で勝ち証明できた場合のみ早期 return
 //   - VCF 最終手の安全検証を追加
-
+//
+// 第8.1弾:
+//   - QSearchController を calculateNextMove 単位で生成し、全 findBestMove で共有
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
 import { BOARD_SIZE, checkWin, checkForbiddenMove } from '../gameLogic';
@@ -89,6 +91,7 @@ import {
   finalizeGameSession,
 } from './searchStats';
 import { runRootVcf } from './vcfSolver';
+import { createQSearchController } from './quiescence';
 
 /**
  * Aspiration Window を適用してよいか判定する。
@@ -191,7 +194,6 @@ const createPerMoveStaticEvalCache = (
   aiPlayer: Player
 ): StaticEvalCache | null => {
   if (!PHASE5_FEATURES.ENABLE_STATIC_EVAL_CACHE) return null;
-
   return createStaticEvalCache(
     {
       limit: PHASE5_CONFIG.STATIC_EVAL_CACHE_LIMIT,
@@ -231,14 +233,12 @@ const isRootMoveDynamicallyForbidden = (
 ): boolean => {
   if (player !== 'Black') return false;
   if (!dynamicForbidden.ruleEnabled) return false;
-
   if (
     !PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN ||
     !PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
   ) {
     return false;
   }
-
   return checkForbiddenMove(board, move, player).isForbidden;
 };
 
@@ -259,7 +259,6 @@ const findLegalFallbackMove = (
   const isLegal = (row: number, col: number): boolean => {
     if (board[row][col] !== null) return false;
     if (forbiddenMoves[row][col]) return false;
-
     if (
       player === 'Black' &&
       dynamicForbidden.ruleEnabled &&
@@ -270,7 +269,6 @@ const findLegalFallbackMove = (
         return false;
       }
     }
-
     return true;
   };
 
@@ -342,7 +340,6 @@ const tryRootVcfMove = (
     stats.vcf.rootRejectedByForbidden++;
     return null;
   }
-
   if (
     currentTurn === 'Black' &&
     dynamicForbidden.ruleEnabled &&
@@ -382,7 +379,6 @@ const finalizeVcfReturn = (
   mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
   finalizeSearchStats(stats);
   logSearchSummary(stats);
-
   recordMoveToSession(stats, stonesBefore + 1, true);
 
   if (immediateWin) {
@@ -404,7 +400,6 @@ export const calculateNextMove = (
   options?: SearchOptions
 ): Position | null => {
   const startTime = performance.now();
-
   resetPatternCacheStats();
   resetCenterPatternCacheStats();
 
@@ -419,20 +414,17 @@ export const calculateNextMove = (
   if (isBoardEmpty) {
     const center = Math.floor(BOARD_SIZE / 2);
     const centerMove: Position = { row: center, col: center };
-
     const stats = createSearchStats(currentTurn, 'center', 0, null, null);
     stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
     stats.selectedMove = centerMove;
     stats.selectedScore = 0;
     stats.completedDepth = 0;
     stats.time.elapsedMs = performance.now() - startTime;
-
     mergePatternCacheStats(stats, getPatternCacheStats());
     mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
     finalizeSearchStats(stats);
     logSearchSummary(stats);
     recordMoveToSession(stats, 1, true);
-
     return centerMove;
   }
 
@@ -478,7 +470,6 @@ export const calculateNextMove = (
       stonesBefore,
       stats
     );
-
     if (vcfMove) {
       return finalizeVcfReturn(
         board,
@@ -489,6 +480,20 @@ export const calculateNextMove = (
         stonesBefore
       );
     }
+
+    // 第8.1弾: QSearchController 生成
+    const qsearchController = createQSearchController(
+      {
+        aiPlayer: currentTurn,
+        forbiddenRuleEnabled: dynamicForbidden.ruleEnabled,
+        timeLimitMs: null,
+        deadline: Infinity,
+        maxDepth,
+        stonesBefore,
+        options,
+      },
+      stats
+    );
 
     const tt = new TranspositionTable();
     const staticEvalCache = createPerMoveStaticEvalCache(
@@ -508,7 +513,8 @@ export const calculateNextMove = (
       lastMove,
       stats,
       staticEvalCache,
-      dynamicForbidden
+      dynamicForbidden,
+      qsearchController
     );
 
     let finalMove = result.move;
@@ -559,7 +565,6 @@ export const calculateNextMove = (
   }
 
   // --- timeLimitMs 指定: 反復深化（iterative deepening） ---
-
   const stats = createSearchStats(
     currentTurn,
     'iterative',
@@ -585,7 +590,6 @@ export const calculateNextMove = (
     stonesBefore,
     stats
   );
-
   if (vcfMove) {
     return finalizeVcfReturn(
       board,
@@ -596,6 +600,20 @@ export const calculateNextMove = (
       stonesBefore
     );
   }
+
+  // 第8.1弾: QSearchController 生成（VCF 後、反復深化ループ前）
+  const qsearchController = createQSearchController(
+    {
+      aiPlayer: currentTurn,
+      forbiddenRuleEnabled: dynamicForbidden.ruleEnabled,
+      timeLimitMs,
+      deadline,
+      maxDepth,
+      stonesBefore,
+      options,
+    },
+    stats
+  );
 
   const tt = new TranspositionTable();
 
@@ -617,7 +635,6 @@ export const calculateNextMove = (
   const baseAspirationWindow = PHASE5_FEATURES.ENABLE_ASPIRATION_TUNING
     ? PHASE5_CONFIG.ASPIRATION_WINDOW_OVERRIDE
     : TT_CONFIG.ASPIRATION_WINDOW;
-
   let adaptiveAspirationWindow = baseAspirationWindow;
   let prevAspirationFailed = false;
 
@@ -634,7 +651,6 @@ export const calculateNextMove = (
       AI_FEATURES.ENABLE_SAFE_ASPIRATION &&
       d >= 2 &&
       prevScore !== null;
-
     const useAspiration = shouldUseAspiration(d, prevScore);
 
     if (aspirationCandidate && !useAspiration) {
@@ -653,7 +669,6 @@ export const calculateNextMove = (
 
     if (useAspiration) {
       let window = adaptiveAspirationWindow;
-
       if (
         PHASE5_FEATURES.ENABLE_ADAPTIVE_ASPIRATION &&
         prevAspirationFailed
@@ -671,7 +686,6 @@ export const calculateNextMove = (
 
       stats.aspiration.attempts++;
       stats.aspiration.windowSum += window;
-
       if (window > stats.aspiration.windowMax) {
         stats.aspiration.windowMax = window;
       }
@@ -690,14 +704,14 @@ export const calculateNextMove = (
       lastMove,
       stats,
       staticEvalCache,
-      dynamicForbidden
+      dynamicForbidden,
+      qsearchController
     );
 
     // ------------------------------------------------------------
     // Aspiration Window fail-high / fail-low 再探索
     // 安全側: どちらかに触れたら原則 full window で再探索する。
     // ------------------------------------------------------------
-
     if (useAspiration && result.move !== null) {
       if (result.score >= beta) {
         stats.aspiration.failHigh++;
@@ -707,7 +721,7 @@ export const calculateNextMove = (
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-              `re-searching with full window`
+            `re-searching with full window`
           );
         }
 
@@ -723,7 +737,8 @@ export const calculateNextMove = (
           lastMove,
           stats,
           staticEvalCache,
-          dynamicForbidden
+          dynamicForbidden,
+          qsearchController
         );
       } else if (result.score <= alpha) {
         stats.aspiration.failLow++;
@@ -733,7 +748,7 @@ export const calculateNextMove = (
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-              `re-searching with full window`
+            `re-searching with full window`
           );
         }
 
@@ -749,7 +764,8 @@ export const calculateNextMove = (
           lastMove,
           stats,
           staticEvalCache,
-          dynamicForbidden
+          dynamicForbidden,
+          qsearchController
         );
       }
     }
@@ -792,7 +808,6 @@ export const calculateNextMove = (
     ) {
       const remaining = deadline - performance.now();
       const estimate = iterElapsed * PHASE5_CONFIG.TIME_PREDICTION_SAFETY;
-
       if (remaining < estimate) {
         stats.time.predictedSkips++;
         stats.time.remainingAtSkipMs = remaining;

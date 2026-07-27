@@ -31,6 +31,10 @@
 //   - apply / undo を searchState.ts へ共通化する。
 //   - DynamicForbiddenController を注入可能にする。
 //   - 候補手生成へ currentHash と dynamicForbidden を渡す。
+//
+// 第8.1弾:
+//   - 葉ノードで戦術 Quiescence を呼び出す。
+//   - QSearchController を注入可能にする。
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
   KillerTable,
@@ -83,6 +87,10 @@ import {
   undoSearchMove,
 } from './searchState';
 import type { DynamicForbiddenController } from './dynamicForbidden';
+import {
+  runQuiescenceAtLeaf,
+  type QSearchController,
+} from './quiescence';
 
 // ============================================================
 // SearchContext
@@ -101,7 +109,6 @@ interface SearchContext {
    * SearchContext 側も board を保持して構造的に互換にする。
    */
   board: BoardState;
-
   aiPlayer: Player;
   forbiddenMoves: boolean[][];
   killerTable: KillerTable;
@@ -115,6 +122,8 @@ interface SearchContext {
   aborted: boolean;
   stats: SearchStats;
   dynamicForbidden: DynamicForbiddenController | null;
+  /** 第8.1弾: 戦術 Quiescence コントローラ */
+  qsearchController: QSearchController | null;
 }
 
 const createSearchContext = (
@@ -125,16 +134,15 @@ const createSearchContext = (
   tt: TranspositionTable,
   stats: SearchStats,
   sharedStaticEvalCache?: StaticEvalCache | null,
-  dynamicForbidden: DynamicForbiddenController | null = null
+  dynamicForbidden: DynamicForbiddenController | null = null,
+  qsearchController: QSearchController | null = null
 ): SearchContext => {
   const lineCache = AI_FEATURES.ENABLE_LINE_CACHE
     ? createLineCache(board)
     : null;
-
   const candidateSet = AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES
     ? createCandidateSet(board, forbiddenMoves)
     : null;
-
   /**
    * 第5.5.1弾:
    * 外部から sharedStaticEvalCache が渡された場合はそれを優先する。
@@ -173,6 +181,7 @@ const createSearchContext = (
     aborted: false,
     stats,
     dynamicForbidden,
+    qsearchController,
   };
 
   if (ctx.candidateSet) {
@@ -193,13 +202,11 @@ const isTimeUp = (ctx: SearchContext): boolean => {
     ctx.stats.time.aborted = true;
     return true;
   }
-
   if (ctx.deadline !== Infinity && performance.now() >= ctx.deadline) {
     ctx.aborted = true;
     ctx.stats.time.aborted = true;
     return true;
   }
-
   return false;
 };
 
@@ -213,10 +220,8 @@ const isTimeUp = (ctx: SearchContext): boolean => {
 const syncStaticEvalCacheStats = (ctx: SearchContext): void => {
   const cache = ctx.staticEvalCache;
   if (!cache) return;
-
   const st = cache.stats;
   const target = ctx.stats.staticEvalCache;
-
   target.lookups = st.lookups;
   target.hits = st.hits;
   target.misses = st.misses;
@@ -238,11 +243,9 @@ const checkWinInstrumented = (
   ctx: SearchContext
 ): boolean => {
   ctx.stats.diagnostics.checkWinCalls++;
-
   if (!PHASE5_DEBUG.ENABLE_CHECKWIN_TIMING) {
     return checkWin(board, move, player);
   }
-
   const start = performance.now();
   const result = checkWin(board, move, player);
   ctx.stats.diagnostics.checkWinTimeMs += performance.now() - start;
@@ -258,28 +261,46 @@ const checkWinInstrumented = (
  *
  * 第5弾:
  *   Static Eval Cache を参照し、miss 時のみ実際の葉評価を行う。
+ *
+ * 第8.1弾:
+ *   Static Eval Cache より前に Quiescence を試行する。
+ *   Quiescence が proof スコアを返した場合はそれを採用し、静的評価は行わない。
  */
 const evaluateLeaf = (
   board: BoardState,
   ctx: SearchContext,
-  currentHash: bigint
+  currentHash: bigint,
+  currentPlayer: Player
 ): number => {
+  // 第8.1弾: Quiescence を先に試行
+  if (ctx.qsearchController) {
+    const qResult = runQuiescenceAtLeaf({
+      board,
+      lineCache: ctx.lineCache,
+      forbiddenMoves: ctx.forbiddenMoves,
+      side: currentPlayer,
+      hash: currentHash,
+      controller: ctx.qsearchController,
+      stats: ctx.stats,
+    });
+    if (qResult.score !== null) {
+      return qResult.score;
+    }
+  }
+
   if (ctx.staticEvalCache) {
     const cached = ctx.staticEvalCache.lookup(currentHash);
     syncStaticEvalCacheStats(ctx);
-
     if (cached !== undefined) {
       return cached;
     }
   }
 
   ctx.stats.diagnostics.leafEvalCalls++;
-
   const shouldTimeLeaf = PHASE5_DEBUG.ENABLE_LEAF_TIMING;
   const start = shouldTimeLeaf ? performance.now() : 0;
 
   let score: number;
-
   if (ctx.lineCache) {
     ctx.stats.cache.lineCacheEvalCalls++;
     score = evaluateBoardWithCache(
@@ -365,7 +386,6 @@ const getReduction = (
   }
 
   let reduction = 1;
-
   if (
     depth >= LMR_CONFIG.DEEP_REDUCTION_DEPTH &&
     moveIndex >= LMR_CONFIG.DEEP_REDUCTION_MOVE_INDEX
@@ -374,7 +394,6 @@ const getReduction = (
   }
 
   const maxPossibleReduction = Math.max(0, depth - 1);
-
   return Math.min(
     reduction,
     LMR_CONFIG.MAX_REDUCTION,
@@ -456,13 +475,12 @@ const minimax = (
   if (depth === 0) {
     ctx.stats.nodes.total++;
     ctx.stats.nodes.leaf++;
-    return evaluateLeaf(board, ctx, currentHash);
+    return evaluateLeaf(board, ctx, currentHash, currentPlayer);
   }
 
   // --- Transposition Table Lookup ---
   const alphaOrig = alpha;
   const betaOrig = beta;
-
   const ttScore = ctx.tt.lookup(currentHash, depth, alpha, beta);
   if (ttScore !== null) {
     ctx.stats.nodes.total++;
@@ -497,7 +515,7 @@ const minimax = (
   if (candidates.length === 0) {
     ctx.stats.nodes.total++;
     ctx.stats.nodes.leaf++;
-    return evaluateLeaf(board, ctx, currentHash);
+    return evaluateLeaf(board, ctx, currentHash, currentPlayer);
   }
 
   ctx.stats.nodes.total++;
@@ -589,7 +607,6 @@ const minimax = (
             ctx.stats.pvs.failHighResearches++;
             ctx.stats.pvs.fullResearches++;
           }
-
           if (reduction > 0) {
             ctx.stats.lmr.researches++;
           }
@@ -642,7 +659,6 @@ const minimax = (
         maxScore = score;
         bestMove = currentMove;
       }
-
       if (score > alpha) alpha = score;
 
       // β カットオフ: CRITICAL 未満の手のみ killer / history / countermove に記録
@@ -650,10 +666,8 @@ const minimax = (
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, currentMove);
           ctx.stats.ordering.killerStores++;
-
           storeHistory(ctx.historyTable, currentPlayer, depth, currentMove);
           ctx.stats.ordering.historyStores++;
-
           if (AI_FEATURES.ENABLE_COUNTERMOVE && lastMove) {
             storeCountermove(
               ctx.countermoveTable,
@@ -664,7 +678,6 @@ const minimax = (
             ctx.stats.ordering.countermoveStores++;
           }
         }
-
         bestMove = currentMove;
         break;
       }
@@ -682,7 +695,6 @@ const minimax = (
     } else if (maxScore >= betaOrig) {
       flag = 'LOWERBOUND';
     }
-
     ctx.tt.store(currentHash, ttStoreDepth, maxScore, flag, bestMove);
     return maxScore;
   } else {
@@ -769,7 +781,6 @@ const minimax = (
             ctx.stats.pvs.failLowResearches++;
             ctx.stats.pvs.fullResearches++;
           }
-
           if (reduction > 0) {
             ctx.stats.lmr.researches++;
           }
@@ -822,7 +833,6 @@ const minimax = (
         minScore = score;
         bestMove = currentMove;
       }
-
       if (score < beta) beta = score;
 
       // α カットオフ: CRITICAL 未満の手のみ killer / history / countermove に記録
@@ -830,10 +840,8 @@ const minimax = (
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, currentMove);
           ctx.stats.ordering.killerStores++;
-
           storeHistory(ctx.historyTable, currentPlayer, depth, currentMove);
           ctx.stats.ordering.historyStores++;
-
           if (AI_FEATURES.ENABLE_COUNTERMOVE && lastMove) {
             storeCountermove(
               ctx.countermoveTable,
@@ -844,7 +852,6 @@ const minimax = (
             ctx.stats.ordering.countermoveStores++;
           }
         }
-
         bestMove = currentMove;
         break;
       }
@@ -862,7 +869,6 @@ const minimax = (
     } else if (minScore >= betaOrig) {
       flag = 'LOWERBOUND';
     }
-
     ctx.tt.store(currentHash, ttStoreDepth, minScore, flag, bestMove);
     return minScore;
   }
@@ -878,7 +884,6 @@ const minimax = (
 export interface FindBestMoveResult {
   /** 最善手。候補なし・時間切れ未完了の場合は null */
   move: Position | null;
-
   /** 探索スコア（aiPlayer 視点）。時間切れ未完了の場合は -Infinity */
   score: number;
 }
@@ -894,6 +899,10 @@ export interface FindBestMoveResult {
  *
  * 第6.2弾：dynamicForbidden を任意で受け取る。
  * search.ts からは calculateNextMove 単位で生成した controller を渡す。
+ *
+ * 第8.1弾：qsearchController を任意で受け取る。
+ * search.ts からは calculateNextMove 単位で生成した controller を渡す。
+ * 現在の depth が QSEARCH_MIN_ROOT_DEPTH 未満の場合は使わない。
  */
 export const findBestMove = (
   board: BoardState,
@@ -907,10 +916,17 @@ export const findBestMove = (
   lastMove: Position | null = null,
   stats?: SearchStats,
   sharedStaticEvalCache?: StaticEvalCache | null,
-  dynamicForbidden: DynamicForbiddenController | null = null
+  dynamicForbidden: DynamicForbiddenController | null = null,
+  qsearchController?: QSearchController | null
 ): FindBestMoveResult => {
   const searchStats =
     stats ?? createSearchStats(aiPlayer, 'fixed', depth, null, lastMove);
+
+  // 第8.1弾: 現在の depth が浅い場合は qsearch を使わない
+  const effectiveQSearch =
+    qsearchController && depth >= qsearchController.minRootDepth
+      ? qsearchController
+      : null;
 
   const ctx = createSearchContext(
     board,
@@ -920,7 +936,8 @@ export const findBestMove = (
     tt,
     searchStats,
     sharedStaticEvalCache,
-    dynamicForbidden
+    dynamicForbidden,
+    effectiveQSearch
   );
 
   const verboseLog = shouldLogVerboseSearch();
@@ -964,14 +981,13 @@ export const findBestMove = (
   // original window を保持し、最終的な TT flag 判定に使う。
   const alphaOrig = initialAlpha;
   const betaOrig = initialBeta;
-
   let alpha = initialAlpha;
   const beta = initialBeta;
 
   if (verboseLog) {
     console.log(
       `[Minimax] depth=${depth}, candidates=${candidates.length}, player=${aiPlayer}, ` +
-        `window=[${alpha}, ${beta}], ttSize=${tt.size}`
+      `window=[${alpha}, ${beta}], ttSize=${tt.size}`
     );
   }
 
@@ -1004,11 +1020,9 @@ export const findBestMove = (
     if (checkWinInstrumented(board, currentMove, aiPlayer, ctx)) {
       undoSearchMove(ctx, moveUndo);
       ctx.stats.nodes.immediateWin++;
-
       if (verboseLog) {
         console.log(`[Minimax] Immediate Win at (${row}, ${col})`);
       }
-
       return { move: currentMove, score: AI_SCORES.WIN };
     }
 
@@ -1022,7 +1036,6 @@ export const findBestMove = (
 
     if (useRootPvsNull) {
       const nullBeta = alpha + 1;
-
       ctx.stats.pvs.rootNullSearches++;
       ctx.stats.pvs.nullSearches++;
 
@@ -1041,11 +1054,9 @@ export const findBestMove = (
 
       if (ctx.aborted) {
         undoSearchMove(ctx, moveUndo);
-
         if (verboseLog) {
           console.log(`[Minimax] depth=${depth} aborted during child search`);
         }
-
         return { move: null, score: -Infinity };
       }
 
@@ -1070,11 +1081,9 @@ export const findBestMove = (
 
         if (ctx.aborted) {
           undoSearchMove(ctx, moveUndo);
-
           if (verboseLog) {
             console.log(`[Minimax] depth=${depth} aborted during child search`);
           }
-
           return { move: null, score: -Infinity };
         }
       }
@@ -1094,11 +1103,9 @@ export const findBestMove = (
 
       if (ctx.aborted) {
         undoSearchMove(ctx, moveUndo);
-
         if (verboseLog) {
           console.log(`[Minimax] depth=${depth} aborted during child search`);
         }
-
         return { move: null, score: -Infinity };
       }
     }
@@ -1116,14 +1123,12 @@ export const findBestMove = (
     // ルートで fail-high。
     if (alpha >= beta) {
       ctx.tt.store(initialHash, depth, bestScore, 'LOWERBOUND', bestPos);
-
       if (verboseLog) {
         console.log(
           `[Minimax] depth=${depth} fail-high: alpha=${alpha}, beta=${beta}, ` +
-            `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
+          `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
         );
       }
-
       return { move: bestPos, score: bestScore };
     }
   }
@@ -1140,7 +1145,6 @@ export const findBestMove = (
   } else if (bestScore >= betaOrig) {
     flag = 'LOWERBOUND';
   }
-
   ctx.tt.store(initialHash, depth, bestScore, flag, bestPos);
 
   if (verboseLog) {
