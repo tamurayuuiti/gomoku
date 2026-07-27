@@ -26,6 +26,11 @@
 // 第6.2弾:
 //   - 限定動的禁手統計を追加。
 //   - schemaVersion を 5 へ引き上げ。
+//
+// 第7.1弾:
+//   - Root VCF 統計を追加。
+//   - schemaVersion を 6 へ引き上げ。
+
 import type { Player } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
@@ -44,7 +49,7 @@ export const createSearchStats = (
   timeLimitMs: number | null,
   lastMove: import('../../types/game').Position | null
 ): SearchStats => ({
-  schemaVersion: 5,
+  schemaVersion: 6,
   turn,
   searchMode,
   selectedMove: null,
@@ -202,6 +207,31 @@ export const createSearchStats = (
     mismatchWithStaticForbidden: 0,
     forbiddenRuleEnabled: false,
   },
+  vcf: {
+    rootCalls: 0,
+    rootDisabled: 0,
+    rootSkippedEarlyGame: 0,
+    rootSkippedLowTime: 0,
+    rootSkippedLowDepth: 0,
+    rootSkippedByOption: 0,
+    rootFound: 0,
+    rootFail: 0,
+    rootAborted: 0,
+    rootError: 0,
+    rootUsedAsFinalMove: 0,
+    rootRejectedByForbidden: 0,
+    rootNodes: 0,
+    rootMaxPlyReached: 0,
+    rootTimeMs: 0,
+    rootBudgetMs: 0,
+    rootImmediateWins: 0,
+    rootTerminalOpenFours: 0,
+    rootDefenderCounterWins: 0,
+    rootIllegalBlockMoves: 0,
+    rootForbiddenChecks: 0,
+    rootForbiddenCacheHits: 0,
+    rootForbiddenCacheMisses: 0,
+  },
 });
 
 /**
@@ -315,6 +345,17 @@ export const finalizeSearchStats = (stats: SearchStats): void => {
   if (!Number.isFinite(stats.threat.modelTimeMs)) {
     stats.threat.modelTimeMs = 0;
   }
+
+  if (!Number.isFinite(stats.vcf.rootTimeMs)) {
+    stats.vcf.rootTimeMs = 0;
+  }
+
+  if (!Number.isFinite(stats.vcf.rootBudgetMs)) {
+    stats.vcf.rootBudgetMs = 0;
+  }
+
+  stats.vcf.rootTimeMs = Math.round(stats.vcf.rootTimeMs);
+  stats.vcf.rootBudgetMs = Math.round(stats.vcf.rootBudgetMs);
 };
 
 /**
@@ -346,7 +387,6 @@ const safeRate = (
   if (denominator <= 0) {
     return (0).toFixed(digits);
   }
-
   const value = (100 * numerator) / denominator;
   return Number.isFinite(value) ? value.toFixed(digits) : (0).toFixed(digits);
 };
@@ -361,7 +401,6 @@ const safeAvgUs = (
   if (calls <= 0 || timeMs <= 0) {
     return '0.00';
   }
-
   const value = (timeMs * 1000) / calls;
   return Number.isFinite(value) ? value.toFixed(2) : '0.00';
 };
@@ -491,7 +530,19 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `dynChk=${stats.forbidden.dynamicChecks} ` +
     `fbHit=${forbiddenCacheHitRate}% ` +
     `fbMis=${stats.forbidden.mismatchWithStaticForbidden} ` +
-    `fbRej=${stats.forbidden.rootMoveRejectedByForbidden}`;
+    `fbRej=${stats.forbidden.rootMoveRejectedByForbidden} ` +
+    // 第7.1弾追加
+    `vcfRoot=${stats.vcf.rootCalls} ` +
+    `vcfFound=${stats.vcf.rootFound} ` +
+    `vcfFail=${stats.vcf.rootFail} ` +
+    `vcfAbort=${stats.vcf.rootAborted} ` +
+    `vcfErr=${stats.vcf.rootError} ` +
+    `vcfTime=${Math.round(stats.vcf.rootTimeMs)}ms ` +
+    `vcfBudget=${Math.round(stats.vcf.rootBudgetMs)}ms ` +
+    `vcfNodes=${stats.vcf.rootNodes} ` +
+    `vcfPly=${stats.vcf.rootMaxPlyReached} ` +
+    `vcfUsed=${stats.vcf.rootUsedAsFinalMove} ` +
+    `vcfRej=${stats.vcf.rootRejectedByForbidden}`;
 
   console.log(summary);
 
@@ -808,6 +859,38 @@ export interface GameSessionStats {
 
   /** 静的 forbiddenMoves では合法だが動的禁手で禁手となった回数 */
   forbiddenMismatch: number;
+
+  // --- 第7.1弾追加 ---
+
+  /** Root VCF 呼び出し回数 */
+  vcfRootCalls: number;
+
+  /** Root VCF 勝ち証明回数 */
+  vcfRootFound: number;
+
+  /** Root VCF 証明失敗回数 */
+  vcfRootFail: number;
+
+  /** Root VCF 中断回数 */
+  vcfRootAborted: number;
+
+  /** Root VCF エラー回数 */
+  vcfRootError: number;
+
+  /** Root VCF が最終手として採用された回数 */
+  vcfRootUsedAsFinalMove: number;
+
+  /** Root VCF 結果が禁手検証で棄却された回数 */
+  vcfRootRejectedByForbidden: number;
+
+  /** Root VCF 時間合計 [ms] */
+  vcfRootTimeMs: number;
+
+  /** Root VCF ノード数合計 */
+  vcfRootNodes: number;
+
+  /** Root VCF 最大到達 ply */
+  vcfRootMaxPlyReached: number;
 }
 
 let activeGameSession: GameSessionStats | null = null;
@@ -815,7 +898,7 @@ let activeGameSession: GameSessionStats | null = null;
 const createGameSessionStats = (
   aiPlayer: Player | null
 ): GameSessionStats => ({
-  schemaVersion: 5,
+  schemaVersion: 6,
   result: null,
   aiPlayer,
   startedAtMs: performance.now(),
@@ -917,6 +1000,18 @@ const createGameSessionStats = (
   forbiddenCacheMaxSize: 0,
   rootMoveRejectedByForbidden: 0,
   forbiddenMismatch: 0,
+
+  // 第7.1弾
+  vcfRootCalls: 0,
+  vcfRootFound: 0,
+  vcfRootFail: 0,
+  vcfRootAborted: 0,
+  vcfRootError: 0,
+  vcfRootUsedAsFinalMove: 0,
+  vcfRootRejectedByForbidden: 0,
+  vcfRootTimeMs: 0,
+  vcfRootNodes: 0,
+  vcfRootMaxPlyReached: 0,
 });
 
 export const isGameSessionActive = (): boolean =>
@@ -964,7 +1059,6 @@ export const recordMoveToSession = (
 
   s.completedDepthSum += stats.completedDepth;
   s.completedDepthMax = Math.max(s.completedDepthMax, stats.completedDepth);
-
   s.elapsedSumMs += stats.time.elapsedMs;
   s.elapsedMaxMs = Math.max(s.elapsedMaxMs, stats.time.elapsedMs);
 
@@ -1003,14 +1097,12 @@ export const recordMoveToSession = (
 
   s.lineCacheEvalCalls += stats.cache.lineCacheEvalCalls;
   s.lineCacheFallbackCalls += stats.cache.lineCacheFallbackCalls;
-
   s.patternCacheHits += stats.cache.patternCacheHits;
   s.patternCacheMisses += stats.cache.patternCacheMisses;
 
   // 第5弾
   s.checkWinCalls += stats.diagnostics.checkWinCalls;
   s.checkWinTimeMs += stats.diagnostics.checkWinTimeMs;
-
   s.leafEvalCalls += stats.diagnostics.leafEvalCalls;
   s.leafEvalTimeMs += stats.diagnostics.leafEvalTimeMs;
 
@@ -1044,7 +1136,6 @@ export const recordMoveToSession = (
 
   s.centerPatternHits += stats.cache.centerPatternHits;
   s.centerPatternMisses += stats.cache.centerPatternMisses;
-
   s.timePredictedSkips += stats.time.predictedSkips;
 
   // 第6.1弾
@@ -1082,6 +1173,21 @@ export const recordMoveToSession = (
   s.rootMoveRejectedByForbidden +=
     stats.forbidden.rootMoveRejectedByForbidden;
   s.forbiddenMismatch += stats.forbidden.mismatchWithStaticForbidden;
+
+  // 第7.1弾
+  s.vcfRootCalls += stats.vcf.rootCalls;
+  s.vcfRootFound += stats.vcf.rootFound;
+  s.vcfRootFail += stats.vcf.rootFail;
+  s.vcfRootAborted += stats.vcf.rootAborted;
+  s.vcfRootError += stats.vcf.rootError;
+  s.vcfRootUsedAsFinalMove += stats.vcf.rootUsedAsFinalMove;
+  s.vcfRootRejectedByForbidden += stats.vcf.rootRejectedByForbidden;
+  s.vcfRootTimeMs += stats.vcf.rootTimeMs;
+  s.vcfRootNodes += stats.vcf.rootNodes;
+  s.vcfRootMaxPlyReached = Math.max(
+    s.vcfRootMaxPlyReached,
+    stats.vcf.rootMaxPlyReached
+  );
 };
 
 /**
@@ -1119,7 +1225,6 @@ export const finalizeGameSession = (
   s.avgTimeMs = s.aiMoves > 0 ? s.elapsedSumMs / s.aiMoves : 0;
 
   s.ttHitRate = s.ttLookups > 0 ? s.ttHits / s.ttLookups : 0;
-
   s.aspirationFailTotal = s.aspirationFailHigh + s.aspirationFailLow;
 
   s.staticEvalCacheHitRate =
@@ -1161,7 +1266,6 @@ export const finalizeGameSession = (
   );
 
   const chkAvgUs = safeAvgUs(s.checkWinTimeMs, s.checkWinCalls);
-
   const leafAvgUs = safeAvgUs(s.leafEvalTimeMs, s.leafEvalCalls);
 
   const candAvgUs = safeAvgUs(
@@ -1261,7 +1365,18 @@ export const finalizeGameSession = (
     `dynChk=${s.dynamicChecks} ` +
     `fbHit=${forbiddenCacheHitRate}% ` +
     `fbMis=${s.forbiddenMismatch} ` +
-    `fbRej=${s.rootMoveRejectedByForbidden}`;
+    `fbRej=${s.rootMoveRejectedByForbidden} ` +
+    // 第7.1弾追加
+    `vcfCalls=${s.vcfRootCalls} ` +
+    `vcfFound=${s.vcfRootFound} ` +
+    `vcfFail=${s.vcfRootFail} ` +
+    `vcfAbort=${s.vcfRootAborted} ` +
+    `vcfErr=${s.vcfRootError} ` +
+    `vcfUsed=${s.vcfRootUsedAsFinalMove} ` +
+    `vcfRej=${s.vcfRootRejectedByForbidden} ` +
+    `vcfTime=${Math.round(s.vcfRootTimeMs)}ms ` +
+    `vcfNodes=${s.vcfRootNodes} ` +
+    `vcfPly=${s.vcfRootMaxPlyReached}`;
 
   console.log(summary);
 

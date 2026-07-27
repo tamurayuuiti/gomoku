@@ -3,6 +3,7 @@
 //
 // 型定義（PatternType / PatternCount / SearchOptions）は複数ファイルから
 // 共有されるため types/ai.ts に集約している。このファイルは定数のみを扱う。
+
 import { DIRECTIONS as GAME_DIRECTIONS } from '../gameLogic';
 import type { AiLogLevel } from '../../types/ai';
 
@@ -34,6 +35,7 @@ export const AI_SCORES = {
 
 // depth・timeLimitMs のデフォルト値をここに一元管理し、
 // 呼び出し側が SearchOptions を明示しない限り常にこの値が使われる。
+
 export const AI_CONFIG = {
   ATTACK_WEIGHT: 1.1,
 
@@ -344,7 +346,6 @@ export const PHASE5_CONFIG: {
    * 長期戦・中盤の葉評価重複を考慮し、20k から 50k へ拡大する。
    */
   STATIC_EVAL_CACHE_LIMIT: 50_000,
-
   STATIC_EVAL_CACHE_EVICTION_RATIO: 0.2,
 
   /**
@@ -553,6 +554,85 @@ export const PHASE6_CONFIG = {
    * 禁手 OFF 設定との誤整合を完全に避けたい場合は true を推奨。
    */
   REQUIRE_EXPLICIT_FORBIDDEN_RULE: false,
+} as const;
+
+// --- 第7.1弾：feature flags / config ---
+
+/**
+ * 第7.1弾で追加する Root VCF 関連の機能フラグ。
+ *
+ * 第7.1弾は root VCF のみ。
+ * Internal VCF は第7.2弾で扱うため、ここでは実装しない。
+ */
+export const PHASE7_FEATURES = {
+  /** VCF 全体 master */
+  ENABLE_VCF: true,
+
+  /** Root VCF を有効化する */
+  ENABLE_ROOT_VCF: true,
+
+  /** VCF 内で LineCache を使用する */
+  VCF_USE_LINE_CACHE: true,
+
+  /** VCF 内で禁手キャッシュを使用する */
+  VCF_USE_FORBIDDEN_CACHE: true,
+
+  /** 防御側の即時勝ち反撃を確認する */
+  VCF_CHECK_DEFENDER_COUNTER_WIN: true,
+
+  /** 即時勝ちマスが 2 箇所以上の場合を受け不可として終端する */
+  VCF_ALLOW_OPEN_FOUR_TERMINAL: true,
+
+  /** VCF で勝ち証明できた場合、通常探索より優先して着手を返す */
+  ENABLE_VCF_RETURN_ON_WIN: true,
+
+  /** VCF 状態監査（undo 後 stone count 確認） */
+  ENABLE_VCF_STATE_AUDIT: false,
+
+  /** VCF 詳細ログ */
+  ENABLE_VCF_VERBOSE_LOG: false,
+} as const;
+
+/**
+ * 第7.1弾の設定値。
+ * Root VCF の時間・ノード・ply・skip 条件を制御する。
+ */
+export const PHASE7_CONFIG = {
+  /** VCF 世代（診断・禁手キャッシュ用） */
+  VCF_VERSION: 1n,
+
+  /** timeLimitMs に対する Root VCF 時間予算比率 */
+  ROOT_VCF_TIME_BUDGET_RATIO: 0.05,
+
+  /** Root VCF 時間予算の最小値 [ms] */
+  ROOT_VCF_TIME_BUDGET_MIN_MS: 20,
+
+  /** Root VCF 時間予算の最大値 [ms] */
+  ROOT_VCF_TIME_BUDGET_MAX_MS: 80,
+
+  /** timeLimitMs 未指定時の Root VCF 時間予算 [ms] */
+  ROOT_VCF_FIXED_TIME_BUDGET_MS: 30,
+
+  /** Root VCF のノード上限 */
+  ROOT_VCF_NODE_LIMIT: 2000,
+
+  /** Root VCF の最大 ply */
+  ROOT_VCF_MAX_PLY: 20,
+
+  /** timeLimitMs がこの値未満なら Root VCF を skip */
+  ROOT_VCF_MIN_TIME_LIMIT_MS: 300,
+
+  /** maxDepth がこの値未満なら Root VCF を skip */
+  ROOT_VCF_MIN_MAX_DEPTH: 4,
+
+  /** 盤面石数がこの値未満なら Root VCF を skip */
+  ROOT_VCF_MIN_STONES: 5,
+
+  /** VCF 禁手キャッシュの最大エントリ数 */
+  VCF_FORBIDDEN_CACHE_LIMIT: 5000,
+
+  /** VCF 禁手キャッシュ上限到達時の eviction 割合 */
+  VCF_FORBIDDEN_CACHE_EVICTION_RATIO: 0.2,
 } as const;
 
 // --- 方向定数 ---

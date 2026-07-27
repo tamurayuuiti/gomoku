@@ -38,8 +38,14 @@
 // 第6.2弾:
 //   - DynamicForbiddenController を calculateNextMove 単位で生成し、全 findBestMove で共有
 //   - root 最終着手の禁手再検証と安全フォールバックを追加
+//
+// 第7.1弾:
+//   - Root VCF を通常探索前に実行
+//   - VCF で勝ち証明できた場合のみ早期 return
+//   - VCF 最終手の安全検証を追加
+
 import type { BoardState, Position, Player } from '../../types/game';
-import type { SearchOptions } from '../../types/ai';
+import type { SearchOptions, SearchStats } from '../../types/ai';
 import { BOARD_SIZE, checkWin, checkForbiddenMove } from '../gameLogic';
 import {
   AI_CONFIG,
@@ -49,6 +55,7 @@ import {
   PHASE5_FEATURES,
   PHASE5_CONFIG,
   PHASE6_FEATURES,
+  PHASE7_FEATURES,
 } from './constants';
 import { findBestMove } from './minimax';
 import { TranspositionTable } from './transpositionTable';
@@ -81,6 +88,7 @@ import {
   recordMoveToSession,
   finalizeGameSession,
 } from './searchStats';
+import { runRootVcf } from './vcfSolver';
 
 /**
  * Aspiration Window を適用してよいか判定する。
@@ -147,7 +155,6 @@ const startGameSessionForMove = (
 ): void => {
   if (isGameSessionActive()) {
     const active = getActiveGameSession();
-
     if (
       !active ||
       active.aiPlayer !== aiPlayer ||
@@ -157,7 +164,6 @@ const startGameSessionForMove = (
       finalizeGameSession('Reset');
     }
   }
-
   ensureGameSession(aiPlayer);
 };
 
@@ -289,6 +295,104 @@ const findLegalFallbackMove = (
 };
 
 /**
+ * 第7.1弾:
+ * Root VCF を実行し、勝ち証明があれば安全検証の上で着手を返す。
+ *
+ * 返り値が null の場合は通常探索へ委譲する。
+ */
+const tryRootVcfMove = (
+  board: BoardState,
+  forbiddenMoves: boolean[][],
+  currentTurn: Player,
+  dynamicForbidden: DynamicForbiddenController,
+  options: SearchOptions | undefined,
+  maxDepth: number,
+  timeLimitMs: number | null,
+  stonesBefore: number,
+  stats: SearchStats
+): Position | null => {
+  const result = runRootVcf(
+    {
+      board,
+      forbiddenMoves,
+      mover: currentTurn,
+      ruleEnabled: dynamicForbidden.ruleEnabled,
+      maxDepth,
+      timeLimitMs,
+      stones: stonesBefore,
+      options,
+    },
+    stats
+  );
+
+  if (
+    result.outcome !== 'WIN' ||
+    !PHASE7_FEATURES.ENABLE_VCF_RETURN_ON_WIN ||
+    !result.move
+  ) {
+    return null;
+  }
+
+  const move = result.move;
+  const { row, col } = move;
+
+  // 最終安全検証。
+  // VCF 内部でも合法性は確認しているが、root では二重防御を行う。
+  if (board[row][col] !== null || forbiddenMoves[row][col]) {
+    stats.vcf.rootRejectedByForbidden++;
+    return null;
+  }
+
+  if (
+    currentTurn === 'Black' &&
+    dynamicForbidden.ruleEnabled &&
+    checkForbiddenMove(board, move, currentTurn).isForbidden
+  ) {
+    stats.vcf.rootRejectedByForbidden++;
+    return null;
+  }
+
+  return move;
+};
+
+/**
+ * 第7.1弾:
+ * VCF 早期 return 時の統計確定・セッション記録・勝利確定を行う。
+ */
+const finalizeVcfReturn = (
+  board: BoardState,
+  move: Position,
+  player: Player,
+  stats: SearchStats,
+  startTime: number,
+  stonesBefore: number
+): Position => {
+  stats.selectedMove = move;
+  stats.selectedScore = AI_SCORES.WIN;
+  stats.completedDepth = 0;
+  stats.time.elapsedMs = performance.now() - startTime;
+  stats.vcf.rootUsedAsFinalMove++;
+
+  const immediateWin = isWinningMove(board, move, player);
+  if (immediateWin) {
+    stats.nodes.immediateWin++;
+  }
+
+  mergePatternCacheStats(stats, getPatternCacheStats());
+  mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
+  finalizeSearchStats(stats);
+  logSearchSummary(stats);
+
+  recordMoveToSession(stats, stonesBefore + 1, true);
+
+  if (immediateWin) {
+    finalizeGameSession('Win');
+  }
+
+  return move;
+};
+
+/**
  * AIの次の一手を計算して返す。
  *
  * 公開インターフェース: この関数のシグネチャは変更禁止。
@@ -325,7 +429,6 @@ export const calculateNextMove = (
 
     mergePatternCacheStats(stats, getPatternCacheStats());
     mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
-
     finalizeSearchStats(stats);
     logSearchSummary(stats);
     recordMoveToSession(stats, 1, true);
@@ -363,8 +466,31 @@ export const calculateNextMove = (
     const stats = createSearchStats(currentTurn, 'fixed', maxDepth, null, lastMove);
     stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
-    const tt = new TranspositionTable();
+    // 第7.1弾: Root VCF
+    const vcfMove = tryRootVcfMove(
+      board,
+      forbiddenMoves,
+      currentTurn,
+      dynamicForbidden,
+      options,
+      maxDepth,
+      null,
+      stonesBefore,
+      stats
+    );
 
+    if (vcfMove) {
+      return finalizeVcfReturn(
+        board,
+        vcfMove,
+        currentTurn,
+        stats,
+        startTime,
+        stonesBefore
+      );
+    }
+
+    const tt = new TranspositionTable();
     const staticEvalCache = createPerMoveStaticEvalCache(
       forbiddenMoves,
       currentTurn
@@ -415,7 +541,6 @@ export const calculateNextMove = (
     mergeTTStats(stats, tt.stats);
     mergePatternCacheStats(stats, getPatternCacheStats());
     mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
-
     finalizeSearchStats(stats);
     logSearchSummary(stats);
 
@@ -434,6 +559,7 @@ export const calculateNextMove = (
   }
 
   // --- timeLimitMs 指定: 反復深化（iterative deepening） ---
+
   const stats = createSearchStats(
     currentTurn,
     'iterative',
@@ -443,7 +569,34 @@ export const calculateNextMove = (
   );
   stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
-  const deadline = performance.now() + timeLimitMs;
+  // 第7.1弾:
+  // deadline は startTime 基準とし、Root VCF の消費時間も全体時間に含める。
+  const deadline = startTime + timeLimitMs;
+
+  // 第7.1弾: Root VCF
+  const vcfMove = tryRootVcfMove(
+    board,
+    forbiddenMoves,
+    currentTurn,
+    dynamicForbidden,
+    options,
+    maxDepth,
+    timeLimitMs,
+    stonesBefore,
+    stats
+  );
+
+  if (vcfMove) {
+    return finalizeVcfReturn(
+      board,
+      vcfMove,
+      currentTurn,
+      stats,
+      startTime,
+      stonesBefore
+    );
+  }
+
   const tt = new TranspositionTable();
 
   /**
@@ -544,6 +697,7 @@ export const calculateNextMove = (
     // Aspiration Window fail-high / fail-low 再探索
     // 安全側: どちらかに触れたら原則 full window で再探索する。
     // ------------------------------------------------------------
+
     if (useAspiration && result.move !== null) {
       if (result.score >= beta) {
         stats.aspiration.failHigh++;
@@ -679,7 +833,6 @@ export const calculateNextMove = (
   mergeTTStats(stats, tt.stats);
   mergePatternCacheStats(stats, getPatternCacheStats());
   mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
-
   finalizeSearchStats(stats);
   logSearchSummary(stats);
 

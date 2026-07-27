@@ -6,6 +6,7 @@
 //   - 単一ファイル内でしか使われない型（例: minimax.ts の SearchContext）は定義元に残す。
 //   - 型の生成ファクトリ関数（createKillerTable 等）や定数・スコア値はロジックであり
 //     型ではないため、従来通り定義元のファイルに残す。
+
 import type { Position, Player } from './game';
 
 // --- パターン評価（evaluator.ts / boardEvaluator.ts で共有） ---
@@ -122,6 +123,30 @@ export interface SearchOptions {
    * 禁手ルール OFF の UI から使う場合は false を渡すことが望ましい。
    */
   forbiddenRuleEnabled?: boolean;
+
+  /**
+   * 第7.1弾追加: Root VCF を明示的に有効/無効化する。
+   *
+   * - false: Root VCF を無効化する。
+   * - true / undefined: PHASE7_FEATURES に従う。
+   */
+  vcfEnabled?: boolean;
+
+  /**
+   * 第7.1弾追加: Root VCF 時間予算 [ms]。
+   *
+   * 未指定時は PHASE7_CONFIG から解決する。
+   * 0 以下を指定すると Root VCF を skip する。
+   */
+  vcfTimeBudgetMs?: number;
+
+  /**
+   * 第7.1弾追加: Root VCF ノード上限。
+   *
+   * 未指定時は PHASE7_CONFIG から解決する。
+   * 0 以下を指定すると Root VCF を skip する。
+   */
+  vcfNodeLimit?: number;
 }
 
 // --- 候補手（candidateGenerator.ts / minimax.ts で共有） ---
@@ -728,6 +753,78 @@ export interface SearchForbiddenStats {
   forbiddenRuleEnabled: boolean;
 }
 
+/** 第7.1弾：Root VCF 統計 */
+export interface SearchVcfStats {
+  /** Root VCF 呼び出し回数 */
+  rootCalls: number;
+
+  /** flag により無効化された回数 */
+  rootDisabled: number;
+
+  /** 序盤のため skip した回数 */
+  rootSkippedEarlyGame: number;
+
+  /** 時間制限が短いため skip した回数 */
+  rootSkippedLowTime: number;
+
+  /** maxDepth が短いため skip した回数 */
+  rootSkippedLowDepth: number;
+
+  /** option / budget により skip した回数 */
+  rootSkippedByOption: number;
+
+  /** VCF 勝ち証明に成功した回数 */
+  rootFound: number;
+
+  /** VCF が証明不能として失敗した回数 */
+  rootFail: number;
+
+  /** VCF が budget / node limit で中断した回数 */
+  rootAborted: number;
+
+  /** VCF が例外で終了した回数 */
+  rootError: number;
+
+  /** VCF 結果が最終手として採用された回数 */
+  rootUsedAsFinalMove: number;
+
+  /** VCF 結果が最終検証で禁手/不正として棄却された回数 */
+  rootRejectedByForbidden: number;
+
+  /** VCF 探索ノード数 */
+  rootNodes: number;
+
+  /** VCF で到達した最大 ply */
+  rootMaxPlyReached: number;
+
+  /** VCF 時間合計 [ms] */
+  rootTimeMs: number;
+
+  /** VCF 時間予算 [ms] */
+  rootBudgetMs: number;
+
+  /** VCF 内で即時勝ちを検出した回数 */
+  rootImmediateWins: number;
+
+  /** VCF 内で受け不可な四（勝ちマス 2 以上）を終端とした回数 */
+  rootTerminalOpenFours: number;
+
+  /** VCF 内で防御側即時勝ちにより攻撃枝を失敗とした回数 */
+  rootDefenderCounterWins: number;
+
+  /** VCF 内で防御側がブロックできず勝ちとした回数 */
+  rootIllegalBlockMoves: number;
+
+  /** VCF 用禁手判定呼び出し回数 */
+  rootForbiddenChecks: number;
+
+  /** VCF 用禁手キャッシュ hit 回数 */
+  rootForbiddenCacheHits: number;
+
+  /** VCF 用禁手キャッシュ miss 回数 */
+  rootForbiddenCacheMisses: number;
+}
+
 /**
  * 1回の calculateNextMove 呼び出し単位で集計する統計情報。
  * 統計値は探索の意思決定には使用しない。
@@ -798,4 +895,7 @@ export interface SearchStats {
 
   /** 第6.2弾：限定動的禁手統計 */
   forbidden: SearchForbiddenStats;
+
+  /** 第7.1弾：Root VCF 統計 */
+  vcf: SearchVcfStats;
 }
