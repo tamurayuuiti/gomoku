@@ -30,6 +30,11 @@
 // 第7.1弾:
 //   - Root VCF 統計を追加。
 //   - schemaVersion を 6 へ引き上げ。
+//
+// 第7.2弾:
+//   - VCF skip 理由・終端理由の診断ログを追加。
+//   - GameSessionStats に VCF 診断累計を追加。
+//   - schemaVersion を 7 へ引き上げ。
 
 import type { Player } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
@@ -49,7 +54,7 @@ export const createSearchStats = (
   timeLimitMs: number | null,
   lastMove: import('../../types/game').Position | null
 ): SearchStats => ({
-  schemaVersion: 6,
+  schemaVersion: 7,
   turn,
   searchMode,
   selectedMove: null,
@@ -542,7 +547,17 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `vcfNodes=${stats.vcf.rootNodes} ` +
     `vcfPly=${stats.vcf.rootMaxPlyReached} ` +
     `vcfUsed=${stats.vcf.rootUsedAsFinalMove} ` +
-    `vcfRej=${stats.vcf.rootRejectedByForbidden}`;
+    `vcfRej=${stats.vcf.rootRejectedByForbidden} ` +
+    // 第7.2弾追加
+    `vcfDis=${stats.vcf.rootDisabled} ` +
+    `vcfSkipEarly=${stats.vcf.rootSkippedEarlyGame} ` +
+    `vcfSkipTime=${stats.vcf.rootSkippedLowTime} ` +
+    `vcfSkipDepth=${stats.vcf.rootSkippedLowDepth} ` +
+    `vcfSkipOpt=${stats.vcf.rootSkippedByOption} ` +
+    `vcfImm=${stats.vcf.rootImmediateWins} ` +
+    `vcfTerm=${stats.vcf.rootTerminalOpenFours} ` +
+    `vcfCnt=${stats.vcf.rootDefenderCounterWins} ` +
+    `vcfBlkIll=${stats.vcf.rootIllegalBlockMoves}`;
 
   console.log(summary);
 
@@ -891,6 +906,35 @@ export interface GameSessionStats {
 
   /** Root VCF 最大到達 ply */
   vcfRootMaxPlyReached: number;
+
+  // --- 第7.2弾追加 ---
+
+  /** Root VCF が flag により無効化された回数 */
+  vcfRootDisabled: number;
+
+  /** Root VCF が序盤石数不足で skip された回数 */
+  vcfRootSkippedEarlyGame: number;
+
+  /** Root VCF が時間制限不足で skip された回数 */
+  vcfRootSkippedLowTime: number;
+
+  /** Root VCF が低深度で skip された回数 */
+  vcfRootSkippedLowDepth: number;
+
+  /** Root VCF が option / budget により skip された回数 */
+  vcfRootSkippedByOption: number;
+
+  /** Root VCF 内で即時勝ちを検出した回数 */
+  vcfRootImmediateWins: number;
+
+  /** Root VCF 内で受け不可な四を終端とした回数 */
+  vcfRootTerminalOpenFours: number;
+
+  /** Root VCF 内で防御側即時勝ちにより攻撃枝を失敗とした回数 */
+  vcfRootDefenderCounterWins: number;
+
+  /** Root VCF 内で防御側ブロック不能により勝ちとした回数 */
+  vcfRootIllegalBlockMoves: number;
 }
 
 let activeGameSession: GameSessionStats | null = null;
@@ -898,7 +942,7 @@ let activeGameSession: GameSessionStats | null = null;
 const createGameSessionStats = (
   aiPlayer: Player | null
 ): GameSessionStats => ({
-  schemaVersion: 6,
+  schemaVersion: 7,
   result: null,
   aiPlayer,
   startedAtMs: performance.now(),
@@ -1012,6 +1056,17 @@ const createGameSessionStats = (
   vcfRootTimeMs: 0,
   vcfRootNodes: 0,
   vcfRootMaxPlyReached: 0,
+
+  // 第7.2弾
+  vcfRootDisabled: 0,
+  vcfRootSkippedEarlyGame: 0,
+  vcfRootSkippedLowTime: 0,
+  vcfRootSkippedLowDepth: 0,
+  vcfRootSkippedByOption: 0,
+  vcfRootImmediateWins: 0,
+  vcfRootTerminalOpenFours: 0,
+  vcfRootDefenderCounterWins: 0,
+  vcfRootIllegalBlockMoves: 0,
 });
 
 export const isGameSessionActive = (): boolean =>
@@ -1188,6 +1243,17 @@ export const recordMoveToSession = (
     s.vcfRootMaxPlyReached,
     stats.vcf.rootMaxPlyReached
   );
+
+  // 第7.2弾
+  s.vcfRootDisabled += stats.vcf.rootDisabled;
+  s.vcfRootSkippedEarlyGame += stats.vcf.rootSkippedEarlyGame;
+  s.vcfRootSkippedLowTime += stats.vcf.rootSkippedLowTime;
+  s.vcfRootSkippedLowDepth += stats.vcf.rootSkippedLowDepth;
+  s.vcfRootSkippedByOption += stats.vcf.rootSkippedByOption;
+  s.vcfRootImmediateWins += stats.vcf.rootImmediateWins;
+  s.vcfRootTerminalOpenFours += stats.vcf.rootTerminalOpenFours;
+  s.vcfRootDefenderCounterWins += stats.vcf.rootDefenderCounterWins;
+  s.vcfRootIllegalBlockMoves += stats.vcf.rootIllegalBlockMoves;
 };
 
 /**
@@ -1376,7 +1442,17 @@ export const finalizeGameSession = (
     `vcfRej=${s.vcfRootRejectedByForbidden} ` +
     `vcfTime=${Math.round(s.vcfRootTimeMs)}ms ` +
     `vcfNodes=${s.vcfRootNodes} ` +
-    `vcfPly=${s.vcfRootMaxPlyReached}`;
+    `vcfPly=${s.vcfRootMaxPlyReached} ` +
+    // 第7.2弾追加
+    `vcfDis=${s.vcfRootDisabled} ` +
+    `vcfSkipEarly=${s.vcfRootSkippedEarlyGame} ` +
+    `vcfSkipTime=${s.vcfRootSkippedLowTime} ` +
+    `vcfSkipDepth=${s.vcfRootSkippedLowDepth} ` +
+    `vcfSkipOpt=${s.vcfRootSkippedByOption} ` +
+    `vcfImm=${s.vcfRootImmediateWins} ` +
+    `vcfTerm=${s.vcfRootTerminalOpenFours} ` +
+    `vcfCnt=${s.vcfRootDefenderCounterWins} ` +
+    `vcfBlkIll=${s.vcfRootIllegalBlockMoves}`;
 
   console.log(summary);
 

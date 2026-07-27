@@ -20,6 +20,11 @@
 //   - VCF の中断は「不明」を意味し、通常探索へ委譲する
 //   - 勝ち断定は保守的に行う
 //   - board / lineCache は apply / undo で必ず復元する
+//
+// 第7.2弾:
+//   - verbose 診断ログを強化
+//   - skip / fail / abort / win の理由を診断可能化
+//   - 勝ち証明の終端理由（immediate / open-four-terminal / illegal-block / forced）を保持
 
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
@@ -103,10 +108,23 @@ interface VcfCandidate {
   order: number;
 }
 
+/**
+ * VCF 勝ち証明の終端理由。
+ *
+ * 第7.2弾では診断専用。探索挙動やスコアには影響しない。
+ */
+type VcfWinKind =
+  | 'immediate'
+  | 'open-four-terminal'
+  | 'illegal-block'
+  | 'forced'
+  | null;
+
 interface VcfNodeResult {
   outcome: 'WIN' | 'FAIL' | 'ABORTED';
   plyToWin: number | null;
   move: Position | null;
+  winKind: VcfWinKind;
 }
 
 // ============================================================
@@ -135,11 +153,19 @@ const resolveRootBudgetMs = (
   timeLimitMs: number | null
 ): number => {
   if (options?.vcfTimeBudgetMs !== undefined) {
-    return options.vcfTimeBudgetMs;
+    return Number.isFinite(options.vcfTimeBudgetMs)
+      ? options.vcfTimeBudgetMs
+      : 0;
   }
+
   if (timeLimitMs === null) {
     return PHASE7_CONFIG.ROOT_VCF_FIXED_TIME_BUDGET_MS;
   }
+
+  if (!Number.isFinite(timeLimitMs)) {
+    return 0;
+  }
+
   const raw = timeLimitMs * PHASE7_CONFIG.ROOT_VCF_TIME_BUDGET_RATIO;
   return Math.max(
     PHASE7_CONFIG.ROOT_VCF_TIME_BUDGET_MIN_MS,
@@ -151,7 +177,9 @@ const resolveRootNodeLimit = (
   options: SearchOptions | undefined
 ): number => {
   if (options?.vcfNodeLimit !== undefined) {
-    return options.vcfNodeLimit;
+    return Number.isFinite(options.vcfNodeLimit)
+      ? options.vcfNodeLimit
+      : 0;
   }
   return PHASE7_CONFIG.ROOT_VCF_NODE_LIMIT;
 };
@@ -371,15 +399,15 @@ const searchAttacker = (
   ctx.stats.vcf.rootNodes++;
 
   if (ctx.nodes > ctx.nodeLimit) {
-    return { outcome: 'ABORTED', plyToWin: null, move: null };
+    return { outcome: 'ABORTED', plyToWin: null, move: null, winKind: null };
   }
 
   if (isVcfTimeUp(ctx)) {
-    return { outcome: 'ABORTED', plyToWin: null, move: null };
+    return { outcome: 'ABORTED', plyToWin: null, move: null, winKind: null };
   }
 
   if (ply > ctx.maxPly) {
-    return { outcome: 'FAIL', plyToWin: null, move: null };
+    return { outcome: 'FAIL', plyToWin: null, move: null, winKind: null };
   }
 
   if (ply > ctx.maxPlyReached) {
@@ -397,12 +425,13 @@ const searchAttacker = (
       outcome: 'WIN',
       plyToWin: ply + 1,
       move: isRoot ? immediateWin : null,
+      winKind: 'immediate',
     };
   }
 
   // 即時勝ちがなく、これ以上深く読めないなら失敗
   if (ply >= ctx.maxPly) {
-    return { outcome: 'FAIL', plyToWin: null, move: null };
+    return { outcome: 'FAIL', plyToWin: null, move: null, winKind: null };
   }
 
   // 2. 四を作る攻撃手を生成
@@ -450,6 +479,7 @@ const searchAttacker = (
           outcome: 'WIN',
           plyToWin: ply + 2,
           move: isRoot ? candidate.pos : null,
+          winKind: 'open-four-terminal',
         };
       }
 
@@ -464,6 +494,7 @@ const searchAttacker = (
             outcome: 'WIN',
             plyToWin: ply + 2,
             move: isRoot ? candidate.pos : null,
+            winKind: 'illegal-block',
           };
         }
 
@@ -483,11 +514,17 @@ const searchAttacker = (
               outcome: 'WIN',
               plyToWin: child.plyToWin,
               move: isRoot ? candidate.pos : null,
+              winKind: child.winKind ?? 'forced',
             };
           }
 
           if (child.outcome === 'ABORTED') {
-            return { outcome: 'ABORTED', plyToWin: null, move: null };
+            return {
+              outcome: 'ABORTED',
+              plyToWin: null,
+              move: null,
+              winKind: null,
+            };
           }
 
           // child FAIL → 他の攻撃手を試す
@@ -502,7 +539,7 @@ const searchAttacker = (
     }
   }
 
-  return { outcome: 'FAIL', plyToWin: null, move: null };
+  return { outcome: 'FAIL', plyToWin: null, move: null, winKind: null };
 };
 
 // ============================================================
@@ -531,6 +568,24 @@ export const runRootVcf = (
     const timeMs = performance.now() - start;
     vcf.rootTimeMs = timeMs;
     vcf.rootBudgetMs = budgetMs;
+
+    if (PHASE7_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
+      const moveText = move ? `(${move.row},${move.col})` : 'none';
+      const plyText = plyToWin === null ? '-' : String(plyToWin);
+      const reasonText = reason === null ? '-' : reason;
+
+      console.log(
+        `[VCF] root ${outcome} ` +
+          `move=${moveText} ` +
+          `ply=${plyText} ` +
+          `nodes=${nodes} ` +
+          `plyReached=${maxPlyReached} ` +
+          `time=${timeMs.toFixed(1)}ms ` +
+          `budget=${Math.round(budgetMs)}ms ` +
+          `nodeLimit=${nodeLimit} ` +
+          `reason=${reasonText}`
+      );
+    }
 
     return {
       outcome,
@@ -664,14 +719,6 @@ export const runRootVcf = (
 
       vcf.rootFound++;
 
-      if (PHASE7_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
-        console.log(
-          `[VCF] root WIN move=(${result.move.row},${result.move.col}) ` +
-            `ply=${result.plyToWin} nodes=${ctx.nodes} ` +
-            `time=${(performance.now() - start).toFixed(1)}ms`
-        );
-      }
-
       return makeResult(
         'WIN',
         result.move,
@@ -680,7 +727,7 @@ export const runRootVcf = (
         ctx.maxPlyReached,
         budgetMs,
         nodeLimit,
-        null
+        result.winKind ?? 'forced'
       );
     }
 
@@ -707,7 +754,7 @@ export const runRootVcf = (
       ctx.maxPlyReached,
       budgetMs,
       nodeLimit,
-      null
+      'no-vcf'
     );
   } catch (err) {
     vcf.rootError++;
@@ -715,7 +762,7 @@ export const runRootVcf = (
     const message = err instanceof Error ? err.message : String(err);
 
     if (PHASE7_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
-      console.error('[VCF] root error:', err);
+      console.error('[VCF] root exception:', err);
     }
 
     return makeResult(
