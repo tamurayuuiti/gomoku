@@ -38,7 +38,7 @@ const Board = ({ board, onCellClick, lastMove, forbiddenMoves }: BoardProps) => 
                   isHoshi={isHoshiPos(rowIndex, colIndex)}
                   isLastMove={lastMove?.row === rowIndex && lastMove?.col === colIndex}
                   isForbidden={forbiddenMoves[rowIndex][colIndex]}
-                  onClick={() => onCellClick(rowIndex, colIndex)}
+                  onCellClick={onCellClick}
                 />
               ))
             )}

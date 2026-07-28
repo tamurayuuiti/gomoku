@@ -1,7 +1,7 @@
 // src/utils/gameLogic.ts
 // ゲームのロジックを担当する純粋関数を定義するファイル
 
-import type { BoardState, Player, Position, ForbiddenReason, ForbiddenResult } from '../types/game';
+import type { BoardState, Player, Position, ForbiddenReason, ForbiddenResult, GameStatus } from '../types/game';
 
 export const BOARD_SIZE = 15;
 
@@ -26,13 +26,11 @@ const countStonesInDirection = (
   let count = 0;
   let r = pos.row + dRow;
   let c = pos.col + dCol;
-
   while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
     count++;
     r += dRow;
     c += dCol;
   }
-
   return count;
 };
 
@@ -46,12 +44,10 @@ const getLinePattern = (
   dCol: number
 ): (Player | null | undefined)[] => {
   const line: (Player | null | undefined)[] = [];
-
   // 五連 + 両端判定のため最大5マスずつスキャン
   for (let i = -5; i <= 5; i++) {
     const r = pos.row + dRow * i;
     const c = pos.col + dCol * i;
-
     if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
       if (i === 0) {
         line.push(player);
@@ -62,25 +58,21 @@ const getLinePattern = (
       line.push(undefined); // 盤外
     }
   }
-
   return line;
 };
 
 // 「四」が形成されているか判定（長連は除外）
 const countFoursInLine = (line: (Player | null | undefined)[], player: Player): number => {
   let fours = 0;
-
   for (let i = 0; i < line.length; i++) {
     if (line[i] === null) {
       const tempLine = [...line];
       tempLine[i] = player;
-
       if (hasExactFive(tempLine, player)) {
         fours++;
       }
     }
   }
-
   return fours > 0 ? 1 : 0;
 };
 
@@ -90,13 +82,11 @@ const countOpenThreesInLine = (line: (Player | null | undefined)[], player: Play
     if (line[i] === null) {
       const tempLine = [...line];
       tempLine[i] = player;
-
       if (isTatsuShi(tempLine, player)) {
         return 1;
       }
     }
   }
-
   return 0;
 };
 
@@ -115,7 +105,6 @@ const hasExactFive = (line: (Player | null | undefined)[], player: Player): bool
       return true;
     }
   }
-
   return false;
 };
 
@@ -133,7 +122,6 @@ const isTatsuShi = (line: (Player | null | undefined)[], player: Player): boolea
       return true;
     }
   }
-
   return false;
 };
 
@@ -157,7 +145,6 @@ export const checkWin = (
       if (count >= 5) return true;
     }
   }
-
   return false;
 };
 
@@ -176,7 +163,6 @@ export const checkForbiddenMove = (
       1 +
       countStonesInDirection(board, pos, player, dRow, dCol) +
       countStonesInDirection(board, pos, player, -dRow, -dCol);
-
     if (count > 5) {
       return {
         isForbidden: true,
@@ -195,7 +181,6 @@ export const checkForbiddenMove = (
 
   for (const [dRow, dCol] of DIRECTIONS) {
     const line = getLinePattern(board, pos, player, dRow, dCol);
-
     totalFours += countFoursInLine(line, player);
     totalOpenThrees += countOpenThreesInLine(line, player);
   }
@@ -222,6 +207,45 @@ export const checkForbiddenMove = (
   };
 };
 
+/**
+ * 第9弾: 盤面全体の禁手マトリクスを計算する純粋関数。
+ *
+ * 旧 useForbiddenMoves の useMemo 本体と同一ロジック（移設）。
+ * 呼び出し元:
+ *   - useForbiddenMoves（表示専用。描画後に非同期計算）
+ *   - useAiPlayer（Worker 送信直前に要求時点の最新盤面に対して同期計算）
+ *
+ * Playing かつ禁手ルール ON かつ Black 手番の場合のみ全空マスを走査し、
+ * それ以外は全面 false を即返す軽量パスとなる。
+ */
+export const computeForbiddenMatrix = (
+  board: BoardState,
+  currentPlayer: Player,
+  gameStatus: GameStatus,
+  useForbiddenRule: boolean
+): boolean[][] => {
+  const matrix: boolean[][] = Array.from({ length: BOARD_SIZE }, () =>
+    Array(BOARD_SIZE).fill(false)
+  );
+
+  // ルールがOFF、または現在の手番が白（禁じ手なし）の場合は計算不要
+  if (gameStatus !== 'Playing' || !useForbiddenRule || currentPlayer !== 'Black') {
+    return matrix;
+  }
+
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (board[r][c] === null) {
+        const result = checkForbiddenMove(board, { row: r, col: c }, 'Black');
+        if (result.isForbidden) {
+          matrix[r][c] = true;
+        }
+      }
+    }
+  }
+  return matrix;
+};
+
 export const checkDraw = (board: BoardState): boolean => {
   return board.every(row => row.every(cell => cell !== null));
 };
@@ -232,13 +256,10 @@ export const getForbiddenReasonMessage = (
   switch (reason) {
     case 'Three-Three':
       return '三三は禁じ手です';
-
     case 'Four-Four':
       return '四四は禁じ手です';
-
     case 'Long-Line':
       return '長連は禁じ手です';
-
     default:
       return 'それは禁じ手です';
   }

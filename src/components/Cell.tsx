@@ -1,12 +1,19 @@
 // src/components/Cell.tsx
 // 盤面の各マスを表すコンポーネント
+//
+// 第9弾: React.memo で包んだ。
+// value / isLastMove / isForbidden のプリミティブ props と、App 側で
+// identity を安定化した onCellClick のみが変化したときだけ再レンダリングされ、
+// 着手1手あたりの再レンダリング範囲が全 225 セルから数セルへ縮小する。
 
+import { memo } from 'react';
 import { X } from 'lucide-react';
 import type { Player } from '../types/game';
 
 interface CellProps {
   value: Player | null;
-  onClick: () => void;
+  /** 安定したコールバック (row, col) => void。identity は App 側で安定化されている。 */
+  onCellClick: (row: number, col: number) => void;
   isLastMove: boolean;
   isHoshi: boolean;
   row: number;
@@ -15,7 +22,7 @@ interface CellProps {
   isForbidden: boolean;
 }
 
-const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForbidden }: CellProps) => {
+const Cell = memo(({ value, onCellClick, isLastMove, isHoshi, row, col, boardSize, isForbidden }: CellProps) => {
   const isTop = row === 0;
   const isBottom = row === boardSize - 1;
   const isLeft = col === 0;
@@ -26,7 +33,7 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForb
       className={`relative flex aspect-square items-center justify-center sm:h-auto group ${
         isForbidden ? 'cursor-not-allowed' : 'cursor-pointer'
       }`}
-      onClick={onClick}
+      onClick={() => onCellClick(row, col)}
     >
       {/* マスホバー時の視覚フィードバック（石が置かれていない場合のみ） */}
       {!value && (
@@ -35,13 +42,13 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForb
 
       {/* 十字線の描画（端は半分だけ伸ばして盤の枠に揃える） */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div 
-          className={`absolute h-px bg-amber-950/70 
-            ${isLeft ? 'left-1/2 right-0' : isRight ? 'left-0 right-1/2' : 'left-0 right-0'}`} 
+        <div
+          className={`absolute h-px bg-amber-950/70
+            ${isLeft ? 'left-1/2 right-0' : isRight ? 'left-0 right-1/2' : 'left-0 right-0'}`}
         />
-        <div 
-          className={`absolute w-px bg-amber-950/70 
-            ${isTop ? 'top-1/2 bottom-0' : isBottom ? 'top-0 bottom-1/2' : 'top-0 bottom-0'}`} 
+        <div
+          className={`absolute w-px bg-amber-950/70
+            ${isTop ? 'top-1/2 bottom-0' : isBottom ? 'top-0 bottom-1/2' : 'top-0 bottom-0'}`}
         />
       </div>
 
@@ -62,11 +69,11 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForb
       {/* 石の描画 */}
       {value && (
         <div
-        className={`z-10 flex h-[86%] w-[86%] items-center justify-center rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.35)] transition-transform duration-200 
-            ${value === 'Black' 
-            ? 'bg-zinc-900 bg-linear-to-br from-zinc-700 to-black'
-            : 'border border-gray-300 bg-white bg-linear-to-br from-white to-slate-200'
-            }`}
+          className={`z-10 flex h-[86%] w-[86%] items-center justify-center rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.35)] transition-transform duration-200
+            ${value === 'Black'
+              ? 'bg-zinc-900 bg-linear-to-br from-zinc-700 to-black'
+              : 'border border-gray-300 bg-white bg-linear-to-br from-white to-slate-200'
+          }`}
         >
           {/* 最後の一手の印 */}
           {isLastMove && (
@@ -76,6 +83,8 @@ const Cell = ({ value, onClick, isLastMove, isHoshi, row, col, boardSize, isForb
       )}
     </div>
   );
-};
+});
+
+Cell.displayName = 'Cell';
 
 export default Cell;

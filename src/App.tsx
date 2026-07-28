@@ -2,7 +2,7 @@
 // アプリ全体の構成と主要な状態管理を担当するコンテナコンポーネント
 
 import type { Player, GameMode } from './types/game';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { getForbiddenReasonMessage, checkForbiddenMove } from './utils/gameLogic';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import { useGameLogic } from './hooks/useGameLogic';
@@ -21,7 +21,7 @@ const App = () => {
     currentPlayer,
     gameStatus,
     lastMove,
-    executeMove: coreExecuteMove,
+    executeMove,
     resetGameLogic,
   } = useGameLogic();
 
@@ -33,13 +33,9 @@ const App = () => {
 
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
-  // 盤面全体の禁じ手座標はここで一度だけ計算し、クリック時の判定にもそのまま利用する
+  // 盤面全体の禁じ手座標は表示専用（ホバー時の赤バツ）。
+  // 第9弾: 描画後に非同期計算されるため、着手受理の判定には使用しない。
   const forbiddenMoves = useForbiddenMoves(board, currentPlayer, gameStatus, useForbiddenRule);
-
-  const executeMove = useCallback((row: number, col: number) => {
-    setForbiddenWarning(null);
-    coreExecuteMove(row, col);
-  }, [coreExecuteMove]);
 
   const { isAiThinking } = useAiPlayer({
     board,
@@ -47,28 +43,47 @@ const App = () => {
     gameStatus,
     gameMode,
     playerColor,
-    forbiddenMoves,
+    useForbiddenRule,
     onMove: executeMove,
   });
 
+  // 第9弾: latest-ref パターンで handleCellClick の identity を安定化し、
+  // memo 化された Cell へ安全に渡せるようにする（components/Cell.tsx 参照）。
+  // 禁手の権威ある判定は checkForbiddenMove の直接呼び出し（単一マス）で行い、
+  // 表示専用の forbiddenMoves マトリクスは参照しない。
+  const clickCtxRef = useRef({ board, gameStatus, isAiThinking, currentPlayer, useForbiddenRule, executeMove });
+  clickCtxRef.current = { board, gameStatus, isAiThinking, currentPlayer, useForbiddenRule, executeMove };
+
   const handleCellClick = useCallback((row: number, col: number) => {
-    if (gameStatus !== 'Playing') return;
-    if (board[row][col] !== null) return;
+    const {
+      board: currentBoard,
+      gameStatus: status,
+      isAiThinking: aiThinking,
+      currentPlayer: player,
+      useForbiddenRule: forbiddenRule,
+      executeMove: applyMove,
+    } = clickCtxRef.current;
+
+    if (status !== 'Playing') return;
+    if (currentBoard[row][col] !== null) return;
 
     // AI思考中または対戦相手の手番時はクリックを無効化
-    if (isAiThinking || (gameMode === 'PvE' && currentPlayer !== playerColor)) {
+    if (aiThinking || (gameMode === 'PvE' && player !== playerColor)) {
       return;
     }
 
-    // 禁じ手チェック（黒番のみ）：useForbiddenMovesで事前計算済みの結果を参照
-    if (useForbiddenRule && currentPlayer === 'Black' && forbiddenMoves[row][col]) {
-      const result = checkForbiddenMove(board, { row, col }, 'Black');
-      setForbiddenWarning(getForbiddenReasonMessage(result.reason));
-      return;
+    // 禁じ手チェック（黒番のみ）: 単一マスの直接判定が権威あるゲート
+    if (forbiddenRule && player === 'Black') {
+      const result = checkForbiddenMove(currentBoard, { row, col }, 'Black');
+      if (result.isForbidden) {
+        setForbiddenWarning(getForbiddenReasonMessage(result.reason));
+        return;
+      }
     }
 
-    executeMove(row, col);
-  }, [board, gameStatus, isAiThinking, gameMode, currentPlayer, playerColor, executeMove, useForbiddenRule, forbiddenMoves]);
+    setForbiddenWarning(null);
+    applyMove(row, col);
+  }, [gameMode, playerColor]);
 
   const resetGame = useCallback(() => {
     resetGameLogic();
@@ -107,14 +122,12 @@ const App = () => {
             gameMode={gameMode}
             onModeChange={handleModeChange}
           />
-
           <ForbiddenRuleToggle
             useForbiddenRule={useForbiddenRule}
             disabled={!isBoardEmpty}
             onToggle={() => setUseForbiddenRule(!useForbiddenRule)}
           />
         </div>
-
         <ColorSelector
           gameMode={gameMode}
           gameStatus={gameStatus}
@@ -134,7 +147,6 @@ const App = () => {
           gameMode={gameMode}
           playerColor={playerColor}
         />
-
         <Board
           board={board}
           onCellClick={handleCellClick}
