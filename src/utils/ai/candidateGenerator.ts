@@ -54,9 +54,9 @@ import {
   AI_SCORES,
   AI_FEATURES,
   CANDIDATE_CONFIG,
-　SEARCH_TUNING_FEATURES,
-　THREAT_FORBIDDEN_FEATURES,
-　THREAT_FORBIDDEN_CONFIG,
+  SEARCH_TUNING_FEATURES,
+  THREAT_FORBIDDEN_FEATURES,
+  THREAT_FORBIDDEN_CONFIG,
 } from './constants';
 import {
   evaluatePosition,
@@ -877,7 +877,7 @@ const generateOrderedCandidatesInternal = (
  *
  * 既定では既存 tier の順序・LMR / PVS 判定を変更しない。
  */
-const applyPhase6ForcedMoves = (
+const applyForcedMovePostProcessing = (
   board: BoardState,
   player: Player,
   forbiddenMoves: boolean[][],
@@ -1105,10 +1105,10 @@ export const generateOrderedCandidates = (
     ? dynamicForbidden.ruleEnabled
     : true;
 
-  const finalizeWithPhase6 = (
+  const finalizeCandidatesWithForcedMoves = (
     result: OrderedCandidate[]
   ): OrderedCandidate[] =>
-    applyPhase6ForcedMoves(
+    applyForcedMovePostProcessing(
       board,
       player,
       forbiddenMoves,
@@ -1143,7 +1143,7 @@ export const generateOrderedCandidates = (
       dynamicForbidden
     );
 
-    return finalizeWithPhase6(result);
+    return finalizeCandidatesWithForcedMoves(result);
   }
 
   const start = performance.now();
@@ -1168,7 +1168,7 @@ export const generateOrderedCandidates = (
       dynamicForbidden
     );
 
-    result = finalizeWithPhase6(result);
+    result = finalizeCandidatesWithForcedMoves(result);
 
     return result;
   } finally {
