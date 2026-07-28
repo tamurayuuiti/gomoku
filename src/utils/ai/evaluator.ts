@@ -17,7 +17,11 @@
 // 第5弾:
 //   - 中心文字差し替え済みパターンキャッシュを追加。
 //   - 評価ロジック・スコア体系は変更しない。
-
+//
+// 第8.2弾:
+//   - 通常評価分支に極小の形状ボーナス（接続性）を追加。
+//   - 即時戦術スコア・AI_SCORES・tier は変更しない。
+//   - ENABLE_EVAL_SHAPE_BONUS flag で制御。
 import type { BoardState, Player } from '../../types/game';
 import type { PatternType, PatternCount, LineCacheState } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
@@ -28,6 +32,8 @@ import {
   AI_FEATURES,
   PHASE5_FEATURES,
   PHASE5_CONFIG,
+  PHASE8_FEATURES,
+  PHASE8_CONFIG,
 } from './constants';
 
 // ============================================================
@@ -44,7 +50,6 @@ export const hasStoneNearby = (
   col: number
 ): boolean => {
   const range = AI_CONFIG.SEARCH_RANGE;
-
   for (
     let r = Math.max(0, row - range);
     r <= Math.min(BOARD_SIZE - 1, row + range);
@@ -58,7 +63,6 @@ export const hasStoneNearby = (
       if (board[r][c] !== null) return true;
     }
   }
-
   return false;
 };
 
@@ -80,16 +84,13 @@ export const getLineString = (
   centerChar: string = '1'
 ): string => {
   let s = '';
-
   for (let i = -4; i <= 4; i++) {
     if (i === 0) {
       s += centerChar;
       continue;
     }
-
     const r = row + i * dx;
     const c = col + i * dy;
-
     if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) {
       s += '2';
     } else if (board[r][c] === color) {
@@ -100,45 +101,37 @@ export const getLineString = (
       s += '2';
     }
   }
-
   return s;
 };
 
 /** 9 文字のライン文字列からパターン種別を判定する */
 export const detectPattern = (s: string): PatternType => {
   if (s.includes('11111')) return 'WIN';
-
   if (s.includes('011110')) return 'OPEN_FOUR';
-
   if (
     s.includes('011112') || s.includes('211110') ||
     s.includes('10111') || s.includes('11011') || s.includes('11101')
   ) return 'CLOSED_FOUR';
-
   if (
     s.includes('011100') || s.includes('001110') ||
     s.includes('010110') || s.includes('011010')
   ) return 'OPEN_THREE';
-
   if (
     s.includes('001112') || s.includes('211100') ||
     s.includes('010112') || s.includes('211010') ||
     s.includes('011012') || s.includes('210110') ||
     s.includes('10011') || s.includes('11001') || s.includes('10101')
   ) return 'CLOSED_THREE';
-
   if (
     s.includes('001100') || s.includes('011000') || s.includes('000110') ||
     s.includes('010100') || s.includes('001010') || s.includes('010010')
   ) return 'OPEN_TWO';
-
   if (
     s.includes('000112') || s.includes('211000') ||
     s.includes('001012') || s.includes('210100') ||
     s.includes('010012') || s.includes('210010') ||
     s.includes('10001')
   ) return 'CLOSED_TWO';
-
   return 'SINGLE';
 };
 
@@ -183,20 +176,16 @@ export const detectPatternFast = (s: string): PatternType => {
   if (!AI_FEATURES.ENABLE_PATTERN_CACHE) {
     return detectPattern(s);
   }
-
   const cached = patternCache.get(s);
   if (cached !== undefined) {
     patternCacheHits++;
     return cached;
   }
-
   patternCacheMisses++;
   const ptn = detectPattern(s);
-
   if (patternCache.size < PATTERN_CACHE_LIMIT) {
     patternCache.set(s, ptn);
   }
-
   return ptn;
 };
 
@@ -222,7 +211,6 @@ export const detectPatternFast = (s: string): PatternType => {
  */
 const center1PatternCache = new Map<string, PatternType>();
 const center2PatternCache = new Map<string, PatternType>();
-
 let centerPatternHits = 0;
 let centerPatternMisses = 0;
 
@@ -254,24 +242,18 @@ export const detectPatternWithCenter = (
     const substituted = line.slice(0, 4) + center + line.slice(5);
     return detectPatternFast(substituted);
   }
-
   const cache = center === '1' ? center1PatternCache : center2PatternCache;
   const cached = cache.get(line);
-
   if (cached !== undefined) {
     centerPatternHits++;
     return cached;
   }
-
   centerPatternMisses++;
-
   const substituted = line.slice(0, 4) + center + line.slice(5);
   const ptn = detectPatternFast(substituted);
-
   if (cache.size < PHASE5_CONFIG.CENTER_PATTERN_CACHE_LIMIT) {
     cache.set(line, ptn);
   }
-
   return ptn;
 };
 
@@ -295,6 +277,79 @@ const computePositionBonus = (row: number, col: number): number => {
   return (1 - distance / MAX_CENTER_DISTANCE) * POSITION_BONUS_EPSILON;
 };
 
+// ============================================================
+// 第8.2弾：形状ボーナス（接続性）
+// ============================================================
+
+/**
+ * board ベースの形状ボーナス。
+ *
+ * 4方向 × 距離1,2 の近接自石を数え、極小ボーナスを加算する。
+ * 即時戦術スコアには影響しない（通常評価分支でのみ呼ばれる）。
+ * 最大値は EVAL_SHAPE_MAX_BONUS で cap され、AI_SCORES.SINGLE より十分小さい。
+ */
+const computeShapeBonusFromBoard = (
+  board: BoardState,
+  row: number,
+  col: number,
+  playerColor: Player
+): number => {
+  if (!PHASE8_FEATURES.ENABLE_EVAL_SHAPE_BONUS) return 0;
+  let bonus = 0;
+  for (const [dx, dy] of DIRECTIONS) {
+    for (const dist of [1, 2]) {
+      const r1 = row + dx * dist;
+      const c1 = col + dy * dist;
+      if (
+        r1 >= 0 && r1 < BOARD_SIZE &&
+        c1 >= 0 && c1 < BOARD_SIZE &&
+        board[r1][c1] === playerColor
+      ) {
+        bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+      }
+      const r2 = row - dx * dist;
+      const c2 = col - dy * dist;
+      if (
+        r2 >= 0 && r2 < BOARD_SIZE &&
+        c2 >= 0 && c2 < BOARD_SIZE &&
+        board[r2][c2] === playerColor
+      ) {
+        bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+      }
+    }
+  }
+  return Math.min(bonus, PHASE8_CONFIG.EVAL_SHAPE_MAX_BONUS);
+};
+
+/**
+ * LineCache ベースの形状ボーナス。
+ *
+ * 9 文字ライン文字列の index 2,3,5,6（中心から距離 1,2）に
+ * 自石 '1' があるかを数える。
+ * boardEvaluator.ts の scoreFromLineCache からも利用するため export する。
+ */
+export const computeShapeBonusFromLines = (
+  ownLineCaches: string[][][],
+  r: number,
+  c: number
+): number => {
+  if (!PHASE8_FEATURES.ENABLE_EVAL_SHAPE_BONUS) return 0;
+  let bonus = 0;
+  for (let d = 0; d < DIRECTIONS.length; d++) {
+    const line = ownLineCaches[d][r][c];
+    // index 2 = 距離-2, index 3 = 距離-1, index 5 = 距離+1, index 6 = 距離+2
+    if (line[2] === '1') bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+    if (line[3] === '1') bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+    if (line[5] === '1') bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+    if (line[6] === '1') bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+  }
+  return Math.min(bonus, PHASE8_CONFIG.EVAL_SHAPE_MAX_BONUS);
+};
+
+// ============================================================
+// 位置評価本体
+// ============================================================
+
 const createEmptyPatternCount = (): PatternCount => ({
   WIN: 0,
   OPEN_FOUR: 0,
@@ -310,6 +365,10 @@ const createEmptyPatternCount = (): PatternCount => ({
  * 指定位置への着手価値を playerColor の視点で返す（位置補正なしの素点）。
  * 評価フロー: 攻撃パターン → 相手 before パターン → 相手 after パターン →
  * 即時評価 → 通常スコア加算。中央近接ボーナスは呼び出し元の evaluatePosition が加算する。
+ *
+ * 第8.2弾:
+ *   通常評価分支の末尾に形状ボーナスを加算する。
+ *   即時戦術リターン（WIN / DEFEND_WIN / OPEN_FOUR 等）には影響しない。
  */
 const evaluatePositionRaw = (
   board: BoardState,
@@ -318,7 +377,6 @@ const evaluatePositionRaw = (
   playerColor: Player
 ): number => {
   const opponentColor = opponentOf(playerColor);
-
   const attackCounts = createEmptyPatternCount();
   const oppBeforeCounts = createEmptyPatternCount();
   const oppAfterCounts = createEmptyPatternCount();
@@ -342,32 +400,23 @@ const evaluatePositionRaw = (
 
   // --- 即時評価 ---
   if (attackCounts.WIN > 0) return AI_SCORES.WIN;
-
   if (oppBeforeCounts.WIN > 0 && oppAfterCounts.WIN === 0)
     return AI_SCORES.DEFEND_WIN;
-
   if (attackCounts.OPEN_FOUR > 0) return AI_SCORES.OPEN_FOUR;
-
   if (attackCounts.CLOSED_FOUR >= 2) return AI_SCORES.DOUBLE_FOUR;
-
   if (attackCounts.CLOSED_FOUR >= 1 && attackCounts.OPEN_THREE >= 1)
     return AI_SCORES.FOUR_THREE;
-
   if (
     oppBeforeCounts.OPEN_FOUR > 0 &&
     oppAfterCounts.OPEN_FOUR < oppBeforeCounts.OPEN_FOUR
   ) return AI_SCORES.OPEN_FOUR;
-
   if (oppBeforeCounts.CLOSED_FOUR >= 2 && oppAfterCounts.CLOSED_FOUR < 2)
     return AI_SCORES.DOUBLE_FOUR;
-
   if (
     oppBeforeCounts.CLOSED_FOUR >= 1 && oppBeforeCounts.OPEN_THREE >= 1 &&
     !(oppAfterCounts.CLOSED_FOUR >= 1 && oppAfterCounts.OPEN_THREE >= 1)
   ) return AI_SCORES.FOUR_THREE;
-
   if (attackCounts.OPEN_THREE >= 2) return AI_SCORES.DOUBLE_THREE;
-
   if (oppBeforeCounts.OPEN_THREE >= 2 && oppAfterCounts.OPEN_THREE < 2)
     return AI_SCORES.DOUBLE_THREE;
 
@@ -395,7 +444,10 @@ const evaluatePositionRaw = (
     calcTotalOppScore(oppBeforeCounts) - calcTotalOppScore(oppAfterCounts)
   );
 
-  return attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore;
+  // 第8.2弾: 形状ボーナス（通常評価分支のみ）
+  const shapeBonus = computeShapeBonusFromBoard(board, row, col, playerColor);
+
+  return attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore + shapeBonus;
 };
 
 /**
@@ -424,6 +476,9 @@ export const evaluatePosition = (
  *
  * 第5弾:
  *   中心文字差し替えキャッシュを使い、文字列生成コストを削減する。
+ *
+ * 第8.2弾:
+ *   通常評価分支の末尾に形状ボーナスを加算する。
  */
 export const evaluatePositionWithCache = (
   lineCache: LineCacheState,
@@ -432,7 +487,6 @@ export const evaluatePositionWithCache = (
   playerColor: Player
 ): number => {
   const opponentColor = opponentOf(playerColor);
-
   const ownCaches = lineCache.caches[playerColor];
   const oppCaches = lineCache.caches[opponentColor];
 
@@ -457,45 +511,36 @@ export const evaluatePositionWithCache = (
   if (attackCounts.WIN > 0) {
     return AI_SCORES.WIN + computePositionBonus(row, col);
   }
-
   if (oppBeforeCounts.WIN > 0 && oppAfterCounts.WIN === 0) {
     return AI_SCORES.DEFEND_WIN + computePositionBonus(row, col);
   }
-
   if (attackCounts.OPEN_FOUR > 0) {
     return AI_SCORES.OPEN_FOUR + computePositionBonus(row, col);
   }
-
   if (attackCounts.CLOSED_FOUR >= 2) {
     return AI_SCORES.DOUBLE_FOUR + computePositionBonus(row, col);
   }
-
   if (attackCounts.CLOSED_FOUR >= 1 && attackCounts.OPEN_THREE >= 1) {
     return AI_SCORES.FOUR_THREE + computePositionBonus(row, col);
   }
-
   if (
     oppBeforeCounts.OPEN_FOUR > 0 &&
     oppAfterCounts.OPEN_FOUR < oppBeforeCounts.OPEN_FOUR
   ) {
     return AI_SCORES.OPEN_FOUR + computePositionBonus(row, col);
   }
-
   if (oppBeforeCounts.CLOSED_FOUR >= 2 && oppAfterCounts.CLOSED_FOUR < 2) {
     return AI_SCORES.DOUBLE_FOUR + computePositionBonus(row, col);
   }
-
   if (
     oppBeforeCounts.CLOSED_FOUR >= 1 && oppBeforeCounts.OPEN_THREE >= 1 &&
     !(oppAfterCounts.CLOSED_FOUR >= 1 && oppAfterCounts.OPEN_THREE >= 1)
   ) {
     return AI_SCORES.FOUR_THREE + computePositionBonus(row, col);
   }
-
   if (attackCounts.OPEN_THREE >= 2) {
     return AI_SCORES.DOUBLE_THREE + computePositionBonus(row, col);
   }
-
   if (oppBeforeCounts.OPEN_THREE >= 2 && oppAfterCounts.OPEN_THREE < 2) {
     return AI_SCORES.DOUBLE_THREE + computePositionBonus(row, col);
   }
@@ -525,5 +570,9 @@ export const evaluatePositionWithCache = (
   );
 
   const raw = attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore;
-  return raw + computePositionBonus(row, col);
+
+  // 第8.2弾: 形状ボーナス（通常評価分支のみ）
+  const shapeBonus = computeShapeBonusFromLines(ownCaches, row, col);
+
+  return raw + computePositionBonus(row, col) + shapeBonus;
 };

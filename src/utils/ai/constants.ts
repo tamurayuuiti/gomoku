@@ -298,8 +298,10 @@ export const PHASE5_CONFIG: {
   /**
    * Static Eval Cache の世代。
    * 評価関数変更時はこの値を増やし、古いキャッシュが混ざらないようにする。
+   *
+   * 第8.2弾: 形状ボーナス追加により 1n → 2n へ bump。
    */
-  STATIC_EVAL_VERSION: 1n,
+  STATIC_EVAL_VERSION: 2n,
   /**
    * 第5.5弾:
    * Aspiration fail 率が高かったため、まず 200 へ引き上げる。
@@ -551,6 +553,15 @@ export const PHASE8_FEATURES = {
   ENABLE_QSEARCH_STATE_AUDIT: false,
   /** qsearch 詳細ログ */
   ENABLE_QSEARCH_VERBOSE_LOG: false,
+  // --- 第8.2弾 ---
+  /**
+   * 評価関数の形状ボーナスを有効化する。
+   *
+   * 通常評価分支のみに極小の接続性ボーナスを加算する。
+   * 即時戦術スコア・AI_SCORES・tier・CRITICAL_SCORE_THRESHOLD は変更しない。
+   * 既定 OFF。検証後に true へ切り替え。
+   */
+  ENABLE_EVAL_SHAPE_BONUS: true,
 } as const;
 
 /**
@@ -588,6 +599,15 @@ export const PHASE8_CONFIG = {
   QSEARCH_FORBIDDEN_CACHE_LIMIT: 5000,
   /** qsearch キャッシュ上限到達時の eviction 割合 */
   QSEARCH_CACHE_EVICTION_RATIO: 0.2,
+  // --- 第8.2弾 ---
+  /**
+   * 形状ボーナス: 近接自石 1 個あたりのボーナス。
+   * 4方向 × 距離1,2 × 正負 = 最大16個 × 0.02 = 0.32 → cap 0.3。
+   * AI_SCORES.SINGLE = 1 より十分小さく、戦術閾値に影響しない。
+   */
+  EVAL_SHAPE_BONUS_PER_STONE: 0.02,
+  /** 形状ボーナスの絶対上限 */
+  EVAL_SHAPE_MAX_BONUS: 0.3,
 } as const;
 
 // --- 方向定数 ---
