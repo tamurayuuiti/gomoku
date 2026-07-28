@@ -43,7 +43,7 @@ import type { Player } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
 import type { PatternCacheStats, CenterPatternCacheStats } from './evaluator';
-import { AI_DEBUG_CONFIG } from './constants';
+import { DIAGNOSTICS_CONFIG } from './constants';
 import { BOARD_SIZE } from '../gameLogic';
 
 /**
@@ -414,7 +414,7 @@ export const finalizeSearchStats = (stats: SearchStats): void => {
  * 第4弾ではデフォルトで抑制する。
  */
 export const shouldLogVerboseSearch = (): boolean =>
-  AI_DEBUG_CONFIG.ENABLE_STATS && AI_DEBUG_CONFIG.ENABLE_VERBOSE_SEARCH_LOGS;
+  DIAGNOSTICS_CONFIG.ENABLE_STATS && DIAGNOSTICS_CONFIG.ENABLE_VERBOSE_SEARCH_LOGS;
 
 const formatMove = (
   move: import('../../types/game').Position | null
@@ -465,8 +465,8 @@ const safeAvgUs = (
  * - ENABLE_DETAILED_JSON   : summary でも JSON を併記
  */
 export const logSearchSummary = (stats: SearchStats): void => {
-  if (!AI_DEBUG_CONFIG.ENABLE_STATS) return;
-  if (AI_DEBUG_CONFIG.LOG_LEVEL === 'none') return;
+  if (!DIAGNOSTICS_CONFIG.ENABLE_STATS) return;
+  if (DIAGNOSTICS_CONFIG.LOG_LEVEL === 'none') return;
 
   const aspirationFail =
     stats.aspiration.failHigh + stats.aspiration.failLow;
@@ -615,8 +615,8 @@ export const logSearchSummary = (stats: SearchStats): void => {
   console.log(summary);
 
   const shouldOutputJson =
-    AI_DEBUG_CONFIG.LOG_LEVEL === 'detailed' ||
-    AI_DEBUG_CONFIG.ENABLE_DETAILED_JSON;
+    DIAGNOSTICS_CONFIG.LOG_LEVEL === 'detailed' ||
+    DIAGNOSTICS_CONFIG.ENABLE_DETAILED_JSON;
   if (shouldOutputJson) {
     console.log(JSON.stringify(stats));
   }
@@ -1076,7 +1076,7 @@ export const getActiveGameSession = (): GameSessionStats | null =>
  * 既にアクティブなセッションがあれば何もしない。
  */
 export const ensureGameSession = (aiPlayer: Player | null): void => {
-  if (!AI_DEBUG_CONFIG.ENABLE_STATS) return;
+  if (!DIAGNOSTICS_CONFIG.ENABLE_STATS) return;
   if (!activeGameSession) {
     activeGameSession = createGameSessionStats(aiPlayer);
   }
@@ -1298,8 +1298,8 @@ export const finalizeGameSession = (
     s.staticEvalCacheHitRate = 0;
   }
 
-  if (!AI_DEBUG_CONFIG.ENABLE_STATS) return;
-  if (AI_DEBUG_CONFIG.LOG_LEVEL === 'none') return;
+  if (!DIAGNOSTICS_CONFIG.ENABLE_STATS) return;
+  if (DIAGNOSTICS_CONFIG.LOG_LEVEL === 'none') return;
 
   const aspWinAvg =
     s.aspirationAttempts > 0
@@ -1454,8 +1454,8 @@ export const finalizeGameSession = (
   console.log(summary);
 
   const shouldOutputJson =
-    AI_DEBUG_CONFIG.LOG_LEVEL === 'detailed' ||
-    AI_DEBUG_CONFIG.ENABLE_DETAILED_JSON;
+    DIAGNOSTICS_CONFIG.LOG_LEVEL === 'detailed' ||
+    DIAGNOSTICS_CONFIG.ENABLE_DETAILED_JSON;
   if (shouldOutputJson) {
     console.log(JSON.stringify(s));
   }

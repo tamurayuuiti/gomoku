@@ -29,10 +29,10 @@ import {
   AI_SCORES,
   AI_CONFIG,
   AI_FEATURES,
-  PHASE5_FEATURES,
-  PHASE5_CONFIG,
-  PHASE8_FEATURES,
-  PHASE8_CONFIG,
+  EVAL_CONFIG,
+  SEARCH_TUNING_FEATURES,
+  SEARCH_TUNING_CONFIG,
+  EVALUATION_FEATURES,
 } from './constants';
 
 // ============================================================
@@ -236,7 +236,7 @@ export const detectPatternWithCenter = (
 ): PatternType => {
   if (
     !AI_FEATURES.ENABLE_PATTERN_CACHE ||
-    !PHASE5_FEATURES.ENABLE_CENTER_PATTERN_CACHE
+    !SEARCH_TUNING_FEATURES.ENABLE_CENTER_PATTERN_CACHE
   ) {
     const substituted = line.slice(0, 4) + center + line.slice(5);
     return detectPatternFast(substituted);
@@ -250,7 +250,7 @@ export const detectPatternWithCenter = (
   centerPatternMisses++;
   const substituted = line.slice(0, 4) + center + line.slice(5);
   const ptn = detectPatternFast(substituted);
-  if (cache.size < PHASE5_CONFIG.CENTER_PATTERN_CACHE_LIMIT) {
+  if (cache.size < SEARCH_TUNING_CONFIG.CENTER_PATTERN_CACHE_LIMIT) {
     cache.set(line, ptn);
   }
   return ptn;
@@ -293,7 +293,7 @@ const computeShapeBonusFromBoard = (
   col: number,
   playerColor: Player
 ): number => {
-  if (!PHASE8_FEATURES.ENABLE_EVAL_SHAPE_BONUS) return 0;
+  if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
   let bonus = 0;
   for (const [dx, dy] of DIRECTIONS) {
     for (const dist of [1, 2]) {
@@ -304,7 +304,7 @@ const computeShapeBonusFromBoard = (
         c1 >= 0 && c1 < BOARD_SIZE &&
         board[r1][c1] === playerColor
       ) {
-        bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+        bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
       }
       const r2 = row - dx * dist;
       const c2 = col - dy * dist;
@@ -313,11 +313,11 @@ const computeShapeBonusFromBoard = (
         c2 >= 0 && c2 < BOARD_SIZE &&
         board[r2][c2] === playerColor
       ) {
-        bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+        bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
       }
     }
   }
-  return Math.min(bonus, PHASE8_CONFIG.EVAL_SHAPE_MAX_BONUS);
+  return Math.min(bonus, EVAL_CONFIG.SHAPE_MAX_BONUS);
 };
 
 /**
@@ -332,17 +332,17 @@ export const computeShapeBonusFromLines = (
   r: number,
   c: number
 ): number => {
-  if (!PHASE8_FEATURES.ENABLE_EVAL_SHAPE_BONUS) return 0;
+  if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
   let bonus = 0;
   for (let d = 0; d < DIRECTIONS.length; d++) {
     const line = ownLineCaches[d][r][c];
     // index 2 = 距離-2, index 3 = 距離-1, index 5 = 距離+1, index 6 = 距離+2
-    if (line[2] === '1') bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
-    if (line[3] === '1') bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
-    if (line[5] === '1') bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
-    if (line[6] === '1') bonus += PHASE8_CONFIG.EVAL_SHAPE_BONUS_PER_STONE;
+    if (line[2] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+    if (line[3] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+    if (line[5] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+    if (line[6] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
   }
-  return Math.min(bonus, PHASE8_CONFIG.EVAL_SHAPE_MAX_BONUS);
+  return Math.min(bonus, EVAL_CONFIG.SHAPE_MAX_BONUS);
 };
 
 // ============================================================

@@ -22,7 +22,7 @@
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import { BOARD_SIZE, checkForbiddenMove } from '../gameLogic';
-import { PHASE6_CONFIG, PHASE6_FEATURES } from './constants';
+import { THREAT_FORBIDDEN_CONFIG, THREAT_FORBIDDEN_FEATURES } from './constants';
 
 const MASK64 = (1n << 64n) - 1n;
 const MOVE_SALT_SEED = 0x9e3779b97f4a7c15n;
@@ -36,7 +36,7 @@ export interface DynamicForbiddenOptions {
    *
    * - false: 動的禁手を無効化する。
    * - true: 動的禁手を有効化できる。
-   * - undefined: PHASE6_CONFIG.REQUIRE_EXPLICIT_FORBIDDEN_RULE に従う。
+   * - undefined: THREAT_FORBIDDEN_CONFIG.REQUIRE_EXPLICIT_FORBIDDEN_RULE に従う。
    */
   forbiddenRuleEnabled?: boolean;
 }
@@ -83,11 +83,11 @@ export const createDynamicForbiddenController = (
   const ruleEnabled =
     options.forbiddenRuleEnabled === false
       ? false
-      : !PHASE6_CONFIG.REQUIRE_EXPLICIT_FORBIDDEN_RULE ||
+      : !THREAT_FORBIDDEN_CONFIG.REQUIRE_EXPLICIT_FORBIDDEN_RULE ||
         options.forbiddenRuleEnabled === true;
 
   const isMasterEnabled = (): boolean =>
-    PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN && ruleEnabled;
+    THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN && ruleEnabled;
 
   const updateCacheSizeStats = (stats?: SearchStats): void => {
     if (!stats) return;
@@ -98,13 +98,13 @@ export const createDynamicForbiddenController = (
   };
 
   const evictIfNeeded = (stats?: SearchStats): void => {
-    const limit = PHASE6_CONFIG.FORBIDDEN_CACHE_LIMIT;
+    const limit = THREAT_FORBIDDEN_CONFIG.FORBIDDEN_CACHE_LIMIT;
     if (limit <= 0) return;
     if (cache.size < limit) return;
 
     const deleteCount = Math.max(
       1,
-      Math.floor(cache.size * PHASE6_CONFIG.FORBIDDEN_CACHE_EVICTION_RATIO)
+      Math.floor(cache.size * THREAT_FORBIDDEN_CONFIG.FORBIDDEN_CACHE_EVICTION_RATIO)
     );
 
     let deleted = 0;
@@ -126,7 +126,7 @@ export const createDynamicForbiddenController = (
     return (
       (currentHash ^
         moveSalt(index) ^
-        PHASE6_CONFIG.FORBIDDEN_CACHE_VERSION) &
+        THREAT_FORBIDDEN_CONFIG.FORBIDDEN_CACHE_VERSION) &
       MASK64
     );
   };
@@ -155,7 +155,7 @@ export const createDynamicForbiddenController = (
       }
 
       if (isRoot) {
-        if (!PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT) {
+        if (!THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT) {
           if (stats) {
             stats.forbidden.dynamicSkippedDisabled++;
           }
@@ -164,14 +164,14 @@ export const createDynamicForbiddenController = (
         return true;
       }
 
-      if (!PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_INTERNAL) {
+      if (!THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_INTERNAL) {
         if (stats) {
           stats.forbidden.dynamicSkippedDeep++;
         }
         return false;
       }
 
-      if (depth > PHASE6_CONFIG.DYNAMIC_FORBIDDEN_INTERNAL_MAX_DEPTH) {
+      if (depth > THREAT_FORBIDDEN_CONFIG.DYNAMIC_FORBIDDEN_INTERNAL_MAX_DEPTH) {
         if (stats) {
           stats.forbidden.dynamicSkippedDeep++;
         }
@@ -195,7 +195,7 @@ export const createDynamicForbiddenController = (
         stats.forbidden.dynamicChecks++;
       }
 
-      if (!PHASE6_FEATURES.ENABLE_FORBIDDEN_CACHE) {
+      if (!THREAT_FORBIDDEN_FEATURES.ENABLE_FORBIDDEN_CACHE) {
         const result = checkForbiddenMove(board, pos, player).isForbidden;
         if (result && stats) {
           stats.forbidden.dynamicForbiddenMoves++;

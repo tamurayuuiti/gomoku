@@ -31,8 +31,8 @@ import type { SearchOptions, SearchStats } from '../../types/ai';
 import { BOARD_SIZE, checkForbiddenMove, DIRECTIONS, countStones } from '../gameLogic';
 import {
   AI_FEATURES,
-  PHASE7_FEATURES,
-  PHASE7_CONFIG,
+  VCF_FEATURES,
+  VCF_CONFIG,
 } from './constants';
 import { createLineCache } from './lineCache';
 import { calculateInitialHash } from './zobrist';
@@ -148,17 +148,17 @@ const resolveRootBudgetMs = (
   }
 
   if (timeLimitMs === null) {
-    return PHASE7_CONFIG.ROOT_VCF_FIXED_TIME_BUDGET_MS;
+    return VCF_CONFIG.ROOT_VCF_FIXED_TIME_BUDGET_MS;
   }
 
   if (!Number.isFinite(timeLimitMs)) {
     return 0;
   }
 
-  const raw = timeLimitMs * PHASE7_CONFIG.ROOT_VCF_TIME_BUDGET_RATIO;
+  const raw = timeLimitMs * VCF_CONFIG.ROOT_VCF_TIME_BUDGET_RATIO;
   return Math.max(
-    PHASE7_CONFIG.ROOT_VCF_TIME_BUDGET_MIN_MS,
-    Math.min(PHASE7_CONFIG.ROOT_VCF_TIME_BUDGET_MAX_MS, raw)
+    VCF_CONFIG.ROOT_VCF_TIME_BUDGET_MIN_MS,
+    Math.min(VCF_CONFIG.ROOT_VCF_TIME_BUDGET_MAX_MS, raw)
   );
 };
 
@@ -170,7 +170,7 @@ const resolveRootNodeLimit = (
       ? options.vcfNodeLimit
       : 0;
   }
-  return PHASE7_CONFIG.ROOT_VCF_NODE_LIMIT;
+  return VCF_CONFIG.ROOT_VCF_NODE_LIMIT;
 };
 
 // ============================================================
@@ -191,7 +191,7 @@ const checkForbiddenCached = (
   const vcf = ctx.stats.vcf;
   vcf.rootForbiddenChecks++;
 
-  if (!PHASE7_FEATURES.VCF_USE_FORBIDDEN_CACHE) {
+  if (!VCF_FEATURES.VCF_USE_FORBIDDEN_CACHE) {
     return checkForbiddenMove(ctx.state.board, pos, player).isForbidden;
   }
 
@@ -200,7 +200,7 @@ const checkForbiddenCached = (
     (hash ^
       moveSalt(index) ^
       PLAYER_SALT_BLACK ^
-      PHASE7_CONFIG.VCF_VERSION) &
+      VCF_CONFIG.VCF_VERSION) &
     MASK64;
 
   const cached = ctx.forbiddenCache.get(key);
@@ -212,12 +212,12 @@ const checkForbiddenCached = (
   vcf.rootForbiddenCacheMisses++;
   const result = checkForbiddenMove(ctx.state.board, pos, player).isForbidden;
 
-  const limit = PHASE7_CONFIG.VCF_FORBIDDEN_CACHE_LIMIT;
+  const limit = VCF_CONFIG.VCF_FORBIDDEN_CACHE_LIMIT;
   if (limit > 0) {
     if (ctx.forbiddenCache.size >= limit) {
       const deleteCount = Math.max(
         1,
-        Math.floor(ctx.forbiddenCache.size * PHASE7_CONFIG.VCF_FORBIDDEN_CACHE_EVICTION_RATIO)
+        Math.floor(ctx.forbiddenCache.size * VCF_CONFIG.VCF_FORBIDDEN_CACHE_EVICTION_RATIO)
       );
       let deleted = 0;
       for (const cacheKey of ctx.forbiddenCache.keys()) {
@@ -439,7 +439,7 @@ const searchAttacker = (
       //
       // 攻撃側が四を作っても、防御側がその時点で即時勝ちを持っていれば
       // 防御側が先に勝つため、この攻撃枝は失敗。
-      if (PHASE7_FEATURES.VCF_CHECK_DEFENDER_COUNTER_WIN) {
+      if (VCF_FEATURES.VCF_CHECK_DEFENDER_COUNTER_WIN) {
         const defenderImmediateWin = findImmediateWinMove(
           ctx,
           ctx.opponent,
@@ -460,7 +460,7 @@ const searchAttacker = (
 
       // 即時勝ちマスが 2 箇所以上 → 受け不可
       if (winSquares.length >= 2) {
-        if (!PHASE7_FEATURES.VCF_ALLOW_OPEN_FOUR_TERMINAL) {
+        if (!VCF_FEATURES.VCF_ALLOW_OPEN_FOUR_TERMINAL) {
           continue;
         }
         ctx.stats.vcf.rootTerminalOpenFours++;
@@ -558,7 +558,7 @@ export const runRootVcf = (
     vcf.rootTimeMs = timeMs;
     vcf.rootBudgetMs = budgetMs;
 
-    if (PHASE7_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
+    if (VCF_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
       const moveText = move ? `(${move.row},${move.col})` : 'none';
       const plyText = plyToWin === null ? '-' : String(plyToWin);
       const reasonText = reason === null ? '-' : reason;
@@ -594,8 +594,8 @@ export const runRootVcf = (
   // ------------------------------------------------------------
 
   if (
-    !PHASE7_FEATURES.ENABLE_VCF ||
-    !PHASE7_FEATURES.ENABLE_ROOT_VCF
+    !VCF_FEATURES.ENABLE_VCF ||
+    !VCF_FEATURES.ENABLE_ROOT_VCF
   ) {
     vcf.rootDisabled++;
     return makeResult('DISABLED', null, null, 0, 0, 0, 0, 'flag');
@@ -606,19 +606,19 @@ export const runRootVcf = (
     return makeResult('SKIPPED', null, null, 0, 0, 0, 0, 'option');
   }
 
-  if (req.stones < PHASE7_CONFIG.ROOT_VCF_MIN_STONES) {
+  if (req.stones < VCF_CONFIG.ROOT_VCF_MIN_STONES) {
     vcf.rootSkippedEarlyGame++;
     return makeResult('SKIPPED', null, null, 0, 0, 0, 0, 'early-game');
   }
 
-  if (req.maxDepth < PHASE7_CONFIG.ROOT_VCF_MIN_MAX_DEPTH) {
+  if (req.maxDepth < VCF_CONFIG.ROOT_VCF_MIN_MAX_DEPTH) {
     vcf.rootSkippedLowDepth++;
     return makeResult('SKIPPED', null, null, 0, 0, 0, 0, 'low-depth');
   }
 
   if (
     req.timeLimitMs !== null &&
-    req.timeLimitMs < PHASE7_CONFIG.ROOT_VCF_MIN_TIME_LIMIT_MS
+    req.timeLimitMs < VCF_CONFIG.ROOT_VCF_MIN_TIME_LIMIT_MS
   ) {
     vcf.rootSkippedLowTime++;
     return makeResult('SKIPPED', null, null, 0, 0, 0, 0, 'low-time');
@@ -640,7 +640,7 @@ export const runRootVcf = (
 
   try {
     const lineCache =
-      AI_FEATURES.ENABLE_LINE_CACHE && PHASE7_FEATURES.VCF_USE_LINE_CACHE
+      AI_FEATURES.ENABLE_LINE_CACHE && VCF_FEATURES.VCF_USE_LINE_CACHE
         ? createLineCache(req.board)
         : null;
 
@@ -672,7 +672,7 @@ export const runRootVcf = (
       rootForbiddenMoves: req.forbiddenMoves,
       budgetMs,
       nodeLimit,
-      maxPly: PHASE7_CONFIG.ROOT_VCF_MAX_PLY,
+      maxPly: VCF_CONFIG.ROOT_VCF_MAX_PLY,
       startTime: start,
       nodes: 0,
       maxPlyReached: 0,
@@ -682,7 +682,7 @@ export const runRootVcf = (
 
     const result = searchAttacker(ctx, 0, initialHash);
 
-    if (PHASE7_FEATURES.ENABLE_VCF_STATE_AUDIT) {
+    if (VCF_FEATURES.ENABLE_VCF_STATE_AUDIT) {
       const afterStones = countStones(req.board);
       if (afterStones !== req.stones) {
         console.warn(
@@ -750,7 +750,7 @@ export const runRootVcf = (
 
     const message = err instanceof Error ? err.message : String(err);
 
-    if (PHASE7_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
+    if (VCF_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
       console.error('[VCF] root exception:', err);
     }
 

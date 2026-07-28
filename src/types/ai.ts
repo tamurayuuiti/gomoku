@@ -94,7 +94,7 @@ export interface SearchOptions {
    *
    * - true: Black 禁手の限定動的再判定を有効化できる。
    * - false: 動的禁手を明示的に無効化する。
-   * - undefined: PHASE6_CONFIG.REQUIRE_EXPLICIT_FORBIDDEN_RULE に従う。
+   * - undefined: THREAT_FORBIDDEN_CONFIG.REQUIRE_EXPLICIT_FORBIDDEN_RULE に従う。
    *
    * 既定では UI 後方互換のため、undefined を禁手有効として扱う。
    * 禁手ルール OFF の UI から使う場合は false を渡すことが望ましい。
@@ -104,20 +104,20 @@ export interface SearchOptions {
    * 第7.1弾追加: Root VCF を明示的に有効/無効化する。
    *
    * - false: Root VCF を無効化する。
-   * - true / undefined: PHASE7_FEATURES に従う。
+   * - true / undefined: VCF_FEATURES に従う。
    */
   vcfEnabled?: boolean;
   /**
    * 第7.1弾追加: Root VCF 時間予算 [ms]。
    *
-   * 未指定時は PHASE7_CONFIG から解決する。
+   * 未指定時は VCF_CONFIG から解決する。
    * 0 以下を指定すると Root VCF を skip する。
    */
   vcfTimeBudgetMs?: number;
   /**
    * 第7.1弾追加: Root VCF ノード上限。
    *
-   * 未指定時は PHASE7_CONFIG から解決する。
+   * 未指定時は VCF_CONFIG から解決する。
    * 0 以下を指定すると Root VCF を skip する。
    */
   vcfNodeLimit?: number;
@@ -125,34 +125,34 @@ export interface SearchOptions {
    * 第8.1弾追加: 戦術 Quiescence を明示的に有効/無効化する。
    *
    * - false: Quiescence を無効化する。
-   * - true / undefined: PHASE8_FEATURES に従う。
+   * - true / undefined: QSEARCH_FEATURES に従う。
    */
   qsearchEnabled?: boolean;
   /**
    * 第8.1弾追加: Quiescence 最大 ply。
    *
-   * 未指定時は PHASE8_CONFIG.QSEARCH_MAX_PLY を使用。
+   * 未指定時は QSEARCH_CONFIG.QSEARCH_MAX_PLY を使用。
    * 0 以下を指定すると Quiescence を skip する。
    */
   qsearchMaxPly?: number;
   /**
    * 第8.1弾追加: Quiescence 1葉あたりノード上限。
    *
-   * 未指定時は PHASE8_CONFIG.QSEARCH_NODE_LIMIT_PER_LEAF を使用。
+   * 未指定時は QSEARCH_CONFIG.QSEARCH_NODE_LIMIT_PER_LEAF を使用。
    * 0 以下を指定すると Quiescence を skip する。
    */
   qsearchNodeLimitPerLeaf?: number;
   /**
    * 第8.1弾追加: Quiescence 総ノード上限。
    *
-   * 未指定時は PHASE8_CONFIG.QSEARCH_TOTAL_NODE_LIMIT を使用。
+   * 未指定時は QSEARCH_CONFIG.QSEARCH_TOTAL_NODE_LIMIT を使用。
    * 0 以下を指定すると Quiescence を skip する。
    */
   qsearchTotalNodeLimit?: number;
   /**
    * 第8.1弾追加: Quiescence 時間予算 [ms]。
    *
-   * 未指定時は PHASE8_CONFIG から解決する。
+   * 未指定時は QSEARCH_CONFIG から解決する。
    * 0 以下を指定すると Quiescence を skip する。
    */
   qsearchTimeBudgetMs?: number;

@@ -17,7 +17,7 @@
 
 import type { Player } from '../../types/game';
 import { BOARD_SIZE } from '../gameLogic';
-import { PHASE5_CONFIG } from './constants';
+import { SEARCH_TUNING_CONFIG } from './constants';
 
 export interface StaticEvalCacheOptions {
   limit: number;
@@ -105,7 +105,7 @@ export const createStaticEvalCache = (
     (playerSalt ^
       forbiddenSalt ^
       candidateSetSalt ^
-      PHASE5_CONFIG.STATIC_EVAL_VERSION) &
+      SEARCH_TUNING_CONFIG.STATIC_EVAL_VERSION) &
     MASK64;
 
   const makeKey = (hash: bigint): bigint => (hash ^ keySalt) & MASK64;

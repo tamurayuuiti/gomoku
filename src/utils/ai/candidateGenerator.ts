@@ -54,9 +54,9 @@ import {
   AI_SCORES,
   AI_FEATURES,
   CANDIDATE_CONFIG,
-  PHASE5_FEATURES,
-  PHASE6_FEATURES,
-  PHASE6_CONFIG,
+　SEARCH_TUNING_FEATURES,
+　THREAT_FORBIDDEN_FEATURES,
+　THREAT_FORBIDDEN_CONFIG,
 } from './constants';
 import {
   evaluatePosition,
@@ -470,7 +470,7 @@ const generateOrderedCandidatesInternal = (
   // ============================================================
   // 第5弾：bucket 方式候補手生成
   // ============================================================
-  if (PHASE5_FEATURES.ENABLE_TIER_BUCKET_GENERATION) {
+  if (SEARCH_TUNING_FEATURES.ENABLE_TIER_BUCKET_GENERATION) {
     type InternalCandidate = OrderedCandidate & { order: number };
 
     const ttTier: InternalCandidate[] = [];
@@ -891,17 +891,17 @@ const applyPhase6ForcedMoves = (
   stats?: SearchStats
 ): OrderedCandidate[] => {
   if (
-    !PHASE6_FEATURES.ENABLE_THREAT_MODEL ||
-    !PHASE6_FEATURES.ENABLE_FORCED_MOVE_LIST
+    !THREAT_FORBIDDEN_FEATURES.ENABLE_THREAT_MODEL ||
+    !THREAT_FORBIDDEN_FEATURES.ENABLE_FORCED_MOVE_LIST
   ) {
     return candidates;
   }
 
-  if (!isRoot && !PHASE6_FEATURES.ENABLE_INTERNAL_FORCED_LIST) {
+  if (!isRoot && !THREAT_FORBIDDEN_FEATURES.ENABLE_INTERNAL_FORCED_LIST) {
     return candidates;
   }
 
-  if (!isRoot && depth > PHASE6_CONFIG.INTERNAL_FORCED_MAX_DEPTH) {
+  if (!isRoot && depth > THREAT_FORBIDDEN_CONFIG.INTERNAL_FORCED_MAX_DEPTH) {
     return candidates;
   }
 
@@ -961,13 +961,13 @@ const applyPhase6ForcedMoves = (
       stats.threat.rootForcedMissing += missingForcedMoves.length;
     }
 
-    if (PHASE6_FEATURES.ENABLE_ROOT_FORCED_PROTECTION) {
+    if (THREAT_FORBIDDEN_FEATURES.ENABLE_ROOT_FORCED_PROTECTION) {
       const useLineCache = AI_FEATURES.ENABLE_LINE_CACHE && lineCache !== null;
 
       let appended = 0;
 
       for (const forcedMove of missingForcedMoves) {
-        if (appended >= PHASE6_CONFIG.ROOT_FORCED_EXTRA_CAPACITY) {
+        if (appended >= THREAT_FORBIDDEN_CONFIG.ROOT_FORCED_EXTRA_CAPACITY) {
           if (stats) {
             stats.threat.rootForcedDropped += 1;
           }
@@ -1026,7 +1026,7 @@ const applyPhase6ForcedMoves = (
 
   // 実験的: forced move を優先する並び順。
   // 既定 OFF。有効化した場合のみ既存順序を変更する。
-  if (PHASE6_FEATURES.ENABLE_FORCED_ORDERING) {
+  if (THREAT_FORBIDDEN_FEATURES.ENABLE_FORCED_ORDERING) {
     const ttTier: OrderedCandidate[] = [];
     const criticalTier: OrderedCandidate[] = [];
     const forcedTier: OrderedCandidate[] = [];

@@ -26,8 +26,8 @@ import type { SearchOptions, SearchStats, LineCacheState } from '../../types/ai'
 import { BOARD_SIZE, checkForbiddenMove, DIRECTIONS, countStones } from '../gameLogic';
 import {
   AI_SCORES,
-  PHASE8_FEATURES,
-  PHASE8_CONFIG,
+  QSEARCH_FEATURES,
+  QSEARCH_CONFIG,
 } from './constants';
 import {
   applySearchMove,
@@ -135,20 +135,20 @@ const resolveQSearchBudgetMs = (
       : 0;
   }
   if (timeLimitMs === null) {
-    return PHASE8_CONFIG.QSEARCH_FIXED_TIME_BUDGET_MS;
+    return QSEARCH_CONFIG.QSEARCH_FIXED_TIME_BUDGET_MS;
   }
   if (!Number.isFinite(timeLimitMs) || timeLimitMs <= 0) {
     return 0;
   }
-  const raw = timeLimitMs * PHASE8_CONFIG.QSEARCH_TOTAL_TIME_RATIO;
+  const raw = timeLimitMs * QSEARCH_CONFIG.QSEARCH_TOTAL_TIME_RATIO;
   let budget = Math.max(
-    PHASE8_CONFIG.QSEARCH_TOTAL_TIME_MIN_MS,
-    Math.min(PHASE8_CONFIG.QSEARCH_TOTAL_TIME_MAX_MS, raw)
+    QSEARCH_CONFIG.QSEARCH_TOTAL_TIME_MIN_MS,
+    Math.min(QSEARCH_CONFIG.QSEARCH_TOTAL_TIME_MAX_MS, raw)
   );
   // 全体 deadline を超えないようにする
   if (deadline !== Infinity) {
     const remaining = deadline - performance.now();
-    budget = Math.min(budget, Math.max(0, remaining - PHASE8_CONFIG.QSEARCH_DEADLINE_SAFETY_MS));
+    budget = Math.min(budget, Math.max(0, remaining - QSEARCH_CONFIG.QSEARCH_DEADLINE_SAFETY_MS));
   }
   return budget;
 };
@@ -161,7 +161,7 @@ const resolveQSearchNodeLimit = (
       ? options.qsearchTotalNodeLimit
       : 0;
   }
-  return PHASE8_CONFIG.QSEARCH_TOTAL_NODE_LIMIT;
+  return QSEARCH_CONFIG.QSEARCH_TOTAL_NODE_LIMIT;
 };
 
 const resolveQSearchNodeLimitPerLeaf = (
@@ -172,7 +172,7 @@ const resolveQSearchNodeLimitPerLeaf = (
       ? options.qsearchNodeLimitPerLeaf
       : 0;
   }
-  return PHASE8_CONFIG.QSEARCH_NODE_LIMIT_PER_LEAF;
+  return QSEARCH_CONFIG.QSEARCH_NODE_LIMIT_PER_LEAF;
 };
 
 const resolveQSearchMaxPly = (
@@ -183,7 +183,7 @@ const resolveQSearchMaxPly = (
       ? options.qsearchMaxPly
       : 0;
   }
-  return PHASE8_CONFIG.QSEARCH_MAX_PLY;
+  return QSEARCH_CONFIG.QSEARCH_MAX_PLY;
 };
 
 // ============================================================
@@ -205,7 +205,7 @@ export const createQSearchController = (
   const qs = stats.qsearch;
 
   // --- 有効性チェック ---
-  if (!PHASE8_FEATURES.ENABLE_QSEARCH) {
+  if (!QSEARCH_FEATURES.ENABLE_QSEARCH) {
     qs.disabled++;
     return null;
   }
@@ -213,17 +213,17 @@ export const createQSearchController = (
     qs.skippedByOption++;
     return null;
   }
-  if (params.stonesBefore < PHASE8_CONFIG.QSEARCH_MIN_STONES) {
+  if (params.stonesBefore < QSEARCH_CONFIG.QSEARCH_MIN_STONES) {
     qs.skippedEarlyGame++;
     return null;
   }
-  if (params.maxDepth < PHASE8_CONFIG.QSEARCH_MIN_ROOT_DEPTH) {
+  if (params.maxDepth < QSEARCH_CONFIG.QSEARCH_MIN_ROOT_DEPTH) {
     qs.skippedLowDepth++;
     return null;
   }
   if (
     params.timeLimitMs !== null &&
-    params.timeLimitMs < PHASE8_CONFIG.QSEARCH_MIN_TIME_LIMIT_MS &&
+    params.timeLimitMs < QSEARCH_CONFIG.QSEARCH_MIN_TIME_LIMIT_MS &&
     params.options?.qsearchTimeBudgetMs === undefined
   ) {
     qs.skippedLowTime++;
@@ -260,7 +260,7 @@ export const createQSearchController = (
     enabled: true,
     aiPlayer: params.aiPlayer,
     ruleEnabled: params.forbiddenRuleEnabled,
-    minRootDepth: PHASE8_CONFIG.QSEARCH_MIN_ROOT_DEPTH,
+    minRootDepth: QSEARCH_CONFIG.QSEARCH_MIN_ROOT_DEPTH,
     budgetMs,
     totalNodeLimit,
     nodeLimitPerLeaf,
@@ -290,7 +290,7 @@ const isQSearchTimeUp = (controller: QSearchController): boolean => {
   }
   if (
     controller.deadline !== Infinity &&
-    now >= controller.deadline - PHASE8_CONFIG.QSEARCH_DEADLINE_SAFETY_MS
+    now >= controller.deadline - QSEARCH_CONFIG.QSEARCH_DEADLINE_SAFETY_MS
   ) {
     controller.budgetExhausted = true;
     return true;
@@ -313,7 +313,7 @@ const checkForbiddenCached = (
   const qs = ctx.controller.stats.qsearch;
   qs.forbiddenChecks++;
 
-  if (!PHASE8_FEATURES.ENABLE_QSEARCH_FORBIDDEN_CACHE) {
+  if (!QSEARCH_FEATURES.ENABLE_QSEARCH_FORBIDDEN_CACHE) {
     return checkForbiddenMove(ctx.state.board, pos, player).isForbidden;
   }
 
@@ -322,7 +322,7 @@ const checkForbiddenCached = (
     (hash ^
       moveSalt(index) ^
       PLAYER_SALT_BLACK ^
-      PHASE8_CONFIG.QSEARCH_VERSION) &
+      QSEARCH_CONFIG.QSEARCH_VERSION) &
     MASK64;
 
   const cached = ctx.controller.forbiddenCache.get(key);
@@ -335,11 +335,11 @@ const checkForbiddenCached = (
   const result = checkForbiddenMove(ctx.state.board, pos, player).isForbidden;
 
   // eviction
-  const limit = PHASE8_CONFIG.QSEARCH_FORBIDDEN_CACHE_LIMIT;
+  const limit = QSEARCH_CONFIG.QSEARCH_FORBIDDEN_CACHE_LIMIT;
   if (limit > 0 && ctx.controller.forbiddenCache.size >= limit) {
     const deleteCount = Math.max(
       1,
-      Math.floor(ctx.controller.forbiddenCache.size * PHASE8_CONFIG.QSEARCH_CACHE_EVICTION_RATIO)
+      Math.floor(ctx.controller.forbiddenCache.size * QSEARCH_CONFIG.QSEARCH_CACHE_EVICTION_RATIO)
     );
     let deleted = 0;
     for (const cacheKey of ctx.controller.forbiddenCache.keys()) {
@@ -544,7 +544,7 @@ const qsearch = (
 
   if (oppWinSquares.length >= 2) {
     // 受け不能
-    if (PHASE8_FEATURES.ENABLE_QSEARCH_LOSS_PROOF) {
+    if (QSEARCH_FEATURES.ENABLE_QSEARCH_LOSS_PROOF) {
       qs.illegalBlocks++;
       return { outcome: 'LOSS', plyToWin: null };
     }
@@ -555,7 +555,7 @@ const qsearch = (
     const block = oppWinSquares[0];
     if (!isLegalQSearch(ctx, block, side, hash)) {
       // ブロック不能
-      if (PHASE8_FEATURES.ENABLE_QSEARCH_LOSS_PROOF) {
+      if (QSEARCH_FEATURES.ENABLE_QSEARCH_LOSS_PROOF) {
         qs.illegalBlocks++;
         return { outcome: 'LOSS', plyToWin: null };
       }
@@ -659,18 +659,18 @@ const makeResultCacheKey = (
 ): bigint => {
   const sideSalt = side === 'Black' ? SIDE_SALT_BLACK : SIDE_SALT_WHITE;
   const ruleSalt = ruleEnabled ? RULE_SALT : 0n;
-  return (hash ^ sideSalt ^ ruleSalt ^ PHASE8_CONFIG.QSEARCH_VERSION) & MASK64;
+  return (hash ^ sideSalt ^ ruleSalt ^ QSEARCH_CONFIG.QSEARCH_VERSION) & MASK64;
 };
 
 const evictResultCache = (controller: QSearchController): void => {
   const qs = controller.stats.qsearch;
-  const limit = PHASE8_CONFIG.QSEARCH_RESULT_CACHE_LIMIT;
+  const limit = QSEARCH_CONFIG.QSEARCH_RESULT_CACHE_LIMIT;
   if (limit <= 0) return;
   if (controller.resultCache.size < limit) return;
 
   const deleteCount = Math.max(
     1,
-    Math.floor(controller.resultCache.size * PHASE8_CONFIG.QSEARCH_CACHE_EVICTION_RATIO)
+    Math.floor(controller.resultCache.size * QSEARCH_CONFIG.QSEARCH_CACHE_EVICTION_RATIO)
   );
   let deleted = 0;
   for (const key of controller.resultCache.keys()) {
@@ -713,7 +713,7 @@ export const runQuiescenceAtLeaf = (params: {
   qs.calls++;
 
   // 結果キャッシュ参照
-  if (PHASE8_FEATURES.ENABLE_QSEARCH_CACHE) {
+  if (QSEARCH_FEATURES.ENABLE_QSEARCH_CACHE) {
     const cacheKey = makeResultCacheKey(hash, side, controller.ruleEnabled);
     const cached = controller.resultCache.get(cacheKey);
     if (cached !== undefined) {
@@ -732,7 +732,7 @@ export const runQuiescenceAtLeaf = (params: {
   // qsearch 実行
   try {
     // state audit 用
-    const stonesBefore = PHASE8_FEATURES.ENABLE_QSEARCH_STATE_AUDIT
+    const stonesBefore = QSEARCH_FEATURES.ENABLE_QSEARCH_STATE_AUDIT
       ? countStones(board)
       : 0;
 
@@ -757,7 +757,7 @@ export const runQuiescenceAtLeaf = (params: {
     const result = qsearch(ctx, side, 0, hash, localStartNodes);
 
     // state audit
-    if (PHASE8_FEATURES.ENABLE_QSEARCH_STATE_AUDIT) {
+    if (QSEARCH_FEATURES.ENABLE_QSEARCH_STATE_AUDIT) {
       const stonesAfter = countStones(board);
       if (stonesBefore !== stonesAfter) {
         qs.auditFails++;
@@ -794,7 +794,7 @@ export const runQuiescenceAtLeaf = (params: {
     }
 
     // 結果キャッシュ保存（ABORTED は保存しない）
-    if (PHASE8_FEATURES.ENABLE_QSEARCH_CACHE && result.outcome !== 'ABORTED') {
+    if (QSEARCH_FEATURES.ENABLE_QSEARCH_CACHE && result.outcome !== 'ABORTED') {
       const cacheKey = makeResultCacheKey(hash, side, controller.ruleEnabled);
       evictResultCache(controller);
       controller.resultCache.set(cacheKey, { score, outcome });
@@ -806,7 +806,7 @@ export const runQuiescenceAtLeaf = (params: {
 
     qs.timeMs += performance.now() - start;
 
-    if (PHASE8_FEATURES.ENABLE_QSEARCH_VERBOSE_LOG) {
+    if (QSEARCH_FEATURES.ENABLE_QSEARCH_VERBOSE_LOG) {
       console.log(
         `[QSearch] ${outcome} side=${side} hash=${hash} ` +
         `nodes=${controller.nodes - localStartNodes} ply=${qs.maxPlyReached}`
@@ -820,7 +820,7 @@ export const runQuiescenceAtLeaf = (params: {
     qs.timeMs += performance.now() - start;
     controller.errorOccurred = true;
     controller.enabled = false;
-    if (PHASE8_FEATURES.ENABLE_QSEARCH_VERBOSE_LOG) {
+    if (QSEARCH_FEATURES.ENABLE_QSEARCH_VERBOSE_LOG) {
       console.error('[QSearch] exception:', err);
     }
     return { score: null, outcome: 'ERROR' };

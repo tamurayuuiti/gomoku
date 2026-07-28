@@ -57,10 +57,10 @@ import {
   AI_SCORES,
   TT_CONFIG,
   AI_FEATURES,
-  PHASE5_FEATURES,
-  PHASE5_CONFIG,
-  PHASE6_FEATURES,
-  PHASE7_FEATURES,
+  SEARCH_TUNING_FEATURES,
+  SEARCH_TUNING_CONFIG,
+  THREAT_FORBIDDEN_FEATURES,
+  VCF_FEATURES,
 } from './constants';
 import { findBestMove } from './minimax';
 import { TranspositionTable } from './transpositionTable';
@@ -111,7 +111,7 @@ const shouldUseAspiration = (
   depth: number,
   prevScore: number | null
 ): boolean => {
-  if (!AI_FEATURES.ENABLE_SAFE_ASPIRATION) return false;
+  if (!AI_FEATURES.ENABLE_ASPIRATION_WINDOW) return false;
   if (depth < 2) return false;
   if (prevScore === null) return false;
 
@@ -122,8 +122,8 @@ const shouldUseAspiration = (
 
   // 戦術的スコア領域では score 変動が大きいため、full window を使う
   if (
-    PHASE5_FEATURES.ENABLE_ASPIRATION_QUIET_ONLY &&
-    absScore >= PHASE5_CONFIG.ASPIRATION_QUIET_THRESHOLD
+    SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_QUIET_ONLY &&
+    absScore >= SEARCH_TUNING_CONFIG.ASPIRATION_QUIET_THRESHOLD
   ) {
     return false;
   }
@@ -182,12 +182,12 @@ const createPerMoveStaticEvalCache = (
   forbiddenMoves: boolean[][],
   aiPlayer: Player
 ): StaticEvalCache | null => {
-  if (!PHASE5_FEATURES.ENABLE_STATIC_EVAL_CACHE) return null;
+  if (!SEARCH_TUNING_FEATURES.ENABLE_STATIC_EVAL_CACHE) return null;
 
   return createStaticEvalCache(
     {
-      limit: PHASE5_CONFIG.STATIC_EVAL_CACHE_LIMIT,
-      evictionRatio: PHASE5_CONFIG.STATIC_EVAL_CACHE_EVICTION_RATIO,
+      limit: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_LIMIT,
+      evictionRatio: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_EVICTION_RATIO,
     },
     {
       aiPlayer,
@@ -224,8 +224,8 @@ const isRootMoveDynamicallyForbidden = (
   if (player !== 'Black') return false;
   if (!dynamicForbidden.ruleEnabled) return false;
   if (
-    !PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN ||
-    !PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
+    !THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN ||
+    !THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
   ) {
     return false;
   }
@@ -253,8 +253,8 @@ const findLegalFallbackMove = (
     if (
       player === 'Black' &&
       dynamicForbidden.ruleEnabled &&
-      PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN &&
-      PHASE6_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
+      THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN &&
+      THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
     ) {
       if (checkForbiddenMove(board, { row, col }, player).isForbidden) {
         return false;
@@ -317,7 +317,7 @@ const tryRootVcfMove = (
 
   if (
     result.outcome !== 'WIN' ||
-    !PHASE7_FEATURES.ENABLE_VCF_RETURN_ON_WIN ||
+    !VCF_FEATURES.ENABLE_VCF_RETURN_ON_WIN ||
     !result.move
   ) {
     return null;
@@ -650,8 +650,8 @@ export const calculateNextMove = (
   let prevScore: number | null = null;
 
   // 第5弾：Aspiration 調整用状態
-  const baseAspirationWindow = PHASE5_FEATURES.ENABLE_ASPIRATION_TUNING
-    ? PHASE5_CONFIG.ASPIRATION_WINDOW_OVERRIDE
+  const baseAspirationWindow = SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_WINDOW_TUNING
+    ? SEARCH_TUNING_CONFIG.ASPIRATION_WINDOW_OVERRIDE
     : TT_CONFIG.ASPIRATION_WINDOW;
   let adaptiveAspirationWindow = baseAspirationWindow;
   let prevAspirationFailed = false;
@@ -666,7 +666,7 @@ export const calculateNextMove = (
     let beta = Infinity;
 
     const aspirationCandidate =
-      AI_FEATURES.ENABLE_SAFE_ASPIRATION &&
+      AI_FEATURES.ENABLE_ASPIRATION_WINDOW &&
       d >= 2 &&
       prevScore !== null;
 
@@ -690,11 +690,11 @@ export const calculateNextMove = (
       let window = adaptiveAspirationWindow;
 
       if (
-        PHASE5_FEATURES.ENABLE_ADAPTIVE_ASPIRATION &&
+        SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_ADAPTIVE_EXPANSION &&
         prevAspirationFailed
       ) {
         window = Math.min(
-          PHASE5_CONFIG.ASPIRATION_ADAPTIVE_MAX_WINDOW,
+          SEARCH_TUNING_CONFIG.ASPIRATION_ADAPTIVE_MAX_WINDOW,
           window * 2
         );
         adaptiveAspirationWindow = window;
@@ -806,7 +806,7 @@ export const calculateNextMove = (
      * fail しなかった場合は、広げた window を base へ戻していく。
      */
     if (
-      PHASE5_FEATURES.ENABLE_ADAPTIVE_ASPIRATION &&
+      SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_ADAPTIVE_EXPANSION &&
       useAspiration &&
       !depthAspirationFailed &&
       adaptiveAspirationWindow > baseAspirationWindow
@@ -823,11 +823,11 @@ export const calculateNextMove = (
     // 第5弾：時間予測（保守的）
     // 第5.5弾: 適用開始深度を TIME_PREDICTION_MIN_DEPTH へ引き上げ。
     if (
-      PHASE5_FEATURES.ENABLE_TIME_PREDICTION &&
-      d >= PHASE5_CONFIG.TIME_PREDICTION_MIN_DEPTH
+      SEARCH_TUNING_FEATURES.ENABLE_TIME_PREDICTION &&
+      d >= SEARCH_TUNING_CONFIG.TIME_PREDICTION_MIN_DEPTH
     ) {
       const remaining = deadline - performance.now();
-      const estimate = iterElapsed * PHASE5_CONFIG.TIME_PREDICTION_SAFETY;
+      const estimate = iterElapsed * SEARCH_TUNING_CONFIG.TIME_PREDICTION_SAFETY;
       if (remaining < estimate) {
         stats.time.predictedSkips++;
         stats.time.remainingAtSkipMs = remaining;

@@ -26,7 +26,7 @@ import { updateHash } from './zobrist';
 import { updateLineCache, undoLineCache } from './lineCache';
 import { applyCandidateSet, undoCandidateSet } from './candidateGenerator';
 import { recordCandidateSetSize } from './searchStats';
-import { PHASE6_FEATURES } from './constants';
+import { THREAT_FORBIDDEN_FEATURES } from './constants';
 
 /**
  * apply / undo が必要な探索状態の最小集合。
@@ -125,7 +125,7 @@ export const undoSearchMove = (
     state.stats.candidateSet.undos++;
   }
 
-  if (PHASE6_FEATURES.ENABLE_STATE_AUDIT) {
+  if (THREAT_FORBIDDEN_FEATURES.ENABLE_STATE_AUDIT) {
     if (state.board[row][col] !== null) {
       console.warn(
         `[searchState] board undo failed at (${row}, ${col}) player=${undo.player}`

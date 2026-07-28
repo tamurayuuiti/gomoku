@@ -53,9 +53,9 @@ import {
   AI_FEATURES,
   LMR_CONFIG,
   PVS_CONFIG,
-  PHASE5_FEATURES,
-  PHASE5_CONFIG,
-  PHASE5_DEBUG,
+  SEARCH_TUNING_FEATURES,
+  SEARCH_TUNING_CONFIG,
+  TIMING_DIAGNOSTICS_CONFIG,
 } from './constants';
 import { opponentOf } from './evaluator';
 import { evaluateBoard, evaluateBoardWithCache } from './boardEvaluator';
@@ -152,11 +152,11 @@ const createSearchContext = (
   const staticEvalCache =
     sharedStaticEvalCache !== undefined
       ? sharedStaticEvalCache
-      : PHASE5_FEATURES.ENABLE_STATIC_EVAL_CACHE
+      : SEARCH_TUNING_FEATURES.ENABLE_STATIC_EVAL_CACHE
         ? createStaticEvalCache(
             {
-              limit: PHASE5_CONFIG.STATIC_EVAL_CACHE_LIMIT,
-              evictionRatio: PHASE5_CONFIG.STATIC_EVAL_CACHE_EVICTION_RATIO,
+              limit: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_LIMIT,
+              evictionRatio: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_EVICTION_RATIO,
             },
             {
               aiPlayer,
@@ -243,7 +243,7 @@ const checkWinInstrumented = (
   ctx: SearchContext
 ): boolean => {
   ctx.stats.diagnostics.checkWinCalls++;
-  if (!PHASE5_DEBUG.ENABLE_CHECKWIN_TIMING) {
+  if (!TIMING_DIAGNOSTICS_CONFIG.ENABLE_CHECKWIN_TIMING) {
     return checkWin(board, move, player);
   }
   const start = performance.now();
@@ -297,7 +297,7 @@ const evaluateLeaf = (
   }
 
   ctx.stats.diagnostics.leafEvalCalls++;
-  const shouldTimeLeaf = PHASE5_DEBUG.ENABLE_LEAF_TIMING;
+  const shouldTimeLeaf = TIMING_DIAGNOSTICS_CONFIG.ENABLE_LEAF_TIMING;
   const start = shouldTimeLeaf ? performance.now() : 0;
 
   let score: number;
@@ -427,17 +427,17 @@ const resolveInternalPvsNull = (
 
   if (!baselinePvsNull) return false;
 
-  if (!PHASE5_FEATURES.ENABLE_PVS_NULL_MODE) {
+  if (!SEARCH_TUNING_FEATURES.ENABLE_PVS_NULL_MODE_POLICY) {
     return true;
   }
 
-  if (PHASE5_CONFIG.PVS_NULL_MODE === 'off') {
+  if (SEARCH_TUNING_CONFIG.PVS_NULL_MODE === 'off') {
     ctx.stats.pvs.tacticalNullSkips++;
     return false;
   }
 
   if (
-    PHASE5_CONFIG.PVS_NULL_MODE === 'quiet_only' &&
+    SEARCH_TUNING_CONFIG.PVS_NULL_MODE === 'quiet_only' &&
     !flags.reductionAllowed
   ) {
     ctx.stats.pvs.tacticalNullSkips++;
@@ -993,8 +993,8 @@ export const findBestMove = (
 
   const rootPvsAllowed =
     PVS_CONFIG.ENABLE_ROOT_PVS ||
-    (PHASE5_FEATURES.ENABLE_ROOT_PVS_EXPERIMENT &&
-      depth >= PHASE5_CONFIG.ROOT_PVS_MIN_DEPTH);
+    (SEARCH_TUNING_FEATURES.ENABLE_CONDITIONAL_ROOT_PVS &&
+      depth >= SEARCH_TUNING_CONFIG.ROOT_PVS_MIN_DEPTH);
 
   for (let moveIndex = 0; moveIndex < candidates.length; moveIndex++) {
     // 時間切れ: ルート候補を全て評価しきれていないため、この深さの結果は不採用とする

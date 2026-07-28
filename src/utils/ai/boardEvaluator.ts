@@ -34,7 +34,7 @@ import {
   AI_SCORES,
   AI_CONFIG,
   EVAL_CONFIG,
-  PHASE5_FEATURES,
+  SEARCH_TUNING_FEATURES,
 } from './constants';
 import {
   createEmptyPatternCount,
@@ -180,7 +180,7 @@ const scoreFromLineCache = (
  *   挿入順序・同点時の挙動は旧実装と一致させる。
  */
 const insertTopK = (arr: number[], val: number, k: number): void => {
-  if (!PHASE5_FEATURES.ENABLE_TOPK_FIXED_ARRAY) {
+  if (!SEARCH_TUNING_FEATURES.ENABLE_TOPK_FIXED_ARRAY) {
     let i = arr.length;
     while (i > 0 && arr[i - 1] < val) i--;
     arr.splice(i, 0, val);

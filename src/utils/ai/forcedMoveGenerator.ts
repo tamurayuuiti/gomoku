@@ -22,7 +22,7 @@ import type {
   SearchStats,
 } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
-import { PHASE6_CONFIG, PHASE6_FEATURES } from './constants';
+import { THREAT_FORBIDDEN_CONFIG, THREAT_FORBIDDEN_FEATURES } from './constants';
 import { hasStoneNearby, opponentOf } from './evaluator';
 import {
   wouldWin,
@@ -133,19 +133,19 @@ export const generateForcedMoveList = (
   const empty = createEmptyForcedMoveList(req.currentHash);
 
   if (
-    !PHASE6_FEATURES.ENABLE_THREAT_MODEL ||
-    !PHASE6_FEATURES.ENABLE_FORCED_MOVE_LIST
+    !THREAT_FORBIDDEN_FEATURES.ENABLE_THREAT_MODEL ||
+    !THREAT_FORBIDDEN_FEATURES.ENABLE_FORCED_MOVE_LIST
   ) {
     return empty;
   }
 
-  if (!req.isRoot && !PHASE6_FEATURES.ENABLE_INTERNAL_FORCED_LIST) {
+  if (!req.isRoot && !THREAT_FORBIDDEN_FEATURES.ENABLE_INTERNAL_FORCED_LIST) {
     return empty;
   }
 
   if (
     !req.isRoot &&
-    req.depth > PHASE6_CONFIG.INTERNAL_FORCED_MAX_DEPTH
+    req.depth > THREAT_FORBIDDEN_CONFIG.INTERNAL_FORCED_MAX_DEPTH
   ) {
     return empty;
   }
@@ -251,7 +251,7 @@ export const generateForcedMoveList = (
     const oppHasFourThreat =
       oppCounts.OPEN_FOUR > 0 || oppCounts.CLOSED_FOUR > 0;
     const oppHasOpenThreeThreat =
-      PHASE6_FEATURES.ENABLE_OPEN_THREE_DEFENSE &&
+      THREAT_FORBIDDEN_FEATURES.ENABLE_OPEN_THREE_DEFENSE &&
       oppCounts.OPEN_THREE > 0;
 
     if (!oppHasFourThreat && !oppHasOpenThreeThreat) return;
@@ -298,7 +298,7 @@ export const generateForcedMoveList = (
   //   CandidateSet があればその中から上限件数だけ走査する。
   //   CandidateSet がなければ近傍候補を走査する。
   // ------------------------------------------------------------
-  const internalLimit = PHASE6_CONFIG.INTERNAL_FORCED_MAX_CANDIDATES;
+  const internalLimit = THREAT_FORBIDDEN_CONFIG.INTERNAL_FORCED_MAX_CANDIDATES;
   let scanned = 0;
 
   if (req.candidateSet) {
