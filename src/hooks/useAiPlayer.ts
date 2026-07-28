@@ -44,7 +44,10 @@
 // gameStatus が Playing から終了状態へ遷移したとき、Worker へ
 // finalizeGameSession 制御メッセージを送信する。
 // これにより、人間勝ち・引き分け時にも対局全体統計を確定できる。
-
+//
+// --- 禁手設定伝搬（v2.0.0 整合性修正） ---
+// UI の useForbiddenRule を Single Source of Truth とし、
+// Worker へ options.forbiddenRuleEnabled として常時伝搬する。
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type {
   Player,
@@ -59,6 +62,7 @@ import type {
   AiWorkerControlMessage,
   AiGameResult,
 } from '../workers/aiWorker.types';
+import type { SearchOptions } from '../types/ai';
 import { computeForbiddenMatrix } from '../utils/gameLogic';
 
 /**
@@ -108,19 +112,25 @@ export const useAiPlayer = ({
   // 直近でWorkerへ送信済みのターンID。レンダー結果には使わないため ref で保持し、
   // 依存配列の参照変化による同一ターンの二重送信のみを防ぐ。
   const requestedTurnIdRef = useRef<string>('');
+
   const workerRef = useRef<Worker | null>(null);
+
   // 対局終了通知の二重送信防止用。
   const prevGameStatusRef = useRef<GameStatus>(gameStatus);
 
   // --- 第9弾: latest-ref 群（レンダーごとに書き込み、非同期コールバック内でのみ読み出す） ---
   const onMoveRef = useRef(onMove);
   onMoveRef.current = onMove;
+
   /** 現在応答を待っているターン。null = 応答待ちではない。 */
   const pendingRef = useRef<{ turnId: string } | null>(null);
+
   /** 送信済みで未応答のリクエスト数。旧応答の世代管理に使う。 */
   const inflightRef = useRef(0);
+
   /** 応答待ちリクエストの思考開始時刻（演出遅延の計算用）。 */
   const thinkStartRef = useRef(0);
+
   /** 保留中の演出遅延タイマ。 */
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -149,12 +159,14 @@ export const useAiPlayer = ({
       type: 'module',
     });
     workerRef.current = worker;
+
     // 第9弾（StrictMode / HMR 対応）: Worker が再生成された場合、直前までの
     // 送信・応答待ち状態はすべて無効になるため、ガードをリセットして
     // 新しい Worker への再送信を許可する。
     requestedTurnIdRef.current = '';
     pendingRef.current = null;
     inflightRef.current = 0;
+
     return () => {
       worker.terminate();
       workerRef.current = null;
@@ -174,6 +186,7 @@ export const useAiPlayer = ({
       // 未応答リクエストが複数ある場合（思考中リセット等）、
       // 古い応答は破棄し、最新リクエストの応答だけを適用する。
       inflightRef.current = Math.max(0, inflightRef.current - 1);
+
       const pending = pendingRef.current;
       if (!pending) return;
       if (inflightRef.current > 0) return; // より新しいリクエストが未応答 → この旧応答は破棄
@@ -189,8 +202,10 @@ export const useAiPlayer = ({
       }
 
       const elapsed = performance.now() - thinkStartRef.current;
+
       // 着手までの表示上の遅延は max(minThinkDisplayMs, 実際の思考時間) とする
       const remainingDelay = Math.max(0, minThinkDisplayMs - elapsed);
+
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         if (nextMove) {
@@ -213,6 +228,7 @@ export const useAiPlayer = ({
 
     worker.addEventListener('message', handleMessage);
     worker.addEventListener('error', handleError);
+
     return () => {
       worker.removeEventListener('message', handleMessage);
       worker.removeEventListener('error', handleError);
@@ -222,10 +238,15 @@ export const useAiPlayer = ({
   // --- E3: リクエスト送信（冪等。依存変化による再実行は無害） ---
   // 第9弾: Worker 用禁手マトリクスをここで postMessage 直前に同期計算する
   // （要求時点の最新盤面に対する新鮮な全走査。旧実装と同一セマンティクス）。
+  //
+  // v2.0.0 整合性修正:
+  // UI の useForbiddenRule を options.forbiddenRuleEnabled として常時伝搬する。
   useEffect(() => {
     if (!isAiTurn) return;
+
     // 同一ターンの二重送信防止（依存配列内の参照変化でEffectが再実行されても送信しない）
     if (requestedTurnIdRef.current === turnId) return;
+
     const worker = workerRef.current;
     if (!worker) return;
 
@@ -246,20 +267,24 @@ export const useAiPlayer = ({
       gameStatus,
       useForbiddenRule
     );
+
+    const options: SearchOptions = {
+      forbiddenRuleEnabled: useForbiddenRule,
+    };
+
+    // lastMove が指定されている場合のみ options.lastMove を付与する。
+    if (lastMoveKey) {
+      const [row, col] = lastMoveKey.split(',').map(Number);
+      options.lastMove = { row, col };
+    }
+
     const request: AiWorkerRequest = {
       board,
       forbiddenMoves,
       currentPlayer,
+      options,
     };
 
-    // lastMove が指定されている場合のみ options を付与する。
-    // これにより、既存の呼び出し側（lastMove 未指定）は完全に従来動作となる。
-    if (lastMoveKey) {
-      const [row, col] = lastMoveKey.split(',').map(Number);
-      request.options = {
-        lastMove: { row, col },
-      };
-    }
     worker.postMessage(request);
   }, [
     isAiTurn,
@@ -285,12 +310,16 @@ export const useAiPlayer = ({
   useEffect(() => {
     const prev = prevGameStatusRef.current;
     prevGameStatusRef.current = gameStatus;
+
     if (gameMode !== 'PvE') return;
+
     // Playing -> 終了状態への遷移だけを対象にする。
     if (prev === 'Playing' && gameStatus !== 'Playing') {
       const worker = workerRef.current;
       if (!worker) return;
+
       let aiResult: AiGameResult = 'Unknown';
+
       if (gameStatus === 'Draw') {
         aiResult = 'Draw';
       } else if (gameStatus === 'BlackWins') {
@@ -299,10 +328,12 @@ export const useAiPlayer = ({
       } else if (gameStatus === 'WhiteWins') {
         aiResult = playerColor === 'White' ? 'Loss' : 'Win';
       }
+
       const message: AiWorkerControlMessage = {
         control: 'finalizeGameSession',
         aiResult,
       };
+
       worker.postMessage(message);
     }
   }, [gameStatus, gameMode, playerColor]);
@@ -319,5 +350,6 @@ export const useAiPlayer = ({
 
   // 「Workerに問い合わせ中」＝ AIの手番であり、かつ現在のターンがまだ解決していない場合
   const isAiThinking = isAiTurn && turnId !== resolvedTurnId;
+
   return { isAiThinking };
 };

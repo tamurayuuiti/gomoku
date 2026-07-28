@@ -31,6 +31,9 @@
 //   - Black 手番時の限定動的禁手フィルタを追加。
 //   - 静的 forbiddenMoves で合法とされている手でも、動的禁手で禁手なら候補から除外する。
 //   - 既存 tier・評価値・forced move list の意味は変更しない。
+//
+// v2.0.0 禁手整合性修正:
+//   - forced move list 生成時に dynamicForbidden.ruleEnabled を伝搬する。
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
   KillerEntry,
@@ -164,6 +167,7 @@ export const storeKiller = (
   if (depth >= MAX_KILLER_DEPTH) return;
 
   const slot = killerTable[depth];
+
   if (slot[0]?.row === pos.row && slot[0]?.col === pos.col) return;
 
   slot[1] = slot[0];
@@ -180,6 +184,7 @@ export const isKiller = (
   if (depth >= MAX_KILLER_DEPTH) return false;
 
   const [k0, k1] = killerTable[depth];
+
   return (
     (k0?.row === row && k0?.col === col) ||
     (k1?.row === row && k1?.col === col)
@@ -247,9 +252,11 @@ export const createCandidateSet = (
         for (let dc = -range; dc <= range; dc++) {
           const nr = r + dr;
           const nc = c + dc;
+
           if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
             continue;
           }
+
           if (board[nr][nc] !== null) {
             count++;
           }
@@ -257,6 +264,7 @@ export const createCandidateSet = (
       }
 
       refCount[r][c] = count;
+
       if (count > 0) {
         isCandidate[r][c] = true;
         candidates.add(toFlat(r, c));
@@ -282,6 +290,7 @@ export const applyCandidateSet = (
 ): CandidateSetUndo => {
   const affected: CandidateSetUndo['affected'] = [];
   const seen = new Set<number>();
+
   const range = AI_CONFIG.SEARCH_RANGE;
 
   const record = (r: number, c: number): void => {
@@ -301,9 +310,11 @@ export const applyCandidateSet = (
     for (let dc = -range; dc <= range; dc++) {
       const nr = row + dr;
       const nc = col + dc;
+
       if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
         continue;
       }
+
       record(nr, nc);
     }
   }
@@ -319,14 +330,17 @@ export const applyCandidateSet = (
     for (let dc = -range; dc <= range; dc++) {
       const nr = row + dr;
       const nc = col + dc;
+
       if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
         continue;
       }
+
       if (nr === row && nc === col) continue;
       if (board[nr][nc] !== null) continue;
       if (forbiddenMoves[nr][nc]) continue;
 
       state.refCount[nr][nc]++;
+
       if (state.refCount[nr][nc] === 1) {
         state.isCandidate[nr][nc] = true;
         state.candidates.add(toFlat(nr, nc));
@@ -380,10 +394,12 @@ const recordReturnedCandidates = (
 ): OrderedCandidate[] => {
   if (stats) {
     stats.candidates.selectedTotal += candidates.length;
+
     if (candidates.length > stats.candidates.maxPerNode) {
       stats.candidates.maxPerNode = candidates.length;
     }
   }
+
   return candidates;
 };
 
@@ -413,6 +429,7 @@ const generateOrderedCandidatesInternal = (
   }
 
   const ttKey = ttBestMove ? toIndex(ttBestMove) : -1;
+
   const counterPos = AI_FEATURES.ENABLE_COUNTERMOVE
     ? getCountermove(countermoveTable, player, lastMove)
     : null;
@@ -472,6 +489,7 @@ const generateOrderedCandidatesInternal = (
         : evaluatePosition(board, r, c, player);
 
       const posKey = toIndex({ row: r, col: c });
+
       const isTTMove = posKey === ttKey;
       const isKillerMove = isKiller(killerTable, depth, r, c);
       const isCountermove =
@@ -499,6 +517,7 @@ const generateOrderedCandidatesInternal = (
         },
         order,
       };
+
       order++;
 
       if (entry.flags.isTTMove) {
@@ -518,8 +537,10 @@ const generateOrderedCandidatesInternal = (
       for (const idx of candidateSet.candidates) {
         const r = Math.floor(idx / BOARD_SIZE);
         const c = idx % BOARD_SIZE;
+
         if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
         if (isDynamicForbiddenMove(r, c)) continue;
+
         addBucketCandidate(r, c);
       }
     } else {
@@ -528,6 +549,7 @@ const generateOrderedCandidatesInternal = (
           if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
           if (!hasStoneNearby(board, r, c)) continue;
           if (isDynamicForbiddenMove(r, c)) continue;
+
           addBucketCandidate(r, c);
         }
       }
@@ -562,6 +584,7 @@ const generateOrderedCandidatesInternal = (
 
       const historyA = getHistoryScore(historyTable, player, a.pos.row, a.pos.col);
       const historyB = getHistoryScore(historyTable, player, b.pos.row, b.pos.col);
+
       if (historyB !== historyA) return historyB - historyA;
 
       return a.order - b.order;
@@ -569,6 +592,7 @@ const generateOrderedCandidatesInternal = (
 
     // 戦術的候補手生成が有効な場合のみ Quiet のマージン剪定を行う。
     let finalQuietTier = quietTier;
+
     if (
       AI_FEATURES.ENABLE_TACTICAL_CANDIDATES &&
       CANDIDATE_CONFIG.ENABLE_MARGIN_PRUNING &&
@@ -587,6 +611,7 @@ const generateOrderedCandidatesInternal = (
       stats.candidates.quietPrunedTotal += quietTier.length - finalQuietTier.length;
 
       stats.tt.bestMoveUsed += ttTier.length;
+
       stats.ordering.ttBestMoveUsed += ttTier.length;
       stats.ordering.killerHits += killerTier.length;
       stats.ordering.countermoveHits += counterTier.length;
@@ -601,6 +626,7 @@ const generateOrderedCandidatesInternal = (
         ...killerTier,
         ...quietTier,
       ];
+
       return recordReturnedCandidates(stats, ordered.slice(0, AI_CONFIG.MAX_CANDIDATES));
     }
 
@@ -649,7 +675,6 @@ const generateOrderedCandidatesInternal = (
   // ============================================================
   // 従来方式（第4弾ベースライン）
   // ============================================================
-
   const scored: OrderedCandidate[] = [];
 
   const addCandidate = (r: number, c: number): void => {
@@ -658,6 +683,7 @@ const generateOrderedCandidatesInternal = (
       : evaluatePosition(board, r, c, player);
 
     const posKey = toIndex({ row: r, col: c });
+
     const isTTMove = posKey === ttKey;
     const isKillerMove = isKiller(killerTable, depth, r, c);
     const isCountermove =
@@ -690,8 +716,10 @@ const generateOrderedCandidatesInternal = (
     for (const idx of candidateSet.candidates) {
       const r = Math.floor(idx / BOARD_SIZE);
       const c = idx % BOARD_SIZE;
+
       if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
       if (isDynamicForbiddenMove(r, c)) continue;
+
       addCandidate(r, c);
     }
   } else {
@@ -700,6 +728,7 @@ const generateOrderedCandidatesInternal = (
         if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
         if (!hasStoneNearby(board, r, c)) continue;
         if (isDynamicForbiddenMove(r, c)) continue;
+
         addCandidate(r, c);
       }
     }
@@ -747,11 +776,13 @@ const generateOrderedCandidatesInternal = (
 
     const historyA = getHistoryScore(historyTable, player, a.pos.row, a.pos.col);
     const historyB = getHistoryScore(historyTable, player, b.pos.row, b.pos.col);
+
     return historyB - historyA;
   });
 
   // 戦術的候補手生成が有効な場合のみ Quiet のマージン剪定を行う。
   let finalQuietTier = quietTier;
+
   if (
     AI_FEATURES.ENABLE_TACTICAL_CANDIDATES &&
     CANDIDATE_CONFIG.ENABLE_MARGIN_PRUNING &&
@@ -770,6 +801,7 @@ const generateOrderedCandidatesInternal = (
     stats.candidates.quietPrunedTotal += quietTier.length - finalQuietTier.length;
 
     stats.tt.bestMoveUsed += ttTier.length;
+
     stats.ordering.ttBestMoveUsed += ttTier.length;
     stats.ordering.killerHits += killerTier.length;
     stats.ordering.countermoveHits += counterTier.length;
@@ -784,6 +816,7 @@ const generateOrderedCandidatesInternal = (
       ...killerTier,
       ...quietTier,
     ];
+
     return recordReturnedCandidates(stats, ordered.slice(0, AI_CONFIG.MAX_CANDIDATES));
   }
 
@@ -851,6 +884,7 @@ const applyPhase6ForcedMoves = (
   currentHash: bigint,
   isRoot: boolean,
   depth: number,
+  forbiddenRuleEnabled: boolean,
   candidates: OrderedCandidate[],
   stats?: SearchStats
 ): OrderedCandidate[] => {
@@ -879,6 +913,7 @@ const applyPhase6ForcedMoves = (
       currentHash,
       isRoot,
       depth,
+      forbiddenRuleEnabled,
     },
     stats
   );
@@ -888,6 +923,7 @@ const applyPhase6ForcedMoves = (
   }
 
   const forcedByKey = new Map<number, ForcedMove>();
+
   for (const forcedMove of forcedList.moves) {
     forcedByKey.set(toIndex(forcedMove.pos), forcedMove);
   }
@@ -900,6 +936,7 @@ const applyPhase6ForcedMoves = (
     present.add(key);
 
     const forcedMove = forcedByKey.get(key);
+
     if (forcedMove) {
       candidate.flags.isForced = true;
       candidate.flags.forcedPriority = forcedMove.priority;
@@ -925,6 +962,7 @@ const applyPhase6ForcedMoves = (
 
     if (PHASE6_FEATURES.ENABLE_ROOT_FORCED_PROTECTION) {
       const useLineCache = AI_FEATURES.ENABLE_LINE_CACHE && lineCache !== null;
+
       let appended = 0;
 
       for (const forcedMove of missingForcedMoves) {
@@ -977,6 +1015,7 @@ const applyPhase6ForcedMoves = (
         // recordReturnedCandidates は internal 側で呼ばれているため、
         // 追加分だけ候補手統計へ加算する。
         stats.candidates.selectedTotal += appended;
+
         if (candidates.length > stats.candidates.maxPerNode) {
           stats.candidates.maxPerNode = candidates.length;
         }
@@ -1011,8 +1050,10 @@ const applyPhase6ForcedMoves = (
     forcedTier.sort((a, b) => {
       const rankA = getForcedPriorityRank(a.flags.forcedPriority ?? 'NONE');
       const rankB = getForcedPriorityRank(b.flags.forcedPriority ?? 'NONE');
+
       if (rankA !== rankB) return rankA - rankB;
       if (b.score !== a.score) return b.score - a.score;
+
       return 0;
     });
 
@@ -1038,6 +1079,9 @@ const applyPhase6ForcedMoves = (
  *
  * 第6.2弾:
  *   - dynamicForbidden を任意で受け取り、Black 手番の限定動的禁手に使う。
+ *
+ * v2.0.0 禁手整合性修正:
+ *   - dynamicForbidden.ruleEnabled を forced move list 生成へ伝搬する。
  */
 export const generateOrderedCandidates = (
   board: BoardState,
@@ -1056,6 +1100,10 @@ export const generateOrderedCandidates = (
   currentHash: bigint = 0n,
   dynamicForbidden: DynamicForbiddenController | null = null
 ): OrderedCandidate[] => {
+  const forbiddenRuleEnabledForForcedMoves = dynamicForbidden
+    ? dynamicForbidden.ruleEnabled
+    : true;
+
   const finalizeWithPhase6 = (
     result: OrderedCandidate[]
   ): OrderedCandidate[] =>
@@ -1068,6 +1116,7 @@ export const generateOrderedCandidates = (
       currentHash,
       isRoot,
       depth,
+      forbiddenRuleEnabledForForcedMoves,
       result,
       stats
     );
@@ -1092,10 +1141,12 @@ export const generateOrderedCandidates = (
       currentHash,
       dynamicForbidden
     );
+
     return finalizeWithPhase6(result);
   }
 
   const start = performance.now();
+
   let result: OrderedCandidate[] | undefined;
 
   try {
@@ -1116,7 +1167,9 @@ export const generateOrderedCandidates = (
       currentHash,
       dynamicForbidden
     );
+
     result = finalizeWithPhase6(result);
+
     return result;
   } finally {
     const elapsed = performance.now() - start;

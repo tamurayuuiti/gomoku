@@ -8,6 +8,10 @@
 //
 // 評価関数（AI_SCORES / evaluatePosition / evaluateBoard）の意味は変更しない。
 // このモジュールは forced move list の分類に必要な戦術情報だけを提供する。
+//
+// v2.0.0 禁手整合性修正:
+//   - isHypotheticalLegal / isMoverLegal が forbiddenRuleEnabled を参照する。
+//   - 禁手 OFF の場合、Black 禁手判定を一切行わない。
 import type { BoardState, Player, Position } from '../../types/game';
 import type { LineCacheState, PatternCount } from '../../types/ai';
 import { checkWin, checkForbiddenMove } from '../gameLogic';
@@ -41,9 +45,11 @@ export const wouldWin = (
   player: Player
 ): boolean => {
   const { row, col } = pos;
+
   if (board[row][col] !== null) return false;
 
   board[row][col] = player;
+
   try {
     return checkWin(board, pos, player);
   } finally {
@@ -55,7 +61,7 @@ export const wouldWin = (
  * player が pos へ着手すると仮定したとき、ルール上合法かを返す。
  *
  * White は常に合法。
- * Black は checkForbiddenMove に委ねる。
+ * Black は forbiddenRuleEnabled が有効な場合のみ checkForbiddenMove に委ねる。
  * checkForbiddenMove 内部で五連は禁手より優先される。
  *
  * 注意:
@@ -65,10 +71,15 @@ export const wouldWin = (
 export const isHypotheticalLegal = (
   board: BoardState,
   pos: Position,
-  player: Player
+  player: Player,
+  forbiddenRuleEnabled: boolean = true
 ): boolean => {
   if (board[pos.row][pos.col] !== null) return false;
+
   if (player !== 'Black') return true;
+
+  if (!forbiddenRuleEnabled) return true;
+
   return !checkForbiddenMove(board, pos, player).isForbidden;
 };
 
@@ -84,13 +95,15 @@ export const isUiLegalMove = (
   forbiddenMoves: boolean[][]
 ): boolean => {
   const { row, col } = pos;
+
   return board[row][col] === null && !forbiddenMoves[row][col];
 };
 
 /**
  * mover 側の着手合法性を判定する。
  *
- * UI forbiddenMoves を優先し、Black の場合は checkForbiddenMove も参照する。
+ * UI forbiddenMoves を優先し、Black の場合は forbiddenRuleEnabled が有効なときのみ
+ * checkForbiddenMove も参照する。
  * own win そのものは checkForbiddenMove 内で勝利優先されるため、
  * 正確な五連勝ち手は禁手扱いされない。
  */
@@ -98,10 +111,15 @@ export const isMoverLegal = (
   board: BoardState,
   pos: Position,
   player: Player,
-  forbiddenMoves: boolean[][]
+  forbiddenMoves: boolean[][],
+  forbiddenRuleEnabled: boolean = true
 ): boolean => {
   if (!isUiLegalMove(board, pos, forbiddenMoves)) return false;
+
   if (player !== 'Black') return true;
+
+  if (!forbiddenRuleEnabled) return true;
+
   return !checkForbiddenMove(board, pos, player).isForbidden;
 };
 
@@ -124,11 +142,13 @@ export const getHypotheticalPatternCounts = (
 
   if (lineCache) {
     const caches = lineCache.caches[player];
+
     for (let d = 0; d < DIRECTIONS.length; d++) {
       const line = caches[d][row][col];
       const ptn = detectPatternWithCenter(line, '1');
       counts[ptn]++;
     }
+
     return counts;
   }
 

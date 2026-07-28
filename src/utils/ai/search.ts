@@ -46,6 +46,9 @@
 //
 // 第8.1弾:
 //   - QSearchController を calculateNextMove 単位で生成し、全 findBestMove で共有
+//
+// v2.0.0 禁手整合性修正:
+//   - options.forbiddenRuleEnabled のみが渡された場合もデフォルト時間制御を維持する。
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
 import { BOARD_SIZE, checkWin, checkForbiddenMove } from '../gameLogic';
@@ -194,6 +197,7 @@ const createPerMoveStaticEvalCache = (
   aiPlayer: Player
 ): StaticEvalCache | null => {
   if (!PHASE5_FEATURES.ENABLE_STATIC_EVAL_CACHE) return null;
+
   return createStaticEvalCache(
     {
       limit: PHASE5_CONFIG.STATIC_EVAL_CACHE_LIMIT,
@@ -259,6 +263,7 @@ const findLegalFallbackMove = (
   const isLegal = (row: number, col: number): boolean => {
     if (board[row][col] !== null) return false;
     if (forbiddenMoves[row][col]) return false;
+
     if (
       player === 'Black' &&
       dynamicForbidden.ruleEnabled &&
@@ -269,6 +274,7 @@ const findLegalFallbackMove = (
         return false;
       }
     }
+
     return true;
   };
 
@@ -340,6 +346,7 @@ const tryRootVcfMove = (
     stats.vcf.rootRejectedByForbidden++;
     return null;
   }
+
   if (
     currentTurn === 'Black' &&
     dynamicForbidden.ruleEnabled &&
@@ -400,6 +407,7 @@ export const calculateNextMove = (
   options?: SearchOptions
 ): Position | null => {
   const startTime = performance.now();
+
   resetPatternCacheStats();
   resetCenterPatternCacheStats();
 
@@ -414,17 +422,20 @@ export const calculateNextMove = (
   if (isBoardEmpty) {
     const center = Math.floor(BOARD_SIZE / 2);
     const centerMove: Position = { row: center, col: center };
+
     const stats = createSearchStats(currentTurn, 'center', 0, null, null);
     stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
     stats.selectedMove = centerMove;
     stats.selectedScore = 0;
     stats.completedDepth = 0;
     stats.time.elapsedMs = performance.now() - startTime;
+
     mergePatternCacheStats(stats, getPatternCacheStats());
     mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
     finalizeSearchStats(stats);
     logSearchSummary(stats);
     recordMoveToSession(stats, 1, true);
+
     return centerMove;
   }
 
@@ -441,15 +452,34 @@ export const calculateNextMove = (
     !explicitTime &&
     options.lastMove !== undefined;
 
+  /**
+   * forbiddenRuleEnabled だけが渡された場合も「探索パラメータはデフォルト」として扱う。
+   * UI から options として禁手設定を常時伝搬するため、従来の時間制御を維持する。
+   */
+  const onlyForbiddenRule =
+    options !== undefined &&
+    !explicitDepth &&
+    !explicitTime &&
+    options.lastMove === undefined &&
+    options.forbiddenRuleEnabled !== undefined &&
+    options.vcfEnabled === undefined &&
+    options.vcfTimeBudgetMs === undefined &&
+    options.vcfNodeLimit === undefined &&
+    options.qsearchEnabled === undefined &&
+    options.qsearchMaxPly === undefined &&
+    options.qsearchNodeLimitPerLeaf === undefined &&
+    options.qsearchTotalNodeLimit === undefined &&
+    options.qsearchTimeBudgetMs === undefined;
+
   const maxDepth = explicitDepth
     ? (options!.depth as number)
     : AI_CONFIG.MINIMAX_DEPTH;
 
   const timeLimitMs = explicitTime
     ? (options!.timeLimitMs as number)
-    : (!explicitDepth && (options === undefined || onlyLastMove)
-        ? AI_CONFIG.DEFAULT_TIME_LIMIT_MS
-        : undefined);
+    : (!explicitDepth && (options === undefined || onlyLastMove || onlyForbiddenRule)
+      ? AI_CONFIG.DEFAULT_TIME_LIMIT_MS
+      : undefined);
 
   const lastMove = options?.lastMove ?? null;
 
@@ -470,6 +500,7 @@ export const calculateNextMove = (
       stonesBefore,
       stats
     );
+
     if (vcfMove) {
       return finalizeVcfReturn(
         board,
@@ -590,6 +621,7 @@ export const calculateNextMove = (
     stonesBefore,
     stats
   );
+
   if (vcfMove) {
     return finalizeVcfReturn(
       board,
@@ -651,6 +683,7 @@ export const calculateNextMove = (
       AI_FEATURES.ENABLE_SAFE_ASPIRATION &&
       d >= 2 &&
       prevScore !== null;
+
     const useAspiration = shouldUseAspiration(d, prevScore);
 
     if (aspirationCandidate && !useAspiration) {
@@ -669,6 +702,7 @@ export const calculateNextMove = (
 
     if (useAspiration) {
       let window = adaptiveAspirationWindow;
+
       if (
         PHASE5_FEATURES.ENABLE_ADAPTIVE_ASPIRATION &&
         prevAspirationFailed

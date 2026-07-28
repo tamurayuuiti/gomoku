@@ -16,6 +16,9 @@
 //   - 静的 forbiddenMoves を上書きして合法化する機能は既定で持たない。
 //   - 静的 forbiddenMoves が false の場合のみ、動的禁手で追加除外する。
 //   - 禁手ルール OFF を明示したい場合は SearchOptions.forbiddenRuleEnabled = false を渡す。
+//
+// v2.0.0 禁手整合性修正:
+//   - ruleEnabled === false の場合、check() 内で禁手判定を一切実行しない。
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import { BOARD_SIZE, checkForbiddenMove } from '../gameLogic';
@@ -185,6 +188,7 @@ export const createDynamicForbiddenController = (
       currentHash: bigint,
       stats?: SearchStats
     ): boolean {
+      if (!ruleEnabled) return false;
       if (player !== 'Black') return false;
 
       if (stats) {
