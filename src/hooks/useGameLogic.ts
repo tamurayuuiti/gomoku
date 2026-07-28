@@ -8,8 +8,10 @@
 //   盤面・手番の整合が保たれる（stale 更新余地の解消）。
 // - 埋まったマスへの着手を無視する防御ガードを追加した。
 // state の分割・勝敗・引き分けの判定ロジックは変更していない。
+//
+// lint 対応: latest-ref のレンダー中更新をやめ、コミット後に更新する。
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import type { Player, BoardState, GameStatus, Position } from '../types/game';
 import { checkWin, checkDraw, createEmptyBoard } from '../utils/gameLogic';
 
@@ -19,9 +21,13 @@ export const useGameLogic = () => {
   const [gameStatus, setGameStatus] = useState<GameStatus>('Playing');
   const [lastMove, setLastMove] = useState<Position | null>(null);
 
-  // latest-ref: レンダーごとに書き込み、イベントコールバック内でのみ読み出す。
+  // latest-ref: イベントコールバック内でのみ読み出す。
+  // レンダー中ではなくコミット後に更新する。
   const stateRef = useRef({ board, currentPlayer });
-  stateRef.current = { board, currentPlayer };
+
+  useLayoutEffect(() => {
+    stateRef.current = { board, currentPlayer };
+  }, [board, currentPlayer]);
 
   const executeMove = useCallback((row: number, col: number) => {
     const { board: currentBoard, currentPlayer: player } = stateRef.current;
@@ -32,14 +38,17 @@ export const useGameLogic = () => {
     const newBoard = currentBoard.map((r, rIdx) =>
       rIdx === row ? r.map((c, cIdx) => (cIdx === col ? player : c)) : r
     );
+
     const move: Position = { row, col };
 
     let nextStatus: GameStatus | null = null;
+
     if (checkWin(newBoard, move, player)) {
       nextStatus = player === 'Black' ? 'BlackWins' : 'WhiteWins';
     } else if (checkDraw(newBoard)) {
       nextStatus = 'Draw';
     }
+
     const nextPlayer: Player = player === 'Black' ? 'White' : 'Black';
 
     // ref の即時更新: 再レンダー前に再度呼び出されても整合状態を保つ。
@@ -47,6 +56,7 @@ export const useGameLogic = () => {
 
     setBoard(newBoard);
     setLastMove(move);
+
     if (nextStatus) {
       setGameStatus(nextStatus);
     } else {

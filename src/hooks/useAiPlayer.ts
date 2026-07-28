@@ -48,7 +48,8 @@
 // --- 禁手設定伝搬（v2.0.0 整合性修正） ---
 // UI の useForbiddenRule を Single Source of Truth とし、
 // Worker へ options.forbiddenRuleEnabled として常時伝搬する。
-import { useState, useEffect, useMemo, useRef } from 'react';
+
+import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import type {
   Player,
   BoardState,
@@ -118,9 +119,8 @@ export const useAiPlayer = ({
   // 対局終了通知の二重送信防止用。
   const prevGameStatusRef = useRef<GameStatus>(gameStatus);
 
-  // --- 第9弾: latest-ref 群（レンダーごとに書き込み、非同期コールバック内でのみ読み出す） ---
+  // --- 第9弾: latest-ref 群（コミット後に更新し、非同期コールバック内でのみ読み出す） ---
   const onMoveRef = useRef(onMove);
-  onMoveRef.current = onMove;
 
   /** 現在応答を待っているターン。null = 応答待ちではない。 */
   const pendingRef = useRef<{ turnId: string } | null>(null);
@@ -133,6 +133,11 @@ export const useAiPlayer = ({
 
   /** 保留中の演出遅延タイマ。 */
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // latest-ref の更新はレンダー中ではなくコミット後に行う。
+  useLayoutEffect(() => {
+    onMoveRef.current = onMove;
+  }, [onMove]);
 
   // AIの手番かどうかは props から同期的に導出できるため useMemo で計算する
   const isAiTurn = useMemo(
@@ -158,6 +163,7 @@ export const useAiPlayer = ({
     const worker = new Worker(new URL('../workers/aiWorker.ts', import.meta.url), {
       type: 'module',
     });
+
     workerRef.current = worker;
 
     // 第9弾（StrictMode / HMR 対応）: Worker が再生成された場合、直前までの
@@ -189,10 +195,12 @@ export const useAiPlayer = ({
 
       const pending = pendingRef.current;
       if (!pending) return;
+
       if (inflightRef.current > 0) return; // より新しいリクエストが未応答 → この旧応答は破棄
 
       const { nextMove, error } = event.data;
       const turnId = pending.turnId;
+
       pendingRef.current = null;
 
       if (error) {
@@ -208,9 +216,11 @@ export const useAiPlayer = ({
 
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
+
         if (nextMove) {
           onMoveRef.current(nextMove.row, nextMove.col);
         }
+
         setResolvedTurnId(turnId);
       }, remainingDelay);
     };
@@ -218,9 +228,12 @@ export const useAiPlayer = ({
     const handleError = (event: ErrorEvent) => {
       // Worker 内で捕捉されなかった例外（構文エラー等）に対するフォールバック
       console.error('[useAiPlayer] AI worker crashed:', event.message);
+
       inflightRef.current = 0;
+
       const pending = pendingRef.current;
       pendingRef.current = null;
+
       if (pending) {
         setResolvedTurnId(pending.turnId);
       }

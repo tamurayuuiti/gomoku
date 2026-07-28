@@ -34,6 +34,7 @@
 //
 // v2.0.0 禁手整合性修正:
 //   - forced move list 生成時に dynamicForbidden.ruleEnabled を伝搬する。
+
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
   KillerEntry,
@@ -167,7 +168,6 @@ export const storeKiller = (
   if (depth >= MAX_KILLER_DEPTH) return;
 
   const slot = killerTable[depth];
-
   if (slot[0]?.row === pos.row && slot[0]?.col === pos.col) return;
 
   slot[1] = slot[0];
@@ -184,7 +184,6 @@ export const isKiller = (
   if (depth >= MAX_KILLER_DEPTH) return false;
 
   const [k0, k1] = killerTable[depth];
-
   return (
     (k0?.row === row && k0?.col === col) ||
     (k1?.row === row && k1?.col === col)
@@ -264,7 +263,6 @@ export const createCandidateSet = (
       }
 
       refCount[r][c] = count;
-
       if (count > 0) {
         isCandidate[r][c] = true;
         candidates.add(toFlat(r, c));
@@ -599,6 +597,7 @@ const generateOrderedCandidatesInternal = (
       finalQuietTier.length > 1
     ) {
       const bestQuietScore = finalQuietTier[0].score;
+
       finalQuietTier = finalQuietTier.filter(
         (entry) => entry.score >= bestQuietScore - CANDIDATE_CONFIG.QUIET_SCORE_MARGIN
       );
@@ -675,6 +674,7 @@ const generateOrderedCandidatesInternal = (
   // ============================================================
   // 従来方式（第4弾ベースライン）
   // ============================================================
+
   const scored: OrderedCandidate[] = [];
 
   const addCandidate = (r: number, c: number): void => {
@@ -745,13 +745,14 @@ const generateOrderedCandidatesInternal = (
   const criticalTier: OrderedCandidate[] = [];
   const counterTier: OrderedCandidate[] = [];
   const killerTier: OrderedCandidate[] = [];
-  let quietTier: OrderedCandidate[] = [];
+  const quietTier: OrderedCandidate[] = [];
 
   const used = new Set<number>();
 
   const addUnique = (tier: OrderedCandidate[], entry: OrderedCandidate): void => {
     const key = toIndex(entry.pos);
     if (used.has(key)) return;
+
     used.add(key);
     tier.push(entry);
   };
@@ -789,6 +790,7 @@ const generateOrderedCandidatesInternal = (
     finalQuietTier.length > 1
   ) {
     const bestQuietScore = finalQuietTier[0].score;
+
     finalQuietTier = finalQuietTier.filter(
       (entry) => entry.score >= bestQuietScore - CANDIDATE_CONFIG.QUIET_SCORE_MARGIN
     );
@@ -936,7 +938,6 @@ const applyPhase6ForcedMoves = (
     present.add(key);
 
     const forcedMove = forcedByKey.get(key);
-
     if (forcedMove) {
       candidate.flags.isForced = true;
       candidate.flags.forcedPriority = forcedMove.priority;
@@ -1146,7 +1147,6 @@ export const generateOrderedCandidates = (
   }
 
   const start = performance.now();
-
   let result: OrderedCandidate[] | undefined;
 
   try {

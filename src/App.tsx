@@ -2,7 +2,7 @@
 // アプリ全体の構成と主要な状態管理を担当するコンテナコンポーネント
 
 import type { Player, GameMode } from './types/game';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { getForbiddenReasonMessage, checkForbiddenMove } from './utils/gameLogic';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import { useGameLogic } from './hooks/useGameLogic';
@@ -34,7 +34,7 @@ const App = () => {
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
   // 盤面全体の禁じ手座標は表示専用（ホバー時の赤バツ）。
-  // 第9弾: 描画後に非同期計算されるため、着手受理の判定には使用しない。
+  // 描画後に非同期計算されるため、着手受理の判定には使用しない。
   const forbiddenMoves = useForbiddenMoves(board, currentPlayer, gameStatus, useForbiddenRule);
 
   const { isAiThinking } = useAiPlayer({
@@ -47,12 +47,30 @@ const App = () => {
     onMove: executeMove,
   });
 
-  // 第9弾: latest-ref パターンで handleCellClick の identity を安定化し、
+  // latest-ref パターンで handleCellClick の identity を安定化し、
   // memo 化された Cell へ安全に渡せるようにする（components/Cell.tsx 参照）。
+  // ref の更新はレンダー中ではなくコミット後（useLayoutEffect）に行う。
   // 禁手の権威ある判定は checkForbiddenMove の直接呼び出し（単一マス）で行い、
   // 表示専用の forbiddenMoves マトリクスは参照しない。
-  const clickCtxRef = useRef({ board, gameStatus, isAiThinking, currentPlayer, useForbiddenRule, executeMove });
-  clickCtxRef.current = { board, gameStatus, isAiThinking, currentPlayer, useForbiddenRule, executeMove };
+  const clickCtxRef = useRef({
+    board,
+    gameStatus,
+    isAiThinking,
+    currentPlayer,
+    useForbiddenRule,
+    executeMove,
+  });
+
+  useLayoutEffect(() => {
+    clickCtxRef.current = {
+      board,
+      gameStatus,
+      isAiThinking,
+      currentPlayer,
+      useForbiddenRule,
+      executeMove,
+    };
+  }, [board, gameStatus, isAiThinking, currentPlayer, useForbiddenRule, executeMove]);
 
   const handleCellClick = useCallback((row: number, col: number) => {
     const {
@@ -75,6 +93,7 @@ const App = () => {
     // 禁じ手チェック（黒番のみ）: 単一マスの直接判定が権威あるゲート
     if (forbiddenRule && player === 'Black') {
       const result = checkForbiddenMove(currentBoard, { row, col }, 'Black');
+
       if (result.isForbidden) {
         setForbiddenWarning(getForbiddenReasonMessage(result.reason));
         return;
@@ -122,12 +141,14 @@ const App = () => {
             gameMode={gameMode}
             onModeChange={handleModeChange}
           />
+
           <ForbiddenRuleToggle
             useForbiddenRule={useForbiddenRule}
             disabled={!isBoardEmpty}
             onToggle={() => setUseForbiddenRule(!useForbiddenRule)}
           />
         </div>
+
         <ColorSelector
           gameMode={gameMode}
           gameStatus={gameStatus}
@@ -147,6 +168,7 @@ const App = () => {
           gameMode={gameMode}
           playerColor={playerColor}
         />
+
         <Board
           board={board}
           onCellClick={handleCellClick}
