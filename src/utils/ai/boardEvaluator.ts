@@ -23,34 +23,31 @@
 //   - 通常評価分支に極小の形状ボーナス（接続性）を追加。
 //   - 即時戦術スコア・AI_SCORES・tier は変更しない。
 //   - ENABLE_EVAL_SHAPE_BONUS flag で制御。
-import type { BoardState, Player, Cell } from '../../types/game';
+import type { BoardState, Player } from '../../types/game';
 import type {
   PatternCount,
   LineCacheState,
   CandidateSetState,
 } from '../../types/ai';
-import { BOARD_SIZE } from '../gameLogic';
+import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
 import {
   AI_SCORES,
   AI_CONFIG,
   EVAL_CONFIG,
-  DIRECTIONS,
   PHASE5_FEATURES,
 } from './constants';
 import {
+  createEmptyPatternCount,
   detectPatternWithCenter,
   hasStoneNearby,
   opponentOf,
   computeShapeBonusFromLines,
 } from './evaluator';
+import { cellChar } from './lineCache';
 
 // ============================================================
 // ライン走査キャッシュ（フォールバック用）
 // ============================================================
-
-/** セルの Player|null を getLineString と同じ文字コードへ変換する（'1'=color の石, '0'=空マス, '2'=相手石/盤外） */
-const cellChar = (cell: Cell, color: Player): string =>
-  cell === color ? '1' : cell === null ? '0' : '2';
 
 /**
  * 指定方向 (dx, dy) について盤面全体を 1 回走査し、各セルを中心とする
@@ -82,17 +79,6 @@ const buildLineCache = (
   }
   return cache;
 };
-
-const createEmptyPatternCount = (): PatternCount => ({
-  WIN: 0,
-  OPEN_FOUR: 0,
-  CLOSED_FOUR: 0,
-  OPEN_THREE: 0,
-  CLOSED_THREE: 0,
-  OPEN_TWO: 0,
-  CLOSED_TWO: 0,
-  SINGLE: 0,
-});
 
 /**
  * キャッシュ済み 9 文字ウィンドウから (r, c) への着手価値を playerColor 視点で算出する。

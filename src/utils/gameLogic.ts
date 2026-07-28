@@ -16,6 +16,16 @@ export const DIRECTIONS = [
   [1, -1],
 ] as const;
 
+export const countStones = (board: BoardState): number => {
+  let count = 0;
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (board[r][c] !== null) count++;
+    }
+  }
+  return count;
+};
+
 const countStonesInDirection = (
   board: BoardState,
   pos: Position,

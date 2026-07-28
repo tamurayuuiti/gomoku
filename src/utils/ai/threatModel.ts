@@ -14,24 +14,13 @@
 //   - 禁手 OFF の場合、Black 禁手判定を一切行わない。
 import type { BoardState, Player, Position } from '../../types/game';
 import type { LineCacheState, PatternCount } from '../../types/ai';
-import { checkWin, checkForbiddenMove } from '../gameLogic';
-import { DIRECTIONS } from './constants';
+import { checkWin, checkForbiddenMove, DIRECTIONS } from '../gameLogic';
 import {
+  createEmptyPatternCount,
   detectPatternFast,
   detectPatternWithCenter,
   getLineString,
 } from './evaluator';
-
-const createEmptyPatternCount = (): PatternCount => ({
-  WIN: 0,
-  OPEN_FOUR: 0,
-  CLOSED_FOUR: 0,
-  OPEN_THREE: 0,
-  CLOSED_THREE: 0,
-  OPEN_TWO: 0,
-  CLOSED_TWO: 0,
-  SINGLE: 0,
-});
 
 /**
  * board[pos] が空であることを前提に、player が pos へ着手したときの勝利を判定する。

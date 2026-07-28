@@ -28,10 +28,9 @@
 
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
-import { BOARD_SIZE, checkForbiddenMove } from '../gameLogic';
+import { BOARD_SIZE, checkForbiddenMove, DIRECTIONS, countStones } from '../gameLogic';
 import {
   AI_FEATURES,
-  DIRECTIONS,
   PHASE7_FEATURES,
   PHASE7_CONFIG,
 } from './constants';
@@ -137,16 +136,6 @@ const PLAYER_SALT_BLACK = 0xbf58476d1ce4e5b9n;
 
 const moveSalt = (index: number): bigint =>
   (BigInt(index + 1) * MOVE_SALT_SEED) & MASK64;
-
-const countStones = (board: BoardState): number => {
-  let count = 0;
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      if (board[r][c] !== null) count++;
-    }
-  }
-  return count;
-};
 
 const resolveRootBudgetMs = (
   options: SearchOptions | undefined,

@@ -3,7 +3,6 @@
 //
 // 型定義（PatternType / PatternCount / SearchOptions）は複数ファイルから
 // 共有されるため types/ai.ts に集約している。このファイルは定数のみを扱う。
-import { DIRECTIONS as GAME_DIRECTIONS } from '../gameLogic';
 import type { AiLogLevel } from '../../types/ai';
 
 // --- スコア定数（攻撃基準に統一） ---
@@ -609,6 +608,3 @@ export const PHASE8_CONFIG = {
   /** 形状ボーナスの絶対上限 */
   EVAL_SHAPE_MAX_BONUS: 0.3,
 } as const;
-
-// --- 方向定数 ---
-export const DIRECTIONS = GAME_DIRECTIONS;

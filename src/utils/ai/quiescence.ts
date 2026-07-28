@@ -23,10 +23,9 @@
 //   - board / lineCache は apply / undo で必ず復元する
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchOptions, SearchStats, LineCacheState } from '../../types/ai';
-import { BOARD_SIZE, checkForbiddenMove } from '../gameLogic';
+import { BOARD_SIZE, checkForbiddenMove, DIRECTIONS, countStones } from '../gameLogic';
 import {
   AI_SCORES,
-  DIRECTIONS,
   PHASE8_FEATURES,
   PHASE8_CONFIG,
 } from './constants';
@@ -120,16 +119,6 @@ const RULE_SALT = 0x94d049bb133111ebn;
 
 const moveSalt = (index: number): bigint =>
   (BigInt(index + 1) * MOVE_SALT_SEED) & MASK64;
-
-const countStones = (board: BoardState): number => {
-  let count = 0;
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      if (board[r][c] !== null) count++;
-    }
-  }
-  return count;
-};
 
 // ============================================================
 // 予算解決

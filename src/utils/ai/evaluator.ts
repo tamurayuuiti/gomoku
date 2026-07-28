@@ -24,11 +24,10 @@
 //   - ENABLE_EVAL_SHAPE_BONUS flag で制御。
 import type { BoardState, Player } from '../../types/game';
 import type { PatternType, PatternCount, LineCacheState } from '../../types/ai';
-import { BOARD_SIZE } from '../gameLogic';
+import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
 import {
   AI_SCORES,
   AI_CONFIG,
-  DIRECTIONS,
   AI_FEATURES,
   PHASE5_FEATURES,
   PHASE5_CONFIG,
@@ -350,7 +349,7 @@ export const computeShapeBonusFromLines = (
 // 位置評価本体
 // ============================================================
 
-const createEmptyPatternCount = (): PatternCount => ({
+export const createEmptyPatternCount = (): PatternCount => ({
   WIN: 0,
   OPEN_FOUR: 0,
   CLOSED_FOUR: 0,

@@ -51,7 +51,7 @@
 //   - options.forbiddenRuleEnabled のみが渡された場合もデフォルト時間制御を維持する。
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
-import { BOARD_SIZE, checkWin, checkForbiddenMove } from '../gameLogic';
+import { BOARD_SIZE, checkWin, checkForbiddenMove, countStones } from '../gameLogic';
 import {
   AI_CONFIG,
   AI_SCORES,
@@ -129,20 +129,6 @@ const shouldUseAspiration = (
   }
 
   return true;
-};
-
-/**
- * 盤上の石数を数える。
- * 対局統計の推定総手数に使う。
- */
-const countStones = (board: BoardState): number => {
-  let count = 0;
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      if (board[r][c] !== null) count++;
-    }
-  }
-  return count;
 };
 
 /**

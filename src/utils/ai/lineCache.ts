@@ -21,7 +21,7 @@ import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
 /**
  * セルの Player|null を getLineString と同じ文字コードへ変換する。
  */
-const cellChar = (cell: Cell, color: Player): string =>
+export const cellChar = (cell: Cell, color: Player): string =>
   cell === color ? '1' : cell === null ? '0' : '2';
 
 /**
