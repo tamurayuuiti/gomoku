@@ -55,8 +55,8 @@ import {
   PVS_CONFIG,
   SEARCH_TUNING_FEATURES,
   SEARCH_TUNING_CONFIG,
-  TIMING_DIAGNOSTICS_CONFIG,
 } from './constants';
+import { TIMING_DIAGNOSTICS_CONFIG } from './diagnosticsFlags';
 import { opponentOf } from './evaluator';
 import { evaluateBoard, evaluateBoardWithCache } from './boardEvaluator';
 import {

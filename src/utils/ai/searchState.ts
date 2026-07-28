@@ -15,6 +15,10 @@
 // 注意:
 //   hash は XOR で元に戻せるが、呼び出し側で扱いやすいよう
 //   applySearchMove は nextHash を返し、undo 情報に hashBefore を保持する。
+//
+// v2.0.0 診断整理:
+//   - ENABLE_STATE_AUDIT は diagnosticsFlags.ts の DIAGNOSTICS_DEBUG_FLAGS へ移動。
+
 import type { BoardState, Player, Position } from '../../types/game';
 import type {
   CandidateSetState,
@@ -26,7 +30,7 @@ import { updateHash } from './zobrist';
 import { updateLineCache, undoLineCache } from './lineCache';
 import { applyCandidateSet, undoCandidateSet } from './candidateGenerator';
 import { recordCandidateSetSize } from './searchStats';
-import { THREAT_FORBIDDEN_FEATURES } from './constants';
+import { DIAGNOSTICS_DEBUG_FLAGS } from './diagnosticsFlags';
 
 /**
  * apply / undo が必要な探索状態の最小集合。
@@ -71,7 +75,6 @@ export const applySearchMove = (
   }
 
   let candidateUndo: CandidateSetUndo | null = null;
-
   if (state.candidateSet) {
     candidateUndo = applyCandidateSet(
       state.candidateSet,
@@ -125,7 +128,7 @@ export const undoSearchMove = (
     state.stats.candidateSet.undos++;
   }
 
-  if (THREAT_FORBIDDEN_FEATURES.ENABLE_STATE_AUDIT) {
+  if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_STATE_AUDIT) {
     if (state.board[row][col] !== null) {
       console.warn(
         `[searchState] board undo failed at (${row}, ${col}) player=${undo.player}`

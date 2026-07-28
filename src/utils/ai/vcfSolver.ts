@@ -34,6 +34,7 @@ import {
   VCF_FEATURES,
   VCF_CONFIG,
 } from './constants';
+import { DIAGNOSTICS_DEBUG_FLAGS } from './diagnosticsFlags';
 import { createLineCache } from './lineCache';
 import { calculateInitialHash } from './zobrist';
 import {
@@ -558,7 +559,7 @@ export const runRootVcf = (
     vcf.rootTimeMs = timeMs;
     vcf.rootBudgetMs = budgetMs;
 
-    if (VCF_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
+    if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_VCF_VERBOSE_LOG) {
       const moveText = move ? `(${move.row},${move.col})` : 'none';
       const plyText = plyToWin === null ? '-' : String(plyToWin);
       const reasonText = reason === null ? '-' : reason;
@@ -682,7 +683,7 @@ export const runRootVcf = (
 
     const result = searchAttacker(ctx, 0, initialHash);
 
-    if (VCF_FEATURES.ENABLE_VCF_STATE_AUDIT) {
+    if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_VCF_STATE_AUDIT) {
       const afterStones = countStones(req.board);
       if (afterStones !== req.stones) {
         console.warn(
@@ -750,7 +751,7 @@ export const runRootVcf = (
 
     const message = err instanceof Error ? err.message : String(err);
 
-    if (VCF_FEATURES.ENABLE_VCF_VERBOSE_LOG) {
+    if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_VCF_VERBOSE_LOG) {
       console.error('[VCF] root exception:', err);
     }
 

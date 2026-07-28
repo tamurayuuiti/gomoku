@@ -43,7 +43,7 @@ import type { Player } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
 import type { PatternCacheStats, CenterPatternCacheStats } from './evaluator';
-import { DIAGNOSTICS_CONFIG } from './constants';
+import { DIAGNOSTICS_CONFIG } from './diagnosticsFlags';
 import { BOARD_SIZE } from '../gameLogic';
 
 /**

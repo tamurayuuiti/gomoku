@@ -29,6 +29,7 @@ import {
   QSEARCH_FEATURES,
   QSEARCH_CONFIG,
 } from './constants';
+import { DIAGNOSTICS_DEBUG_FLAGS } from './diagnosticsFlags';
 import {
   applySearchMove,
   undoSearchMove,
@@ -732,7 +733,7 @@ export const runQuiescenceAtLeaf = (params: {
   // qsearch 実行
   try {
     // state audit 用
-    const stonesBefore = QSEARCH_FEATURES.ENABLE_QSEARCH_STATE_AUDIT
+    const stonesBefore = DIAGNOSTICS_DEBUG_FLAGS.ENABLE_QSEARCH_STATE_AUDIT
       ? countStones(board)
       : 0;
 
@@ -757,7 +758,7 @@ export const runQuiescenceAtLeaf = (params: {
     const result = qsearch(ctx, side, 0, hash, localStartNodes);
 
     // state audit
-    if (QSEARCH_FEATURES.ENABLE_QSEARCH_STATE_AUDIT) {
+    if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_QSEARCH_STATE_AUDIT) {
       const stonesAfter = countStones(board);
       if (stonesBefore !== stonesAfter) {
         qs.auditFails++;
@@ -806,7 +807,7 @@ export const runQuiescenceAtLeaf = (params: {
 
     qs.timeMs += performance.now() - start;
 
-    if (QSEARCH_FEATURES.ENABLE_QSEARCH_VERBOSE_LOG) {
+    if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_QSEARCH_VERBOSE_LOG) {
       console.log(
         `[QSearch] ${outcome} side=${side} hash=${hash} ` +
         `nodes=${controller.nodes - localStartNodes} ply=${qs.maxPlyReached}`
@@ -820,7 +821,7 @@ export const runQuiescenceAtLeaf = (params: {
     qs.timeMs += performance.now() - start;
     controller.errorOccurred = true;
     controller.enabled = false;
-    if (QSEARCH_FEATURES.ENABLE_QSEARCH_VERBOSE_LOG) {
+    if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_QSEARCH_VERBOSE_LOG) {
       console.error('[QSearch] exception:', err);
     }
     return { score: null, outcome: 'ERROR' };
