@@ -83,13 +83,6 @@ export const TT_CONFIG = {
    */
   MAX_ENTRIES: 200_000,
   /**
-   * Aspiration Window の有効フラグ。
-   *
-   * 第3弾では search.ts 側の AI_FEATURES.ENABLE_SAFE_ASPIRATION を使用する。
-   * このフラグは後方互換のため残すが、基本は使用しない。
-   */
-  ENABLE_ASPIRATION_WINDOW: false,
-  /**
    * Aspiration Window の初期幅。
    * 反復深化の各ステップで、前回のスコアを中心に ±この幅のウィンドウを設定する。
    * Fail High/Low 時にウィンドウを拡大して再探索する。
@@ -354,8 +347,6 @@ export const PHASE5_DEBUG = {
   ENABLE_CHECKWIN_TIMING: true,
   /** 葉評価の時間計測を行うか */
   ENABLE_LEAF_TIMING: true,
-  /** 第5弾設定ログを出力するか */
-  ENABLE_PHASE5_CONFIG_LOG: false,
 } as const;
 
 // --- 第6.1弾：feature flags / config ---
@@ -428,8 +419,6 @@ export const PHASE6_FEATURES = {
  * 探索挙動そのものではなく、forced move list の生成範囲・保護容量を制御する。
  */
 export const PHASE6_CONFIG = {
-  /** Threat Model / forced move list の世代（診断・将来キャッシュ用） */
-  THREAT_MODEL_VERSION: 1n,
   /**
    * root で必須 forced move を追加するための追加容量。
    * 既存の ROOT_MAX_CANDIDATES に加えて、この件数まで追加を許容する。
@@ -445,11 +434,6 @@ export const PHASE6_CONFIG = {
    * ENABLE_INTERNAL_FORCED_LIST が false の場合は使用しない。
    */
   INTERNAL_FORCED_MAX_CANDIDATES: 32,
-  /**
-   * OPEN_THREE_DEFENSE を有効化した場合の最大追加件数。
-   * ENABLE_OPEN_THREE_DEFENSE が false の場合は使用しない。
-   */
-  OPEN_THREE_DEFENSE_MAX_MOVES: 4,
   // --- 第6.2弾 ---
   /**
    * internal 動的禁手を有効化した場合の最大残り深度。

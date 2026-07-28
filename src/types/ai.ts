@@ -39,22 +39,6 @@ export type ForcedCategory =
   | 'NONE';
 
 /**
- * Threat Model 上の脅威種別。
- *
- * 第6.1弾では forced move list の分類・診断に使う。
- * QUIET は強制性の低い手を表す。
- */
-export type ThreatType =
-  | 'OWN_WIN'
-  | 'OWN_OPEN_FOUR'
-  | 'OWN_FOUR'
-  | 'BLOCK_WIN'
-  | 'BLOCK_OPEN_FOUR'
-  | 'BLOCK_FOUR'
-  | 'OPEN_THREE_DEFENSE'
-  | 'QUIET';
-
-/**
  * 1つの forced move を表す。
  *
  * 1手が複数のカテゴリに該当することがある。
