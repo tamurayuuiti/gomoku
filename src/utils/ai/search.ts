@@ -1,54 +1,14 @@
 // src/utils/ai/search.ts
-// AIの次の一手を計算するロジックを定義するファイル
+// AIの次の一手を計算するロジック
 //
-// 初手処理（盤面空き → 中央）、反復深化（iterative deepening）ループの制御、
-// Aspiration Window による探索ウィンドウ管理、findBestMove の呼び出しと結果の返却を担う。
-// 探索ロジック本体（αβ・move ordering・評価関数・TT・LMR・PVS・LineCache）は
-// minimax.ts 以下に完全委譲し、このファイルは "薄いアダプタ" として常に軽量に保つ。
+// 本ファイルは探索マネージャとして以下を担う。
+// - 初手中央
+// - Root VCF
+// - fixed depth search
+// - iterative deepening
+// - 統計最終化 / ログ / セッション記録
 //
-// 第3弾:
-//   - Aspiration Window を安全な形で再有効化
-//   - fail-high / fail-low 時は必ず full window で再探索
-//   - WIN / LOSS 付近では Aspiration を使わない
-//
-// 第4弾:
-//   - 思考単位で統計情報を生成し、思考終了後にサマリログを出力する。
-//   - 探索挙動・時間制御・Aspiration の有効/無効条件は変更しない。
-//
-// 追加:
-//   - 対局全体統計セッションを開始・記録・終了する。
-//   - AI が勝った場合はその場で GameSession を終了する。
-//   - 人間勝ち・引き分けは UI からの制御メッセージで終了する。
-//
-// 第5弾:
-//   - Aspiration Window の再調整（flag 付き）
-//   - adaptive Aspiration（flag 付き）
-//   - 時間予測（flag 付き）
-//   - 中心パターンキャッシュ統計の反映
-//
-// 第5.5弾:
-//   - Aspiration tuning / adaptive を既定で活用するための制御を追加
-//   - adaptive window の簡易収縮を追加
-//   - 時間予測の適用開始深度を保守化
-//
-// 第5.5.1弾:
-//   - Static Eval Cache を calculateNextMove 単位で生成し、全 findBestMove で共有
-//   - Aspiration quiet-only 条件を追加
-//
-// 第6.2弾:
-//   - DynamicForbiddenController を calculateNextMove 単位で生成し、全 findBestMove で共有
-//   - root 最終着手の禁手再検証と安全フォールバックを追加
-//
-// 第7.1弾:
-//   - Root VCF を通常探索前に実行
-//   - VCF で勝ち証明できた場合のみ早期 return
-//   - VCF 最終手の安全検証を追加
-//
-// 第8.1弾:
-//   - QSearchController を calculateNextMove 単位で生成し、全 findBestMove で共有
-//
-// v2.0.0 禁手整合性修正:
-//   - options.forbiddenRuleEnabled のみが渡された場合もデフォルト時間制御を維持する。
+// 探索本体は minimax.ts 以下に委譲し、このファイルは薄いアダプタとして扱う。
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
 import { BOARD_SIZE, checkWin, checkForbiddenMove, countStones } from '../gameLogic';
@@ -102,10 +62,6 @@ import { createQSearchController } from './quiescence';
  * - depth >= 2
  * - 前回スコアがある
  * - 前回スコアが WIN / LOSS 付近ではない
- *
- * 第5.5.1弾:
- * - ENABLE_ASPIRATION_QUIET_ONLY 有効時は、
- *   abs(prevScore) >= ASPIRATION_QUIET_THRESHOLD の戦術的領域で Aspiration を使わない。
  */
 const shouldUseAspiration = (
   depth: number,
@@ -162,6 +118,10 @@ const startGameSessionForMove = (
 /**
  * AI の着手が勝利かどうかを判定する。
  * board を一時的に書き換えて checkWin を呼び、すぐ復元する。
+ *
+ * 注意:
+ * threatModel.wouldWin とは「着手マスが空でない場合」の挙動が異なるため、
+ * v2.0.0 前の低リスク整理ではあえてこの local 実装を維持する。
  */
 const isWinningMove = (
   board: BoardState,
@@ -174,8 +134,121 @@ const isWinningMove = (
   return win;
 };
 
+interface ResolvedSearchParameters {
+  maxDepth: number;
+  timeLimitMs: number | undefined;
+  lastMove: Position | null;
+}
+
 /**
- * 第5.5.1弾:
+ * SearchOptions から探索パラメータを解決する。
+ *
+ * 既存の挙動を完全に維持するため、
+ * onlyLastMove / onlyForbiddenRule の判定条件は変更しない。
+ */
+const resolveSearchParameters = (
+  options?: SearchOptions
+): ResolvedSearchParameters => {
+  const explicitDepth = options?.depth !== undefined;
+  const explicitTime = options?.timeLimitMs !== undefined;
+
+  /**
+   * lastMove だけが渡された場合は「探索パラメータはデフォルト」として扱う。
+   * これにより、Worker 経由で lastMove を追加しても従来の時間制御が壊れない。
+   */
+  const onlyLastMove =
+    options !== undefined &&
+    !explicitDepth &&
+    !explicitTime &&
+    options.lastMove !== undefined;
+
+  /**
+   * forbiddenRuleEnabled だけが渡された場合も「探索パラメータはデフォルト」として扱う。
+   * UI から options として禁手設定を常時伝搬するため、従来の時間制御を維持する。
+   */
+  const onlyForbiddenRule =
+    options !== undefined &&
+    !explicitDepth &&
+    !explicitTime &&
+    options.lastMove === undefined &&
+    options.forbiddenRuleEnabled !== undefined &&
+    options.vcfEnabled === undefined &&
+    options.vcfTimeBudgetMs === undefined &&
+    options.vcfNodeLimit === undefined &&
+    options.qsearchEnabled === undefined &&
+    options.qsearchMaxPly === undefined &&
+    options.qsearchNodeLimitPerLeaf === undefined &&
+    options.qsearchTotalNodeLimit === undefined &&
+    options.qsearchTimeBudgetMs === undefined;
+
+  const maxDepth = explicitDepth
+    ? (options!.depth as number)
+    : AI_CONFIG.MINIMAX_DEPTH;
+
+  const timeLimitMs = explicitTime
+    ? (options!.timeLimitMs as number)
+    : (!explicitDepth && (options === undefined || onlyLastMove || onlyForbiddenRule)
+        ? AI_CONFIG.DEFAULT_TIME_LIMIT_MS
+        : undefined);
+
+  const lastMove = options?.lastMove ?? null;
+
+  return {
+    maxDepth,
+    timeLimitMs,
+    lastMove,
+  };
+};
+
+/**
+ * 統計のマージ・確定・ログ出力を共通化する。
+ *
+ * 注意:
+ * - elapsedMs の設定は呼び出し側で行う。
+ * - TT 統計は fixed / iterative のみでマージする。
+ * - center / VCF は tt = null を渡す。
+ */
+const finalizeSearchStatsAndLog = (
+  stats: SearchStats,
+  tt: TranspositionTable | null
+): void => {
+  if (tt) {
+    mergeTTStats(stats, tt.stats);
+  }
+  mergePatternCacheStats(stats, getPatternCacheStats());
+  mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
+  finalizeSearchStats(stats);
+  logSearchSummary(stats);
+};
+
+/**
+ * fixed / iterative 探索終了時の session 記録と勝利確定を共通化する。
+ *
+ * 呼び出し順は既存と同一にする。
+ * 1. recordMoveToSession
+ * 2. isWinningMove
+ * 3. finalizeGameSession('Win')
+ */
+const recordNormalMoveSessionAndFinalizeWin = (
+  board: BoardState,
+  move: Position | null,
+  player: Player,
+  stats: SearchStats,
+  stonesBefore: number
+): void => {
+  const movePlayed = move !== null;
+  recordMoveToSession(
+    stats,
+    stonesBefore + (movePlayed ? 1 : 0),
+    movePlayed
+  );
+
+  if (move && isWinningMove(board, move, player)) {
+    finalizeGameSession('Win');
+  }
+};
+
+/**
  * 1回の calculateNextMove 全体で共有する Static Eval Cache を生成する。
  */
 const createPerMoveStaticEvalCache = (
@@ -198,7 +271,6 @@ const createPerMoveStaticEvalCache = (
 };
 
 /**
- * 第6.2弾:
  * 1回の calculateNextMove 全体で共有する DynamicForbiddenController を生成する。
  */
 const createPerMoveDynamicForbidden = (
@@ -209,7 +281,6 @@ const createPerMoveDynamicForbidden = (
   });
 
 /**
- * 第6.2弾:
  * root 最終着手が動的禁手に抵触するか簡易再検証する。
  *
  * 本来は候補手生成段階で除外されるが、
@@ -223,17 +294,18 @@ const isRootMoveDynamicallyForbidden = (
 ): boolean => {
   if (player !== 'Black') return false;
   if (!dynamicForbidden.ruleEnabled) return false;
+
   if (
     !THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN ||
     !THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
   ) {
     return false;
   }
+
   return checkForbiddenMove(board, move, player).isForbidden;
 };
 
 /**
- * 第6.2弾:
  * root 最終着手が禁手だった場合の安全フォールバック。
  *
  * 通常は発火しないことを想定する。
@@ -285,7 +357,49 @@ const findLegalFallbackMove = (
 };
 
 /**
- * 第7.1弾:
+ * root 最終着手の動的禁手再検証と fallback を共通化する。
+ *
+ * fixed / iterative で同一の処理順を維持する。
+ * 1. 最終着手が動的禁手か確認
+ * 2. 禁手なら stats.forbidden.rootMoveRejectedByForbidden++
+ * 3. fallback move を選択
+ * 4. score を null へ落とす
+ */
+const resolveRootForbiddenFallback = (
+  board: BoardState,
+  forbiddenMoves: boolean[][],
+  player: Player,
+  dynamicForbidden: DynamicForbiddenController,
+  stats: SearchStats,
+  candidateMove: Position | null,
+  candidateScore: number | null
+): { move: Position | null; score: number | null } => {
+  let move = candidateMove;
+  let score: number | null = move ? candidateScore : null;
+
+  if (
+    move &&
+    isRootMoveDynamicallyForbidden(
+      board,
+      move,
+      player,
+      dynamicForbidden
+    )
+  ) {
+    stats.forbidden.rootMoveRejectedByForbidden++;
+    move = findLegalFallbackMove(
+      board,
+      forbiddenMoves,
+      player,
+      dynamicForbidden
+    );
+    score = null;
+  }
+
+  return { move, score };
+};
+
+/**
  * Root VCF を実行し、勝ち証明があれば安全検証の上で着手を返す。
  *
  * 返り値が null の場合は通常探索へ委譲する。
@@ -346,8 +460,13 @@ const tryRootVcfMove = (
 };
 
 /**
- * 第7.1弾:
  * VCF 早期 return 時の統計確定・セッション記録・勝利確定を行う。
+ *
+ * VCF は fixed / iterative と以下が異なるため、専用パスを維持する。
+ * - TT 統計をマージしない
+ * - stats.vcf.rootUsedAsFinalMove を加算する
+ * - stats.nodes.immediateWin を事前に加算する
+ * - recordMoveToSession(stats, stonesBefore + 1, true) を使う
  */
 const finalizeVcfReturn = (
   board: BoardState,
@@ -368,10 +487,7 @@ const finalizeVcfReturn = (
     stats.nodes.immediateWin++;
   }
 
-  mergePatternCacheStats(stats, getPatternCacheStats());
-  mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
-  finalizeSearchStats(stats);
-  logSearchSummary(stats);
+  finalizeSearchStatsAndLog(stats, null);
   recordMoveToSession(stats, stonesBefore + 1, true);
 
   if (immediateWin) {
@@ -411,70 +527,26 @@ export const calculateNextMove = (
 
     const stats = createSearchStats(currentTurn, 'center', 0, null, null);
     stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
+
     stats.selectedMove = centerMove;
     stats.selectedScore = 0;
     stats.completedDepth = 0;
     stats.time.elapsedMs = performance.now() - startTime;
 
-    mergePatternCacheStats(stats, getPatternCacheStats());
-    mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
-    finalizeSearchStats(stats);
-    logSearchSummary(stats);
+    finalizeSearchStatsAndLog(stats, null);
     recordMoveToSession(stats, 1, true);
 
     return centerMove;
   }
 
-  const explicitDepth = options?.depth !== undefined;
-  const explicitTime = options?.timeLimitMs !== undefined;
-
-  /**
-   * lastMove だけが渡された場合は「探索パラメータはデフォルト」として扱う。
-   * これにより、Worker 経由で lastMove を追加しても従来の時間制御が壊れない。
-   */
-  const onlyLastMove =
-    options !== undefined &&
-    !explicitDepth &&
-    !explicitTime &&
-    options.lastMove !== undefined;
-
-  /**
-   * forbiddenRuleEnabled だけが渡された場合も「探索パラメータはデフォルト」として扱う。
-   * UI から options として禁手設定を常時伝搬するため、従来の時間制御を維持する。
-   */
-  const onlyForbiddenRule =
-    options !== undefined &&
-    !explicitDepth &&
-    !explicitTime &&
-    options.lastMove === undefined &&
-    options.forbiddenRuleEnabled !== undefined &&
-    options.vcfEnabled === undefined &&
-    options.vcfTimeBudgetMs === undefined &&
-    options.vcfNodeLimit === undefined &&
-    options.qsearchEnabled === undefined &&
-    options.qsearchMaxPly === undefined &&
-    options.qsearchNodeLimitPerLeaf === undefined &&
-    options.qsearchTotalNodeLimit === undefined &&
-    options.qsearchTimeBudgetMs === undefined;
-
-  const maxDepth = explicitDepth
-    ? (options!.depth as number)
-    : AI_CONFIG.MINIMAX_DEPTH;
-
-  const timeLimitMs = explicitTime
-    ? (options!.timeLimitMs as number)
-    : (!explicitDepth && (options === undefined || onlyLastMove || onlyForbiddenRule)
-      ? AI_CONFIG.DEFAULT_TIME_LIMIT_MS
-      : undefined);
-
-  const lastMove = options?.lastMove ?? null;
+  const { maxDepth, timeLimitMs, lastMove } = resolveSearchParameters(options);
 
   // --- timeLimitMs 未指定: 従来通りの固定深さ探索 ---
   if (timeLimitMs === undefined) {
     const stats = createSearchStats(currentTurn, 'fixed', maxDepth, null, lastMove);
     stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
-    // 第7.1弾: Root VCF
+    // Root VCF
     const vcfMove = tryRootVcfMove(
       board,
       forbiddenMoves,
@@ -498,7 +570,7 @@ export const calculateNextMove = (
       );
     }
 
-    // 第8.1弾: QSearchController 生成
+    // QSearchController 生成
     const qsearchController = createQSearchController(
       {
         aiPlayer: currentTurn,
@@ -534,49 +606,32 @@ export const calculateNextMove = (
       qsearchController
     );
 
-    let finalMove = result.move;
-    let finalScore: number | null = result.move ? result.score : null;
+    const resolvedFinal = resolveRootForbiddenFallback(
+      board,
+      forbiddenMoves,
+      currentTurn,
+      dynamicForbidden,
+      stats,
+      result.move,
+      result.score
+    );
 
-    if (
-      finalMove &&
-      isRootMoveDynamicallyForbidden(
-        board,
-        finalMove,
-        currentTurn,
-        dynamicForbidden
-      )
-    ) {
-      stats.forbidden.rootMoveRejectedByForbidden++;
-      finalMove = findLegalFallbackMove(
-        board,
-        forbiddenMoves,
-        currentTurn,
-        dynamicForbidden
-      );
-      finalScore = null;
-    }
+    const finalMove = resolvedFinal.move;
+    const finalScore = resolvedFinal.score;
 
     stats.selectedMove = finalMove;
     stats.selectedScore = finalScore;
     stats.completedDepth = finalMove ? maxDepth : 0;
     stats.time.elapsedMs = performance.now() - startTime;
 
-    mergeTTStats(stats, tt.stats);
-    mergePatternCacheStats(stats, getPatternCacheStats());
-    mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
-    finalizeSearchStats(stats);
-    logSearchSummary(stats);
-
-    const movePlayed = finalMove !== null;
-    recordMoveToSession(
+    finalizeSearchStatsAndLog(stats, tt);
+    recordNormalMoveSessionAndFinalizeWin(
+      board,
+      finalMove,
+      currentTurn,
       stats,
-      stonesBefore + (movePlayed ? 1 : 0),
-      movePlayed
+      stonesBefore
     );
-
-    if (finalMove && isWinningMove(board, finalMove, currentTurn)) {
-      finalizeGameSession('Win');
-    }
 
     return finalMove;
   }
@@ -591,11 +646,10 @@ export const calculateNextMove = (
   );
   stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
-  // 第7.1弾:
   // deadline は startTime 基準とし、Root VCF の消費時間も全体時間に含める。
   const deadline = startTime + timeLimitMs;
 
-  // 第7.1弾: Root VCF
+  // Root VCF
   const vcfMove = tryRootVcfMove(
     board,
     forbiddenMoves,
@@ -619,7 +673,7 @@ export const calculateNextMove = (
     );
   }
 
-  // 第8.1弾: QSearchController 生成（VCF 後、反復深化ループ前）
+  // QSearchController 生成（VCF 後、反復深化ループ前）
   const qsearchController = createQSearchController(
     {
       aiPlayer: currentTurn,
@@ -636,7 +690,6 @@ export const calculateNextMove = (
   const tt = new TranspositionTable();
 
   /**
-   * 第5.5.1弾:
    * Static Eval Cache を calculateNextMove 単位で 1 回だけ生成し、
    * 反復深化の全 depth / Aspiration 再探索で共有する。
    */
@@ -649,10 +702,11 @@ export const calculateNextMove = (
   let completedDepth = 0;
   let prevScore: number | null = null;
 
-  // 第5弾：Aspiration 調整用状態
+  // Aspiration 調整用状態
   const baseAspirationWindow = SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_WINDOW_TUNING
     ? SEARCH_TUNING_CONFIG.ASPIRATION_WINDOW_OVERRIDE
     : TT_CONFIG.ASPIRATION_WINDOW;
+
   let adaptiveAspirationWindow = baseAspirationWindow;
   let prevAspirationFailed = false;
 
@@ -706,6 +760,7 @@ export const calculateNextMove = (
 
       stats.aspiration.attempts++;
       stats.aspiration.windowSum += window;
+
       if (window > stats.aspiration.windowMax) {
         stats.aspiration.windowMax = window;
       }
@@ -741,7 +796,7 @@ export const calculateNextMove = (
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-            `re-searching with full window`
+              `re-searching with full window`
           );
         }
 
@@ -768,7 +823,7 @@ export const calculateNextMove = (
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-            `re-searching with full window`
+              `re-searching with full window`
           );
         }
 
@@ -801,7 +856,6 @@ export const calculateNextMove = (
     stats.time.lastIterationMs = iterElapsed;
 
     /**
-     * 第5.5弾:
      * adaptive aspiration の簡易収縮。
      * fail しなかった場合は、広げた window を base へ戻していく。
      */
@@ -820,14 +874,14 @@ export const calculateNextMove = (
     // 次の深さに進む余地がなければここで打ち切る
     if (performance.now() >= deadline) break;
 
-    // 第5弾：時間予測（保守的）
-    // 第5.5弾: 適用開始深度を TIME_PREDICTION_MIN_DEPTH へ引き上げ。
+    // 時間予測（保守的）
     if (
       SEARCH_TUNING_FEATURES.ENABLE_TIME_PREDICTION &&
       d >= SEARCH_TUNING_CONFIG.TIME_PREDICTION_MIN_DEPTH
     ) {
       const remaining = deadline - performance.now();
       const estimate = iterElapsed * SEARCH_TUNING_CONFIG.TIME_PREDICTION_SAFETY;
+
       if (remaining < estimate) {
         stats.time.predictedSkips++;
         stats.time.remainingAtSkipMs = remaining;
@@ -838,49 +892,32 @@ export const calculateNextMove = (
     prevAspirationFailed = depthAspirationFailed && useAspiration;
   }
 
-  let finalBest = best;
-  let finalScore: number | null = best ? prevScore : null;
+  const resolvedFinal = resolveRootForbiddenFallback(
+    board,
+    forbiddenMoves,
+    currentTurn,
+    dynamicForbidden,
+    stats,
+    best,
+    prevScore
+  );
 
-  if (
-    finalBest &&
-    isRootMoveDynamicallyForbidden(
-      board,
-      finalBest,
-      currentTurn,
-      dynamicForbidden
-    )
-  ) {
-    stats.forbidden.rootMoveRejectedByForbidden++;
-    finalBest = findLegalFallbackMove(
-      board,
-      forbiddenMoves,
-      currentTurn,
-      dynamicForbidden
-    );
-    finalScore = null;
-  }
+  const finalBest = resolvedFinal.move;
+  const finalScore = resolvedFinal.score;
 
   stats.selectedMove = finalBest;
   stats.selectedScore = finalScore;
   stats.completedDepth = completedDepth;
   stats.time.elapsedMs = performance.now() - startTime;
 
-  mergeTTStats(stats, tt.stats);
-  mergePatternCacheStats(stats, getPatternCacheStats());
-  mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
-  finalizeSearchStats(stats);
-  logSearchSummary(stats);
-
-  const movePlayed = finalBest !== null;
-  recordMoveToSession(
+  finalizeSearchStatsAndLog(stats, tt);
+  recordNormalMoveSessionAndFinalizeWin(
+    board,
+    finalBest,
+    currentTurn,
     stats,
-    stonesBefore + (movePlayed ? 1 : 0),
-    movePlayed
+    stonesBefore
   );
-
-  if (finalBest && isWinningMove(board, finalBest, currentTurn)) {
-    finalizeGameSession('Win');
-  }
 
   return finalBest;
 };
