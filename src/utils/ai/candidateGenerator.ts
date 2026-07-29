@@ -1,39 +1,15 @@
 // src/utils/ai/candidateGenerator.ts
-// 候補手生成・move ordering・killer heuristic・history heuristic・countermove heuristic を担うモジュール
+// 候補手生成・move ordering・各種 heuristic・CandidateSet 増分管理・forced move 後処理を担うモジュール。
 //
-// KillerTable / HistoryTable / CountermoveTable / ScoredPosition / OrderedCandidate の型定義は
-// minimax.ts と共有するため types/ai.ts に集約されている。
-// このファイルはそれらの型を使った生成・操作ロジックを担う。
+// 責務:
+//   - Killer / History / Countermove heuristic の管理
+//   - CandidateSet の増分更新
+//   - 候補手生成と tier 分類
+//   - forced move list の後処理
 //
-// 第3弾:
-//   - LineCache を利用した候補手評価
-//   - CandidateSet による候補集合の増分管理
-//   を追加。
-//
-// 第4弾:
-//   - 候補手生成統計・ordering 統計・CandidateSet サイズ統計を追加。
-//   - 候補手生成結果や順序は変更しない。
-//
-// 追加:
-//   - 対局統計用の候補手生成時間計測を追加。
-//
-// 第5弾:
-//   - tier bucket 生成を追加（feature flag 付き）。
-//   - 候補手生成時間の per-move 記録を追加。
-//   - 候補手の意味・tier 優先順位・評価値は変更しない。
-//
-// 第6.1弾:
-//   - Threat Model / forced move list を後段から付与する。
-//   - root で必須 forced move の欠落を保護する。
-//   - 既存 tier・評価値・LMR / PVS 判定の意味は変更しない。
-//
-// 第6.2弾:
-//   - Black 手番時の限定動的禁手フィルタを追加。
-//   - 静的 forbiddenMoves で合法とされている手でも、動的禁手で禁手なら候補から除外する。
-//   - 既存 tier・評価値・forced move list の意味は変更しない。
-//
-// v2.0.0 禁手整合性修正:
-//   - forced move list 生成時に dynamicForbidden.ruleEnabled を伝搬する。
+// 注意:
+//   - 評価値・tier 優先順位・LMR / PVS 判定の意味は変更しない。
+//   - 型定義は types/ai.ts を参照する。
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
@@ -48,6 +24,7 @@ import type {
   SearchStats,
   ForcedMove,
 } from '../../types/ai';
+
 import { BOARD_SIZE } from '../gameLogic';
 import {
   AI_CONFIG,
@@ -76,13 +53,11 @@ import {
 import type { DynamicForbiddenController } from './dynamicForbidden';
 
 // ============================================================
-// Killer table 生成・操作
+// Killer table
 // ============================================================
 
 /**
  * killer table が対応する最大探索深さ。
- *
- * 第2弾で MINIMAX_DEPTH を 12 に引き上げたため、
  * 余裕を持って 32 まで対応する。
  */
 export const MAX_KILLER_DEPTH = 32 as const;
@@ -91,7 +66,7 @@ export const createKillerTable = (): KillerTable =>
   Array.from({ length: MAX_KILLER_DEPTH }, (): KillerEntry => [null, null]);
 
 // ============================================================
-// History table 生成・操作
+// History table
 // ============================================================
 
 export const createHistoryTable = (): HistoryTable => ({
@@ -100,7 +75,7 @@ export const createHistoryTable = (): HistoryTable => ({
 });
 
 // ============================================================
-// Countermove table 生成・操作
+// Countermove table
 // ============================================================
 
 /**
@@ -142,7 +117,7 @@ export const getCountermove = (
 };
 
 // ============================================================
-// CRITICAL 閾値
+// Critical threshold
 // ============================================================
 
 /**
@@ -150,7 +125,7 @@ export const getCountermove = (
  * DOUBLE_THREE 以上（DOUBLE_THREE / FOUR_THREE / DOUBLE_FOUR / OPEN_FOUR / DEFEND_WIN / WIN）
  * は常に先頭に来るため killer 管理は不要とみなす。
  */
-export const CRITICAL_SCORE_THRESHOLD = AI_SCORES.DOUBLE_THREE; // 50_000
+export const CRITICAL_SCORE_THRESHOLD = AI_SCORES.DOUBLE_THREE;
 
 // ============================================================
 // Killer move management
@@ -168,6 +143,7 @@ export const storeKiller = (
   if (depth >= MAX_KILLER_DEPTH) return;
 
   const slot = killerTable[depth];
+
   if (slot[0]?.row === pos.row && slot[0]?.col === pos.col) return;
 
   slot[1] = slot[0];
@@ -184,6 +160,7 @@ export const isKiller = (
   if (depth >= MAX_KILLER_DEPTH) return false;
 
   const [k0, k1] = killerTable[depth];
+
   return (
     (k0?.row === row && k0?.col === col) ||
     (k1?.row === row && k1?.col === col)
@@ -217,7 +194,7 @@ export const getHistoryScore = (
 ): number => historyTable[player][row][col];
 
 // ============================================================
-// CandidateSet（第3弾）
+// CandidateSet incremental state
 // ============================================================
 
 const toFlat = (row: number, col: number): number => row * BOARD_SIZE + col;
@@ -235,9 +212,11 @@ export const createCandidateSet = (
   const refCount: number[][] = Array.from({ length: BOARD_SIZE }, () =>
     new Array<number>(BOARD_SIZE).fill(0)
   );
+
   const isCandidate: boolean[][] = Array.from({ length: BOARD_SIZE }, () =>
     new Array<boolean>(BOARD_SIZE).fill(false)
   );
+
   const candidates = new Set<number>();
 
   const range = AI_CONFIG.SEARCH_RANGE;
@@ -247,6 +226,7 @@ export const createCandidateSet = (
       if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
 
       let count = 0;
+
       for (let dr = -range; dr <= range; dr++) {
         for (let dc = -range; dc <= range; dc++) {
           const nr = r + dr;
@@ -263,6 +243,7 @@ export const createCandidateSet = (
       }
 
       refCount[r][c] = count;
+
       if (count > 0) {
         isCandidate[r][c] = true;
         candidates.add(toFlat(r, c));
@@ -294,6 +275,7 @@ export const applyCandidateSet = (
   const record = (r: number, c: number): void => {
     const idx = toFlat(r, c);
     if (seen.has(idx)) return;
+
     seen.add(idx);
 
     affected.push({
@@ -379,7 +361,7 @@ export const undoCandidateSet = (
 };
 
 // ============================================================
-// 第4弾：候補手統計用ヘルパー
+// Candidate stats helper
 // ============================================================
 
 /**
@@ -402,7 +384,7 @@ const recordReturnedCandidates = (
 };
 
 // ============================================================
-// 候補手生成本体（戦術的最適化 + 5 tier move ordering）
+// Candidate generation body
 // ============================================================
 
 const generateOrderedCandidatesInternal = (
@@ -431,9 +413,11 @@ const generateOrderedCandidatesInternal = (
   const counterPos = AI_FEATURES.ENABLE_COUNTERMOVE
     ? getCountermove(countermoveTable, player, lastMove)
     : null;
+
   const counterKey = counterPos ? toIndex(counterPos) : -1;
 
   const useLineCache = AI_FEATURES.ENABLE_LINE_CACHE && lineCache !== null;
+
   const useCandidateSet =
     AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES && candidateSet !== null;
 
@@ -442,7 +426,7 @@ const generateOrderedCandidatesInternal = (
     recordCandidateSetSize(stats, candidateSet.candidates.size);
   }
 
-  // 第6.2弾：このノードで動的禁手フィルタを使うか判定する。
+  // このノードで動的禁手フィルタを使うか判定する。
   const applyDynamicForbidden = dynamicForbidden
     ? dynamicForbidden.shouldFilterNode(player, isRoot, depth, stats)
     : false;
@@ -451,6 +435,7 @@ const generateOrderedCandidatesInternal = (
     if (!applyDynamicForbidden || !dynamicForbidden) return false;
 
     const pos: Position = { row: r, col: c };
+
     const forbidden = dynamicForbidden.check(
       board,
       pos,
@@ -467,9 +452,9 @@ const generateOrderedCandidatesInternal = (
     return forbidden;
   };
 
-  // ============================================================
-  // 第5弾：bucket 方式候補手生成
-  // ============================================================
+  // ------------------------------------------------------------
+  // bucket 方式候補手生成
+  // ------------------------------------------------------------
   if (SEARCH_TUNING_FEATURES.ENABLE_TIER_BUCKET_GENERATION) {
     type InternalCandidate = OrderedCandidate & { order: number };
 
@@ -603,7 +588,7 @@ const generateOrderedCandidatesInternal = (
       );
     }
 
-    // 第4弾：tier 集計（生成された候補の構成を記録する）
+    // tier 集計（生成された候補の構成を記録する）
     if (stats) {
       stats.candidates.criticalTotal += criticalTier.length;
       stats.candidates.quietTotal += finalQuietTier.length;
@@ -671,10 +656,9 @@ const generateOrderedCandidatesInternal = (
     );
   }
 
-  // ============================================================
-  // 従来方式（第4弾ベースライン）
-  // ============================================================
-
+  // ------------------------------------------------------------
+  // 従来方式候補手生成
+  // ------------------------------------------------------------
   const scored: OrderedCandidate[] = [];
 
   const addCandidate = (r: number, c: number): void => {
@@ -796,7 +780,7 @@ const generateOrderedCandidatesInternal = (
     );
   }
 
-  // 第4弾：tier 集計（生成された候補の構成を記録する）
+  // tier 集計（生成された候補の構成を記録する）
   if (stats) {
     stats.candidates.criticalTotal += criticalTier.length;
     stats.candidates.quietTotal += finalQuietTier.length;
@@ -865,7 +849,7 @@ const generateOrderedCandidatesInternal = (
 };
 
 // ============================================================
-// 第6.1弾：Threat Model / forced move list 後処理
+// Forced move post-processing
 // ============================================================
 
 /**
@@ -938,6 +922,7 @@ const applyForcedMovePostProcessing = (
     present.add(key);
 
     const forcedMove = forcedByKey.get(key);
+
     if (forcedMove) {
       candidate.flags.isForced = true;
       candidate.flags.forcedPriority = forcedMove.priority;
@@ -1065,24 +1050,15 @@ const applyForcedMovePostProcessing = (
   return candidates;
 };
 
+// ============================================================
+// Public API
+// ============================================================
+
 /**
  * 候補手生成の公開 API。
  *
  * 本体は generateOrderedCandidatesInternal に委譲し、
- * 対局統計用に生成時間だけを計測する。
- *
- * 第5弾:
- *   - stats 側にも候補手生成時間を記録する。
- *
- * 第6.1弾:
- *   - currentHash を任意で受け取り、forced move list へ渡す。
- *   - 未指定時の既定は 0n。既存呼び出しと後方互換。
- *
- * 第6.2弾:
- *   - dynamicForbidden を任意で受け取り、Black 手番の限定動的禁手に使う。
- *
- * v2.0.0 禁手整合性修正:
- *   - dynamicForbidden.ruleEnabled を forced move list 生成へ伝搬する。
+ * 必要時のみ生成時間を計測する。
  */
 export const generateOrderedCandidates = (
   board: BoardState,
@@ -1147,6 +1123,7 @@ export const generateOrderedCandidates = (
   }
 
   const start = performance.now();
+
   let result: OrderedCandidate[] | undefined;
 
   try {

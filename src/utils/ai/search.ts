@@ -9,9 +9,15 @@
 // - 統計最終化 / ログ / セッション記録
 //
 // 探索本体は minimax.ts 以下に委譲し、このファイルは薄いアダプタとして扱う。
+
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
-import { BOARD_SIZE, checkWin, checkForbiddenMove, countStones } from '../gameLogic';
+import {
+  BOARD_SIZE,
+  checkWin,
+  checkForbiddenMove,
+  countStones,
+} from '../gameLogic';
 import {
   AI_CONFIG,
   AI_SCORES,
@@ -56,6 +62,10 @@ import {
 import { runRootVcf } from './vcfSolver';
 import { createQSearchController } from './quiescence';
 
+// ============================================================
+// Aspiration Window
+// ============================================================
+
 /**
  * Aspiration Window を適用してよいか判定する。
  *
@@ -87,6 +97,10 @@ const shouldUseAspiration = (
   return true;
 };
 
+// ============================================================
+// Game session helpers
+// ============================================================
+
 /**
  * 対局セッションを開始する。
  *
@@ -103,6 +117,7 @@ const startGameSessionForMove = (
 ): void => {
   if (isGameSessionActive()) {
     const active = getActiveGameSession();
+
     if (
       !active ||
       active.aiPlayer !== aiPlayer ||
@@ -112,6 +127,7 @@ const startGameSessionForMove = (
       finalizeGameSession('Reset');
     }
   }
+
   ensureGameSession(aiPlayer);
 };
 
@@ -133,6 +149,10 @@ const isWinningMove = (
   board[move.row][move.col] = null;
   return win;
 };
+
+// ============================================================
+// Search parameter resolution
+// ============================================================
 
 interface ResolvedSearchParameters {
   maxDepth: number;
@@ -187,7 +207,8 @@ const resolveSearchParameters = (
 
   const timeLimitMs = explicitTime
     ? (options!.timeLimitMs as number)
-    : (!explicitDepth && (options === undefined || onlyLastMove || onlyForbiddenRule)
+    : (!explicitDepth &&
+        (options === undefined || onlyLastMove || onlyForbiddenRule)
         ? AI_CONFIG.DEFAULT_TIME_LIMIT_MS
         : undefined);
 
@@ -199,6 +220,10 @@ const resolveSearchParameters = (
     lastMove,
   };
 };
+
+// ============================================================
+// Stats finalization helpers
+// ============================================================
 
 /**
  * 統計のマージ・確定・ログ出力を共通化する。
@@ -215,8 +240,10 @@ const finalizeSearchStatsAndLog = (
   if (tt) {
     mergeTTStats(stats, tt.stats);
   }
+
   mergePatternCacheStats(stats, getPatternCacheStats());
   mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
+
   finalizeSearchStats(stats);
   logSearchSummary(stats);
 };
@@ -237,6 +264,7 @@ const recordNormalMoveSessionAndFinalizeWin = (
   stonesBefore: number
 ): void => {
   const movePlayed = move !== null;
+
   recordMoveToSession(
     stats,
     stonesBefore + (movePlayed ? 1 : 0),
@@ -247,6 +275,10 @@ const recordNormalMoveSessionAndFinalizeWin = (
     finalizeGameSession('Win');
   }
 };
+
+// ============================================================
+// Per-move shared controllers / caches
+// ============================================================
 
 /**
  * 1回の calculateNextMove 全体で共有する Static Eval Cache を生成する。
@@ -279,6 +311,10 @@ const createPerMoveDynamicForbidden = (
   createDynamicForbiddenController({
     forbiddenRuleEnabled: options?.forbiddenRuleEnabled,
   });
+
+// ============================================================
+// Root forbidden fallback
+// ============================================================
 
 /**
  * root 最終着手が動的禁手に抵触するか簡易再検証する。
@@ -341,6 +377,7 @@ const findLegalFallbackMove = (
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (!isLegal(r, c)) continue;
       if (!hasStoneNearby(board, r, c)) continue;
+
       return { row: r, col: c };
     }
   }
@@ -349,6 +386,7 @@ const findLegalFallbackMove = (
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (!isLegal(r, c)) continue;
+
       return { row: r, col: c };
     }
   }
@@ -387,17 +425,23 @@ const resolveRootForbiddenFallback = (
     )
   ) {
     stats.forbidden.rootMoveRejectedByForbidden++;
+
     move = findLegalFallbackMove(
       board,
       forbiddenMoves,
       player,
       dynamicForbidden
     );
+
     score = null;
   }
 
   return { move, score };
 };
+
+// ============================================================
+// Root VCF helpers
+// ============================================================
 
 /**
  * Root VCF を実行し、勝ち証明があれば安全検証の上で着手を返す。
@@ -483,6 +527,7 @@ const finalizeVcfReturn = (
   stats.vcf.rootUsedAsFinalMove++;
 
   const immediateWin = isWinningMove(board, move, player);
+
   if (immediateWin) {
     stats.nodes.immediateWin++;
   }
@@ -497,146 +542,195 @@ const finalizeVcfReturn = (
   return move;
 };
 
+// ============================================================
+// calculateNextMove internal branches
+// ============================================================
+
+interface CenterOpeningParams {
+  currentTurn: Player;
+  dynamicForbidden: DynamicForbiddenController;
+  startTime: number;
+}
+
 /**
- * AIの次の一手を計算して返す。
- *
- * 公開インターフェース: この関数のシグネチャは変更禁止。
+ * 初手中央を処理する。
  */
-export const calculateNextMove = (
-  board: BoardState,
-  forbiddenMoves: boolean[][],
-  currentTurn: Player,
-  options?: SearchOptions
-): Position | null => {
-  const startTime = performance.now();
+const handleCenterOpening = ({
+  currentTurn,
+  dynamicForbidden,
+  startTime,
+}: CenterOpeningParams): Position => {
+  const center = Math.floor(BOARD_SIZE / 2);
+  const centerMove: Position = { row: center, col: center };
 
-  resetPatternCacheStats();
-  resetCenterPatternCacheStats();
+  const stats = createSearchStats(currentTurn, 'center', 0, null, null);
+  stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
-  const stonesBefore = countStones(board);
-  startGameSessionForMove(currentTurn, stonesBefore);
+  stats.selectedMove = centerMove;
+  stats.selectedScore = 0;
+  stats.completedDepth = 0;
+  stats.time.elapsedMs = performance.now() - startTime;
 
-  const dynamicForbidden = createPerMoveDynamicForbidden(options);
+  finalizeSearchStatsAndLog(stats, null);
+  recordMoveToSession(stats, 1, true);
 
-  const isBoardEmpty = stonesBefore === 0;
+  return centerMove;
+};
 
-  // 初手は中央
-  if (isBoardEmpty) {
-    const center = Math.floor(BOARD_SIZE / 2);
-    const centerMove: Position = { row: center, col: center };
+interface FixedDepthSearchRequest {
+  board: BoardState;
+  forbiddenMoves: boolean[][];
+  currentTurn: Player;
+  options: SearchOptions | undefined;
+  startTime: number;
+  stonesBefore: number;
+  dynamicForbidden: DynamicForbiddenController;
+  maxDepth: number;
+  lastMove: Position | null;
+}
 
-    const stats = createSearchStats(currentTurn, 'center', 0, null, null);
-    stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
+/**
+ * timeLimitMs 未指定時の固定深度探索を処理する。
+ */
+const runFixedDepthSearch = ({
+  board,
+  forbiddenMoves,
+  currentTurn,
+  options,
+  startTime,
+  stonesBefore,
+  dynamicForbidden,
+  maxDepth,
+  lastMove,
+}: FixedDepthSearchRequest): Position | null => {
+  const stats = createSearchStats(
+    currentTurn,
+    'fixed',
+    maxDepth,
+    null,
+    lastMove
+  );
+  stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
-    stats.selectedMove = centerMove;
-    stats.selectedScore = 0;
-    stats.completedDepth = 0;
-    stats.time.elapsedMs = performance.now() - startTime;
+  // Root VCF
+  const vcfMove = tryRootVcfMove(
+    board,
+    forbiddenMoves,
+    currentTurn,
+    dynamicForbidden,
+    options,
+    maxDepth,
+    null,
+    stonesBefore,
+    stats
+  );
 
-    finalizeSearchStatsAndLog(stats, null);
-    recordMoveToSession(stats, 1, true);
-
-    return centerMove;
-  }
-
-  const { maxDepth, timeLimitMs, lastMove } = resolveSearchParameters(options);
-
-  // --- timeLimitMs 未指定: 従来通りの固定深さ探索 ---
-  if (timeLimitMs === undefined) {
-    const stats = createSearchStats(currentTurn, 'fixed', maxDepth, null, lastMove);
-    stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
-
-    // Root VCF
-    const vcfMove = tryRootVcfMove(
+  if (vcfMove) {
+    return finalizeVcfReturn(
       board,
-      forbiddenMoves,
-      currentTurn,
-      dynamicForbidden,
-      options,
-      maxDepth,
-      null,
-      stonesBefore,
-      stats
-    );
-
-    if (vcfMove) {
-      return finalizeVcfReturn(
-        board,
-        vcfMove,
-        currentTurn,
-        stats,
-        startTime,
-        stonesBefore
-      );
-    }
-
-    // QSearchController 生成
-    const qsearchController = createQSearchController(
-      {
-        aiPlayer: currentTurn,
-        forbiddenRuleEnabled: dynamicForbidden.ruleEnabled,
-        timeLimitMs: null,
-        deadline: Infinity,
-        maxDepth,
-        stonesBefore,
-        options,
-      },
-      stats
-    );
-
-    const tt = new TranspositionTable();
-    const staticEvalCache = createPerMoveStaticEvalCache(
-      forbiddenMoves,
-      currentTurn
-    );
-
-    const result = findBestMove(
-      board,
-      forbiddenMoves,
-      currentTurn,
-      maxDepth,
-      Infinity,
-      tt,
-      -Infinity,
-      Infinity,
-      lastMove,
-      stats,
-      staticEvalCache,
-      dynamicForbidden,
-      qsearchController
-    );
-
-    const resolvedFinal = resolveRootForbiddenFallback(
-      board,
-      forbiddenMoves,
-      currentTurn,
-      dynamicForbidden,
-      stats,
-      result.move,
-      result.score
-    );
-
-    const finalMove = resolvedFinal.move;
-    const finalScore = resolvedFinal.score;
-
-    stats.selectedMove = finalMove;
-    stats.selectedScore = finalScore;
-    stats.completedDepth = finalMove ? maxDepth : 0;
-    stats.time.elapsedMs = performance.now() - startTime;
-
-    finalizeSearchStatsAndLog(stats, tt);
-    recordNormalMoveSessionAndFinalizeWin(
-      board,
-      finalMove,
+      vcfMove,
       currentTurn,
       stats,
+      startTime,
       stonesBefore
     );
-
-    return finalMove;
   }
 
-  // --- timeLimitMs 指定: 反復深化（iterative deepening） ---
+  // QSearchController 生成
+  const qsearchController = createQSearchController(
+    {
+      aiPlayer: currentTurn,
+      forbiddenRuleEnabled: dynamicForbidden.ruleEnabled,
+      timeLimitMs: null,
+      deadline: Infinity,
+      maxDepth,
+      stonesBefore,
+      options,
+    },
+    stats
+  );
+
+  const tt = new TranspositionTable();
+
+  const staticEvalCache = createPerMoveStaticEvalCache(
+    forbiddenMoves,
+    currentTurn
+  );
+
+  const result = findBestMove(
+    board,
+    forbiddenMoves,
+    currentTurn,
+    maxDepth,
+    Infinity,
+    tt,
+    -Infinity,
+    Infinity,
+    lastMove,
+    stats,
+    staticEvalCache,
+    dynamicForbidden,
+    qsearchController
+  );
+
+  const resolvedFinal = resolveRootForbiddenFallback(
+    board,
+    forbiddenMoves,
+    currentTurn,
+    dynamicForbidden,
+    stats,
+    result.move,
+    result.score
+  );
+
+  const finalMove = resolvedFinal.move;
+  const finalScore = resolvedFinal.score;
+
+  stats.selectedMove = finalMove;
+  stats.selectedScore = finalScore;
+  stats.completedDepth = finalMove ? maxDepth : 0;
+  stats.time.elapsedMs = performance.now() - startTime;
+
+  finalizeSearchStatsAndLog(stats, tt);
+  recordNormalMoveSessionAndFinalizeWin(
+    board,
+    finalMove,
+    currentTurn,
+    stats,
+    stonesBefore
+  );
+
+  return finalMove;
+};
+
+interface IterativeDeepeningSearchRequest {
+  board: BoardState;
+  forbiddenMoves: boolean[][];
+  currentTurn: Player;
+  options: SearchOptions | undefined;
+  startTime: number;
+  stonesBefore: number;
+  dynamicForbidden: DynamicForbiddenController;
+  maxDepth: number;
+  timeLimitMs: number;
+  lastMove: Position | null;
+}
+
+/**
+ * timeLimitMs 指定時の反復深化を処理する。
+ */
+const runIterativeDeepeningSearch = ({
+  board,
+  forbiddenMoves,
+  currentTurn,
+  options,
+  startTime,
+  stonesBefore,
+  dynamicForbidden,
+  maxDepth,
+  timeLimitMs,
+  lastMove,
+}: IterativeDeepeningSearchRequest): Position | null => {
   const stats = createSearchStats(
     currentTurn,
     'iterative',
@@ -920,4 +1014,70 @@ export const calculateNextMove = (
   );
 
   return finalBest;
+};
+
+// ============================================================
+// Public API
+// ============================================================
+
+/**
+ * AIの次の一手を計算して返す。
+ *
+ * 公開インターフェース: この関数のシグネチャは変更禁止。
+ */
+export const calculateNextMove = (
+  board: BoardState,
+  forbiddenMoves: boolean[][],
+  currentTurn: Player,
+  options?: SearchOptions
+): Position | null => {
+  const startTime = performance.now();
+
+  resetPatternCacheStats();
+  resetCenterPatternCacheStats();
+
+  const stonesBefore = countStones(board);
+  startGameSessionForMove(currentTurn, stonesBefore);
+
+  const dynamicForbidden = createPerMoveDynamicForbidden(options);
+
+  // 初手は中央
+  if (stonesBefore === 0) {
+    return handleCenterOpening({
+      currentTurn,
+      dynamicForbidden,
+      startTime,
+    });
+  }
+
+  const { maxDepth, timeLimitMs, lastMove } = resolveSearchParameters(options);
+
+  // timeLimitMs 未指定: 従来通りの固定深さ探索
+  if (timeLimitMs === undefined) {
+    return runFixedDepthSearch({
+      board,
+      forbiddenMoves,
+      currentTurn,
+      options,
+      startTime,
+      stonesBefore,
+      dynamicForbidden,
+      maxDepth,
+      lastMove,
+    });
+  }
+
+  // timeLimitMs 指定: 反復深化
+  return runIterativeDeepeningSearch({
+    board,
+    forbiddenMoves,
+    currentTurn,
+    options,
+    startTime,
+    stonesBefore,
+    dynamicForbidden,
+    maxDepth,
+    timeLimitMs,
+    lastMove,
+  });
 };
