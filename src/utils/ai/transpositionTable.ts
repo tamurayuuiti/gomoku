@@ -1,22 +1,15 @@
 // src/utils/ai/transpositionTable.ts
-// Transposition Table（置換表）の管理モジュール
-//
-// 探索中に評価済みの局面（ハッシュ値で識別）をキャッシュし、
-// 異なる手順で同じ盤面に到達した場合の再探索を排除する。
+// Transposition Table（置換表）の管理モジュール。
 //
 // 責務:
-//   - TTエントリの検索（lookup）・保存（store）
+//   - TT エントリの検索（lookup）・保存（store）
 //   - 置換戦略（Depth Preferred + サイズ制限）
 //   - ベストムーブの提供（Move Ordering 用）
 //   - 探索診断用の統計情報提供
 //
-// 第3弾:
-//   - 上限到達時の全クリアではなく oldest eviction を導入
-//   - 既存エントリ更新時は insertion order を刷新し、最近の深い情報を残しやすくする
-//
-// 第4弾:
-//   - TT 拡張統計を追加
-//   - lookup / store / getBestMove の意味は変更しない
+// 注意:
+//   - 思考単位（calculateNextMove 呼び出し単位）で新規インスタンスを生成する想定。
+//   - 反復深化の各深さで同じインスタンスを共有し、浅い探索結果を深い探索で活用する。
 
 import type { Position } from '../../types/game';
 import type { TTEntry, TTFlag } from '../../types/ai';
@@ -48,7 +41,7 @@ export interface TTStats {
 }
 
 /**
- * 第4弾で追加する TT 拡張統計。
+ * TT 拡張統計。
  * 既存 TTStats は後方互換のため維持する。
  */
 export interface TTExtendedStats extends TTStats {
@@ -76,12 +69,10 @@ export interface TTExtendedStats extends TTStats {
 // ============================================================
 
 /**
- * 置換表クラス。Map<bigint, TTEntry> をラップし、
- * 検索・保存・サイズ管理のロジックをカプセル化する。
+ * 置換表クラス。
  *
- * 思考単位（calculateNextMove 呼び出し単位）で新規インスタンスを生成する想定。
- * 反復深化の各深さで同じインスタンスを共有することで、
- * 浅い探索の結果を深い探索で活用できる。
+ * Map<bigint, TTEntry> をラップし、
+ * 検索・保存・サイズ管理のロジックをカプセル化する。
  */
 export class TranspositionTable {
   private table: Map<bigint, TTEntry>;
@@ -92,7 +83,7 @@ export class TranspositionTable {
   private storeCount = 0;
   private evictionCount = 0;
 
-  // --- 第4弾拡張カウンタ ---
+  // --- 拡張カウンタ ---
   private storeExactCount = 0;
   private storeLowerCount = 0;
   private storeUpperCount = 0;
@@ -116,9 +107,10 @@ export class TranspositionTable {
     this.lookupCount++;
 
     const entry = this.table.get(hash);
+
     if (!entry) return null;
 
-    // 衝突チェック（Mapキーとエントリ内値の二重確認）
+    // 衝突チェック（Map キーとエントリ内値の二重確認）
     if (entry.hash !== hash) return null;
 
     // 浅い探索結果は利用しない
@@ -148,6 +140,7 @@ export class TranspositionTable {
    */
   getBestMove(hash: bigint): Position | null {
     const entry = this.table.get(hash);
+
     if (!entry || entry.hash !== hash) return null;
 
     if (entry.bestMove) {

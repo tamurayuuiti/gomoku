@@ -1,23 +1,23 @@
 // src/utils/ai/staticEvalCache.ts
-// 第5弾：Static Eval Cache（葉評価キャッシュ）を管理するモジュール。
+// Static Eval Cache（葉評価キャッシュ）を管理するモジュール。
 //
 // 責務:
-//   - 葉ノードの静的評価値を Zobrist hash ベースでキャッシュする
-//   - 思考単位で生成・破棄されることを前提とする
-//   - TT とは異なり、alpha/beta flag や depth は保持しない
+//   - 葉ノードの静的評価値を Zobrist hash ベースでキャッシュする。
+//   - 思考単位で生成・破棄されることを前提とする。
+//   - TT とは異なり、alpha/beta flag や depth は保持しない。
 //
-// 設計:
+// 注意:
 //   - key = Zobrist hash ^ playerSalt ^ forbiddenSalt ^ candidateSetSalt ^ staticEvalVersion
-//   - forbiddenMoves は思考中に固定のため、思考単位キャッシュであれば十分
-//   - 将来の動的禁手や評価関数変更に備え、salt / version を持つ
-//
-// 第5.5弾:
-//   - eviction 統計を「イベント数」ではなく「削除エントリ数」として記録する。
-//   - これにより secEvict の意味を直感的にし、統計不整合の追跡を容易にする。
+//   - forbiddenMoves は思考中に固定のため、思考単位キャッシュであれば十分。
+//   - eviction 統計は削除エントリ数として記録する。
 
 import type { Player } from '../../types/game';
 import { BOARD_SIZE } from '../gameLogic';
 import { SEARCH_TUNING_CONFIG } from './constants';
+
+// ============================================================
+// 公開型
+// ============================================================
 
 export interface StaticEvalCacheOptions {
   limit: number;
@@ -46,16 +46,20 @@ export interface StaticEvalCacheSaltSource {
   candidateSetEnabled: boolean;
 }
 
-const MASK64 = (1n << 64n) - 1n;
+// ============================================================
+// 定数・ヘルパー
+// ============================================================
 
+const MASK64 = (1n << 64n) - 1n;
 const PLAYER_SALT_BLACK = 0x9e3779b97f4a7c15n;
 const PLAYER_SALT_WHITE = 0xbf58476d1ce4e5b9n;
 const CANDIDATE_SET_SALT = 0x94d049bb133111ebn;
 
 /**
  * forbiddenMoves 状態を簡易的に salt 化する。
- * 第5弾では思考単位キャッシュのため、厳密な動的禁手整合は不要だが、
- * 禁手あり/なし・禁手マス配置の違いを key に反映できるようにする。
+ *
+ * 思考単位キャッシュのため、厳密な動的禁手整合は不要だが、
+ * 禁手あり / なし・禁手マス配置の違いを key に反映できるようにする。
  */
 const computeForbiddenSalt = (forbiddenMoves: boolean[][]): bigint => {
   let h = 0xcbf29ce484222325n;
@@ -71,6 +75,10 @@ const computeForbiddenSalt = (forbiddenMoves: boolean[][]): bigint => {
 
   return h;
 };
+
+// ============================================================
+// Static Eval Cache 生成
+// ============================================================
 
 /**
  * Static Eval Cache を生成する。
@@ -125,14 +133,10 @@ export const createStaticEvalCache = (
     for (const key of table.keys()) {
       table.delete(key);
       deleted++;
-
       if (deleted >= deleteCount) break;
     }
 
-    /**
-     * 第5.5弾:
-     * evictions は削除されたエントリ数として記録する。
-     */
+    // evictions は削除されたエントリ数として記録する。
     stats.evictions += deleted;
     stats.size = table.size;
   };
@@ -171,6 +175,7 @@ export const createStaticEvalCache = (
       evictIfNeeded();
 
       table.set(key, score);
+
       stats.stores++;
       stats.size = table.size;
 

@@ -1,17 +1,16 @@
 // src/utils/ai/threatModel.ts
-// 第6.1弾：Threat Model 用ヘルパー
+// Threat Model 用ヘルパー。
 //
 // 責務:
 //   - 仮想着手に対する勝ち判定
 //   - 仮想着手に対する禁手合法性判定
 //   - 仮想着手時のパターン集計
 //
-// 評価関数（AI_SCORES / evaluatePosition / evaluateBoard）の意味は変更しない。
-// このモジュールは forced move list の分類に必要な戦術情報だけを提供する。
-//
-// v2.0.0 禁手整合性修正:
-//   - isHypotheticalLegal / isMoverLegal が forbiddenRuleEnabled を参照する。
-//   - 禁手 OFF の場合、Black 禁手判定を一切行わない。
+// 注意:
+//   - 評価関数（AI_SCORES / evaluatePosition / evaluateBoard）の意味は変更しない。
+//   - forced move list の分類に必要な戦術情報だけを提供する。
+//   - forbiddenRuleEnabled === false の場合、Black 禁手判定を一切行わない。
+
 import type { BoardState, Player, Position } from '../../types/game';
 import type { LineCacheState, PatternCount } from '../../types/ai';
 import { checkWin, checkForbiddenMove, DIRECTIONS } from '../gameLogic';
@@ -21,6 +20,10 @@ import {
   detectPatternWithCenter,
   getLineString,
 } from './evaluator';
+
+// ============================================================
+// 仮想着手ヘルパー
+// ============================================================
 
 /**
  * board[pos] が空であることを前提に、player が pos へ着手したときの勝利を判定する。
@@ -64,9 +67,7 @@ export const isHypotheticalLegal = (
   forbiddenRuleEnabled: boolean = true
 ): boolean => {
   if (board[pos.row][pos.col] !== null) return false;
-
   if (player !== 'Black') return true;
-
   if (!forbiddenRuleEnabled) return true;
 
   return !checkForbiddenMove(board, pos, player).isForbidden;
@@ -75,8 +76,7 @@ export const isHypotheticalLegal = (
 /**
  * UI から渡された forbiddenMoves を含む合法性判定。
  *
- * 第6.1弾では動的禁手を導入しないため、
- * root の forbiddenMoves を尊重する。
+ * 動的禁手を導入しない箇所では、root の forbiddenMoves を尊重する。
  */
 export const isUiLegalMove = (
   board: BoardState,
@@ -104,9 +104,7 @@ export const isMoverLegal = (
   forbiddenRuleEnabled: boolean = true
 ): boolean => {
   if (!isUiLegalMove(board, pos, forbiddenMoves)) return false;
-
   if (player !== 'Black') return true;
-
   if (!forbiddenRuleEnabled) return true;
 
   return !checkForbiddenMove(board, pos, player).isForbidden;

@@ -1,12 +1,32 @@
 // src/utils/gameLogic.ts
-// ゲームのロジックを担当する純粋関数を定義するファイル
+// ゲームのロジックを担当する純粋関数を定義するファイル。
+//
+// 責務:
+//   - 盤面生成 / 石数集計
+//   - 勝利判定
+//   - 禁手判定
+//   - 禁手マトリクス計算
+//   - 引き分け判定
 
-import type { BoardState, Player, Position, ForbiddenReason, ForbiddenResult, GameStatus } from '../types/game';
+import type {
+  BoardState,
+  Player,
+  Position,
+  ForbiddenReason,
+  ForbiddenResult,
+  GameStatus,
+} from '../types/game';
+
+// ============================================================
+// 盤面基本
+// ============================================================
 
 export const BOARD_SIZE = 15;
 
 export const createEmptyBoard = (): BoardState => {
-  return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
+  return Array.from({ length: BOARD_SIZE }, () =>
+    Array(BOARD_SIZE).fill(null)
+  );
 };
 
 export const DIRECTIONS = [
@@ -18,11 +38,13 @@ export const DIRECTIONS = [
 
 export const countStones = (board: BoardState): number => {
   let count = 0;
+
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c] !== null) count++;
     }
   }
+
   return count;
 };
 
@@ -34,17 +56,28 @@ const countStonesInDirection = (
   dCol: number
 ): number => {
   let count = 0;
+
   let r = pos.row + dRow;
   let c = pos.col + dCol;
-  while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
+
+  while (
+    r >= 0 &&
+    r < BOARD_SIZE &&
+    c >= 0 &&
+    c < BOARD_SIZE &&
+    board[r][c] === player
+  ) {
     count++;
     r += dRow;
     c += dCol;
   }
+
   return count;
 };
 
-// --- 禁じ手判定用ヘルパーロジック ---
+// ============================================================
+// 禁手判定ヘルパー
+// ============================================================
 
 const getLinePattern = (
   board: BoardState,
@@ -54,10 +87,12 @@ const getLinePattern = (
   dCol: number
 ): (Player | null | undefined)[] => {
   const line: (Player | null | undefined)[] = [];
-  // 五連 + 両端判定のため最大5マスずつスキャン
+
+  // 五連 + 両端判定のため最大 5 マスずつスキャンする。
   for (let i = -5; i <= 5; i++) {
     const r = pos.row + dRow * i;
     const c = pos.col + dCol * i;
+
     if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
       if (i === 0) {
         line.push(player);
@@ -68,40 +103,63 @@ const getLinePattern = (
       line.push(undefined); // 盤外
     }
   }
+
   return line;
 };
 
-// 「四」が形成されているか判定（長連は除外）
-const countFoursInLine = (line: (Player | null | undefined)[], player: Player): number => {
+/**
+ * 「四」が形成されているか判定する。
+ * 長連は除外する。
+ */
+const countFoursInLine = (
+  line: (Player | null | undefined)[],
+  player: Player
+): number => {
   let fours = 0;
+
   for (let i = 0; i < line.length; i++) {
     if (line[i] === null) {
       const tempLine = [...line];
       tempLine[i] = player;
+
       if (hasExactFive(tempLine, player)) {
         fours++;
       }
     }
   }
+
   return fours > 0 ? 1 : 0;
 };
 
-// 「活三」が形成されているか判定
-const countOpenThreesInLine = (line: (Player | null | undefined)[], player: Player): number => {
+/**
+ * 「活三」が形成されているか判定する。
+ */
+const countOpenThreesInLine = (
+  line: (Player | null | undefined)[],
+  player: Player
+): number => {
   for (let i = 0; i < line.length; i++) {
     if (line[i] === null) {
       const tempLine = [...line];
       tempLine[i] = player;
+
       if (isTatsuShi(tempLine, player)) {
         return 1;
       }
     }
   }
+
   return 0;
 };
 
-// ちょうど五連があるか判定（長連は除外）
-const hasExactFive = (line: (Player | null | undefined)[], player: Player): boolean => {
+/**
+ * ちょうど五連があるか判定する。
+ * 長連は除外する。
+ */
+const hasExactFive = (
+  line: (Player | null | undefined)[],
+  player: Player
+): boolean => {
   for (let i = 0; i <= line.length - 5; i++) {
     if (
       line[i] === player &&
@@ -115,11 +173,17 @@ const hasExactFive = (line: (Player | null | undefined)[], player: Player): bool
       return true;
     }
   }
+
   return false;
 };
 
-// 達四（両端が開いた四）を形成する三のパターンを判定
-const isTatsuShi = (line: (Player | null | undefined)[], player: Player): boolean => {
+/**
+ * 達四（両端が開いた四）を形成する三のパターンを判定する。
+ */
+const isTatsuShi = (
+  line: (Player | null | undefined)[],
+  player: Player
+): boolean => {
   for (let i = 0; i <= line.length - 6; i++) {
     if (
       line[i] === null &&
@@ -132,10 +196,13 @@ const isTatsuShi = (line: (Player | null | undefined)[], player: Player): boolea
       return true;
     }
   }
+
   return false;
 };
 
-// --- エクスポート関数 ---
+// ============================================================
+// 公開 API
+// ============================================================
 
 export const checkWin = (
   board: BoardState,
@@ -148,13 +215,14 @@ export const checkWin = (
       countStonesInDirection(board, lastMove, player, dRow, dCol) +
       countStonesInDirection(board, lastMove, player, -dRow, -dCol);
 
-    // 黒はちょうど5連のみ勝利、白は5以上で勝利（連珠ルール）
+    // 黒はちょうど 5 連のみ勝利、白は 5 以上で勝利（連珠ルール）。
     if (player === 'Black') {
       if (count === 5) return true;
     } else {
       if (count >= 5) return true;
     }
   }
+
   return false;
 };
 
@@ -173,15 +241,16 @@ export const checkForbiddenMove = (
       1 +
       countStonesInDirection(board, pos, player, dRow, dCol) +
       countStonesInDirection(board, pos, player, -dRow, -dCol);
+
     if (count > 5) {
       return {
         isForbidden: true,
-        reason: 'Long-Line'
+        reason: 'Long-Line',
       };
     }
   }
 
-  // 五完成は勝利優先（禁じ手より勝利判定が優先される連珠ルール）
+  // 五完成は勝利優先（禁じ手より勝利判定が優先される連珠ルール）。
   if (checkWin(board, pos, player)) {
     return { isForbidden: false, reason: null };
   }
@@ -191,6 +260,7 @@ export const checkForbiddenMove = (
 
   for (const [dRow, dCol] of DIRECTIONS) {
     const line = getLinePattern(board, pos, player, dRow, dCol);
+
     totalFours += countFoursInLine(line, player);
     totalOpenThrees += countOpenThreesInLine(line, player);
   }
@@ -199,7 +269,7 @@ export const checkForbiddenMove = (
   if (totalFours >= 2) {
     return {
       isForbidden: true,
-      reason: 'Four-Four'
+      reason: 'Four-Four',
     };
   }
 
@@ -207,20 +277,19 @@ export const checkForbiddenMove = (
   if (totalOpenThrees >= 2) {
     return {
       isForbidden: true,
-      reason: 'Three-Three'
+      reason: 'Three-Three',
     };
   }
 
   return {
     isForbidden: false,
-    reason: null
+    reason: null,
   };
 };
 
 /**
- * 第9弾: 盤面全体の禁手マトリクスを計算する純粋関数。
+ * 盤面全体の禁手マトリクスを計算する純粋関数。
  *
- * 旧 useForbiddenMoves の useMemo 本体と同一ロジック（移設）。
  * 呼び出し元:
  *   - useForbiddenMoves（表示専用。描画後に非同期計算）
  *   - useAiPlayer（Worker 送信直前に要求時点の最新盤面に対して同期計算）
@@ -238,8 +307,12 @@ export const computeForbiddenMatrix = (
     Array(BOARD_SIZE).fill(false)
   );
 
-  // ルールがOFF、または現在の手番が白（禁じ手なし）の場合は計算不要
-  if (gameStatus !== 'Playing' || !useForbiddenRule || currentPlayer !== 'Black') {
+  // ルールが OFF、または現在の手番が白（禁じ手なし）の場合は計算不要。
+  if (
+    gameStatus !== 'Playing' ||
+    !useForbiddenRule ||
+    currentPlayer !== 'Black'
+  ) {
     return matrix;
   }
 
@@ -247,12 +320,14 @@ export const computeForbiddenMatrix = (
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c] === null) {
         const result = checkForbiddenMove(board, { row: r, col: c }, 'Black');
+
         if (result.isForbidden) {
           matrix[r][c] = true;
         }
       }
     }
   }
+
   return matrix;
 };
 

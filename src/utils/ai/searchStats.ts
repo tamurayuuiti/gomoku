@@ -7,12 +7,8 @@
 //   - Worker / UI には送信せず、Worker 内 console への出力に留める。
 //
 // 内部構成:
-//   1. per-move stats 生成
-//   2. 外部統計のマージ
-//   3. 派生指標の確定
-//   4. per-move ログ出力
-//   5. game session lifecycle
-//   6. game session ログ出力
+//   1. 1手ごとの統計: 生成 / マージ / 派生指標の確定 / ログ出力
+//   2. 対局セッション: 型定義 / 状態 / ライフサイクル / 積算 / 派生指標 / ログ出力
 
 import type { Player, Position } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
@@ -22,7 +18,7 @@ import { DIAGNOSTICS_CONFIG } from './diagnosticsFlags';
 import { BOARD_SIZE } from '../gameLogic';
 
 // ============================================================
-// Per-move stats: factory
+// 1手ごとの統計: 生成
 // ============================================================
 
 /**
@@ -274,7 +270,7 @@ export const recordCandidateSetSize = (
 };
 
 // ============================================================
-// Per-move stats: merge
+// 1手ごとの統計: 外部統計のマージ
 // ============================================================
 
 /**
@@ -323,7 +319,7 @@ export const mergeCenterPatternCacheStats = (
 };
 
 // ============================================================
-// Per-move stats: finalize
+// 1手ごとの統計: 派生指標の確定
 // ============================================================
 
 /**
@@ -415,7 +411,7 @@ export const finalizeSearchStats = (stats: SearchStats): void => {
 };
 
 // ============================================================
-// Per-move stats: log helpers
+// 1手ごとの統計: ログ出力補助関数
 // ============================================================
 
 /**
@@ -463,7 +459,7 @@ const safeAvgUs = (timeMs: number, calls: number): string => {
 };
 
 // ============================================================
-// Per-move stats: log output
+// 1手ごとの統計: ログ出力
 // ============================================================
 
 /**
@@ -636,7 +632,7 @@ export const logSearchSummary = (stats: SearchStats): void => {
 };
 
 // ============================================================
-// Game session: types
+// 対局セッション: 型定義
 // ============================================================
 
 export type GameSessionResult =
@@ -1059,7 +1055,7 @@ export interface GameSessionStats {
 }
 
 // ============================================================
-// Game session: state / factory
+// 対局セッション: 状態 / 生成
 // ============================================================
 
 let activeGameSession: GameSessionStats | null = null;
@@ -1207,7 +1203,7 @@ const createGameSessionStats = (
 });
 
 // ============================================================
-// Game session: lifecycle
+// 対局セッション: ライフサイクル
 // ============================================================
 
 export const isGameSessionActive = (): boolean =>
@@ -1237,7 +1233,7 @@ export const recordCandidateGenTime = (ms: number): void => {
 };
 
 // ============================================================
-// Game session: per-move accumulation
+// 対局セッション: 1手ごとの積算
 // ============================================================
 
 /**
@@ -1425,7 +1421,7 @@ export const recordMoveToSession = (
 };
 
 // ============================================================
-// Game session: derived stats
+// 対局セッション: 派生指標
 // ============================================================
 
 /**
@@ -1475,7 +1471,7 @@ const finalizeGameSessionDerivedStats = (s: GameSessionStats): void => {
 };
 
 // ============================================================
-// Game session: log output
+// 対局セッション: ログ出力
 // ============================================================
 
 /**

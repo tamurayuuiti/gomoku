@@ -1,12 +1,13 @@
 // src/workers/aiWorker.ts
-// AI探索専用 Web Worker
+// AI 探索専用 Web Worker。
 //
-// 探索アルゴリズム・評価関数（search.ts 以下）には一切手を加えず、
-// calculateNextMove を Worker スレッドで呼び出すだけの薄いアダプタとする。
-// React・DOM API は Worker スレッドで使用できないため利用しない。
+// 責務:
+//   - calculateNextMove を Worker スレッドで呼び出す薄いアダプタ
+//   - 対局終了制御メッセージの受信と統計確定
 //
-// 追加:
-//   - 対局終了制御メッセージを受け取り、Worker 内で対局統計を確定する。
+// 注意:
+//   - React / DOM API は Worker で使用しない。
+//   - 探索ロジック自体には関与しない。
 
 import { calculateNextMove } from '../utils/ai/search';
 import { finalizeGameSession } from '../utils/ai/searchStats';
@@ -26,7 +27,6 @@ self.onmessage = (event: MessageEvent<AiWorkerIncomingMessage>) => {
     if (data.control === 'finalizeGameSession') {
       finalizeGameSession(data.aiResult ?? 'Unknown');
     }
-
     return;
   }
 
@@ -34,7 +34,6 @@ self.onmessage = (event: MessageEvent<AiWorkerIncomingMessage>) => {
   // 通常探索リクエスト
   // ------------------------------------------------------------
   const request = data as AiWorkerRequest;
-
   const { board, forbiddenMoves, currentPlayer, options } = request;
 
   try {
@@ -46,17 +45,15 @@ self.onmessage = (event: MessageEvent<AiWorkerIncomingMessage>) => {
     );
 
     const response: AiWorkerResponse = { nextMove };
-
     self.postMessage(response);
   } catch (err) {
-    // 例外を投げっぱなしにすると UI 側が isAiThinking を解除できずフリーズし得るため、
-    // ここで必ず捕捉してメインスレッドへエラーとして通知する。
+    // 例外を投げっぱなしにすると UI 側が isAiThinking を解除できず
+    // フリーズし得るため、必ず捕捉してメインスレッドへ通知する。
     const message = err instanceof Error ? err.message : String(err);
 
     console.error('[aiWorker] search failed:', err);
 
     const response: AiWorkerResponse = { nextMove: null, error: message };
-
     self.postMessage(response);
   }
 };

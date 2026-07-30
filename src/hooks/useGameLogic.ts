@@ -1,15 +1,13 @@
 // src/hooks/useGameLogic.ts
-// ゲームのコア進行ロジック（盤面、手番、勝敗判定）を管理するカスタムHook
+// ゲームのコア進行ロジックを管理するカスタムフック。
 //
-// 第9弾: executeMove を latest-ref パターンで安定化した。
-// - 依存配列 [] の安定した identity を持ち、呼び出し側のコールバック
-//   メモ化（App.handleCellClick → Cell の React.memo）を阻害しない。
-// - ref を着手時に即時更新するため、同一タスク内での二重呼び出しでも
-//   盤面・手番の整合が保たれる（stale 更新余地の解消）。
-// - 埋まったマスへの着手を無視する防御ガードを追加した。
-// state の分割・勝敗・引き分けの判定ロジックは変更していない。
+// 責務:
+//   - 盤面・手番・勝敗・直前手の管理
+//   - executeMove の安定した identity 提供
 //
-// lint 対応: latest-ref のレンダー中更新をやめ、コミット後に更新する。
+// 注意:
+//   - state の分割・勝敗・引き分け判定ロジックは変更しない。
+//   - latest-ref はコミット後に更新し、イベントコールバック内でのみ読み出す。
 
 import { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import type { Player, BoardState, GameStatus, Position } from '../types/game';

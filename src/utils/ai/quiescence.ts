@@ -1,29 +1,25 @@
 // src/utils/ai/quiescence.ts
-// 第8.1弾：戦術 Quiescence
+// 葉ノードでの戦術 Quiescence を担うモジュール。
 //
 // 責務:
-//   - 葉ノードでの戦術限定 proof 型読み伸ばし
-//   - 即時勝ち / 即時受け不能 / 連続四の証明
+//   - 即時勝ち / 受け不能 / 連続四の proof 型読み伸ばし
 //   - 時間予算 / ノード上限 / ply 上限による安全制御
 //   - Black 禁手考慮（五連は禁手より優先）
 //   - qsearch 統計の更新
 //
-// 非責務:
-//   - 通常探索
-//   - 評価関数変更
-//   - TT 操作
-//   - UI / Worker 通信
-//   - Internal VCF / Threat Extension
-//
-// 設計方針:
-//   - proof 型: 勝ち / 受け不能が証明できた場合のみスコアを返す
-//   - 証明できない場合は静的評価へフォールバック
-//   - 任意手では LOSS を証明しない（静かな手で耐える可能性を否定できない）
-//   - 強制ブロック分支のみ LOSS を証明可能
-//   - board / lineCache は apply / undo で必ず復元する
+// 注意:
+//   - 証明できない場合は静的評価へフォールバックする。
+//   - 任意手では LOSS を証明しない。
+//   - board / lineCache は apply / undo で必ず復元する。
+
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchOptions, SearchStats, LineCacheState } from '../../types/ai';
-import { BOARD_SIZE, checkForbiddenMove, DIRECTIONS, countStones } from '../gameLogic';
+import {
+  BOARD_SIZE,
+  checkForbiddenMove,
+  DIRECTIONS,
+  countStones,
+} from '../gameLogic';
 import {
   AI_SCORES,
   QSEARCH_FEATURES,
@@ -135,22 +131,31 @@ const resolveQSearchBudgetMs = (
       ? options.qsearchTimeBudgetMs
       : 0;
   }
+
   if (timeLimitMs === null) {
     return QSEARCH_CONFIG.QSEARCH_FIXED_TIME_BUDGET_MS;
   }
+
   if (!Number.isFinite(timeLimitMs) || timeLimitMs <= 0) {
     return 0;
   }
+
   const raw = timeLimitMs * QSEARCH_CONFIG.QSEARCH_TOTAL_TIME_RATIO;
+
   let budget = Math.max(
     QSEARCH_CONFIG.QSEARCH_TOTAL_TIME_MIN_MS,
     Math.min(QSEARCH_CONFIG.QSEARCH_TOTAL_TIME_MAX_MS, raw)
   );
-  // 全体 deadline を超えないようにする
+
+  // 全体 deadline を超えないようにする。
   if (deadline !== Infinity) {
     const remaining = deadline - performance.now();
-    budget = Math.min(budget, Math.max(0, remaining - QSEARCH_CONFIG.QSEARCH_DEADLINE_SAFETY_MS));
+    budget = Math.min(
+      budget,
+      Math.max(0, remaining - QSEARCH_CONFIG.QSEARCH_DEADLINE_SAFETY_MS)
+    );
   }
+
   return budget;
 };
 
@@ -162,6 +167,7 @@ const resolveQSearchNodeLimit = (
       ? options.qsearchTotalNodeLimit
       : 0;
   }
+
   return QSEARCH_CONFIG.QSEARCH_TOTAL_NODE_LIMIT;
 };
 
@@ -173,6 +179,7 @@ const resolveQSearchNodeLimitPerLeaf = (
       ? options.qsearchNodeLimitPerLeaf
       : 0;
   }
+
   return QSEARCH_CONFIG.QSEARCH_NODE_LIMIT_PER_LEAF;
 };
 
@@ -184,6 +191,7 @@ const resolveQSearchMaxPly = (
       ? options.qsearchMaxPly
       : 0;
   }
+
   return QSEARCH_CONFIG.QSEARCH_MAX_PLY;
 };
 
@@ -210,18 +218,22 @@ export const createQSearchController = (
     qs.disabled++;
     return null;
   }
+
   if (params.options?.qsearchEnabled === false) {
     qs.skippedByOption++;
     return null;
   }
+
   if (params.stonesBefore < QSEARCH_CONFIG.QSEARCH_MIN_STONES) {
     qs.skippedEarlyGame++;
     return null;
   }
+
   if (params.maxDepth < QSEARCH_CONFIG.QSEARCH_MIN_ROOT_DEPTH) {
     qs.skippedLowDepth++;
     return null;
   }
+
   if (
     params.timeLimitMs !== null &&
     params.timeLimitMs < QSEARCH_CONFIG.QSEARCH_MIN_TIME_LIMIT_MS &&
@@ -236,11 +248,17 @@ export const createQSearchController = (
     params.timeLimitMs,
     params.deadline
   );
+
   const totalNodeLimit = resolveQSearchNodeLimit(params.options);
   const nodeLimitPerLeaf = resolveQSearchNodeLimitPerLeaf(params.options);
   const maxPly = resolveQSearchMaxPly(params.options);
 
-  if (budgetMs <= 0 || totalNodeLimit <= 0 || nodeLimitPerLeaf <= 0 || maxPly <= 0) {
+  if (
+    budgetMs <= 0 ||
+    totalNodeLimit <= 0 ||
+    nodeLimitPerLeaf <= 0 ||
+    maxPly <= 0
+  ) {
     qs.skippedByOption++;
     return null;
   }
@@ -248,7 +266,7 @@ export const createQSearchController = (
   qs.budgetMs = budgetMs;
 
   // apply / undo 用の一時統計。
-  // qsearch 固有統計は stats 側に記録し、phase6 統計を汚さない。
+  // qsearch 固有統計は stats 側に記録し、通常探索統計を汚さない。
   const ephemeralStats = createSearchStats(
     params.aiPlayer,
     'fixed',
@@ -284,11 +302,14 @@ export const createQSearchController = (
 
 const isQSearchTimeUp = (controller: QSearchController): boolean => {
   if (controller.budgetExhausted) return true;
+
   const now = performance.now();
+
   if (now - controller.startTime >= controller.budgetMs) {
     controller.budgetExhausted = true;
     return true;
   }
+
   if (
     controller.deadline !== Infinity &&
     now >= controller.deadline - QSEARCH_CONFIG.QSEARCH_DEADLINE_SAFETY_MS
@@ -296,6 +317,7 @@ const isQSearchTimeUp = (controller: QSearchController): boolean => {
     controller.budgetExhausted = true;
     return true;
   }
+
   return false;
 };
 
@@ -319,6 +341,7 @@ const checkForbiddenCached = (
   }
 
   const index = pos.row * BOARD_SIZE + pos.col;
+
   const key =
     (hash ^
       moveSalt(index) ^
@@ -327,32 +350,43 @@ const checkForbiddenCached = (
     MASK64;
 
   const cached = ctx.controller.forbiddenCache.get(key);
+
   if (cached !== undefined) {
     qs.forbiddenCacheHits++;
     return cached;
   }
 
   qs.forbiddenCacheMisses++;
+
   const result = checkForbiddenMove(ctx.state.board, pos, player).isForbidden;
 
   // eviction
   const limit = QSEARCH_CONFIG.QSEARCH_FORBIDDEN_CACHE_LIMIT;
+
   if (limit > 0 && ctx.controller.forbiddenCache.size >= limit) {
     const deleteCount = Math.max(
       1,
-      Math.floor(ctx.controller.forbiddenCache.size * QSEARCH_CONFIG.QSEARCH_CACHE_EVICTION_RATIO)
+      Math.floor(
+        ctx.controller.forbiddenCache.size *
+          QSEARCH_CONFIG.QSEARCH_CACHE_EVICTION_RATIO
+      )
     );
+
     let deleted = 0;
+
     for (const cacheKey of ctx.controller.forbiddenCache.keys()) {
       ctx.controller.forbiddenCache.delete(cacheKey);
       deleted++;
       if (deleted >= deleteCount) break;
     }
+
     qs.forbiddenCacheEvictions += deleted;
   }
 
   ctx.controller.forbiddenCache.set(key, result);
+
   qs.forbiddenCacheSize = ctx.controller.forbiddenCache.size;
+
   if (qs.forbiddenCacheSize > qs.forbiddenCacheMaxSize) {
     qs.forbiddenCacheMaxSize = qs.forbiddenCacheSize;
   }
@@ -377,10 +411,13 @@ const isLegalQSearch = (
   hash: bigint
 ): boolean => {
   const { row, col } = pos;
+
   if (ctx.state.board[row][col] !== null) return false;
+
   if (player === 'Black' && ctx.ruleEnabled) {
     if (checkForbiddenCached(ctx, pos, player, hash)) return false;
   }
+
   return true;
 };
 
@@ -398,16 +435,20 @@ const findImmediateWinSquares = (
 ): Position[] => {
   const board = ctx.state.board;
   const result: Position[] = [];
+
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c] !== null) continue;
       if (!hasStoneNearby(board, r, c)) continue;
+
       const pos: Position = { row: r, col: c };
+
       if (wouldWin(board, pos, player)) {
         result.push(pos);
       }
     }
   }
+
   return result;
 };
 
@@ -423,22 +464,31 @@ const collectWinSquaresAfterMove = (
   const board = ctx.state.board;
   const result: Position[] = [];
   const seen = new Set<number>();
+
   for (const [dr, dc] of DIRECTIONS) {
     for (let offset = -4; offset <= 4; offset++) {
       if (offset === 0) continue;
+
       const r = lastMove.row + dr * offset;
       const c = lastMove.col + dc * offset;
+
       if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) continue;
+
       const key = r * BOARD_SIZE + c;
       if (seen.has(key)) continue;
+
       seen.add(key);
+
       if (board[r][c] !== null) continue;
+
       const pos: Position = { row: r, col: c };
+
       if (wouldWin(board, pos, player)) {
         result.push(pos);
       }
     }
   }
+
   return result;
 };
 
@@ -454,6 +504,7 @@ const generateFourMoves = (
   const board = ctx.state.board;
   const lineCache = ctx.state.lineCache;
   const candidates: QSearchCandidate[] = [];
+
   let order = 0;
 
   for (let r = 0; r < BOARD_SIZE; r++) {
@@ -462,7 +513,14 @@ const generateFourMoves = (
       if (!hasStoneNearby(board, r, c)) continue;
 
       const pos: Position = { row: r, col: c };
-      const counts = getHypotheticalPatternCounts(board, lineCache, r, c, player);
+
+      const counts = getHypotheticalPatternCounts(
+        board,
+        lineCache,
+        r,
+        c,
+        player
+      );
 
       const currentOrder = order;
       order++;
@@ -484,14 +542,16 @@ const generateFourMoves = (
     }
   }
 
-  // 活四優先、次に閉四数降順、同点は生成順
+  // 活四優先、次に閉四数降順、同点は生成順。
   candidates.sort((a, b) => {
     if (a.openFour !== b.openFour) {
       return a.openFour ? -1 : 1;
     }
+
     if (a.closedFour !== b.closedFour) {
       return b.closedFour - a.closedFour;
     }
+
     return a.order - b.order;
   });
 
@@ -516,7 +576,10 @@ const qsearch = (
   qs.nodes++;
 
   // 総予算チェック
-  if (controller.nodes > controller.totalNodeLimit || isQSearchTimeUp(controller)) {
+  if (
+    controller.nodes > controller.totalNodeLimit ||
+    isQSearchTimeUp(controller)
+  ) {
     controller.budgetExhausted = true;
     return { outcome: 'ABORTED', plyToWin: null };
   }
@@ -535,6 +598,7 @@ const qsearch = (
 
   // 1. 即時勝ち
   const immediateWinSquares = findImmediateWinSquares(ctx, side);
+
   if (immediateWinSquares.length > 0) {
     qs.immediateWins++;
     return { outcome: 'WIN', plyToWin: ply + 1 };
@@ -549,42 +613,57 @@ const qsearch = (
       qs.illegalBlocks++;
       return { outcome: 'LOSS', plyToWin: null };
     }
+
     return { outcome: 'UNKNOWN', plyToWin: null };
   }
 
   if (oppWinSquares.length === 1) {
     const block = oppWinSquares[0];
+
     if (!isLegalQSearch(ctx, block, side, hash)) {
       // ブロック不能
       if (QSEARCH_FEATURES.ENABLE_QSEARCH_LOSS_PROOF) {
         qs.illegalBlocks++;
         return { outcome: 'LOSS', plyToWin: null };
       }
+
       return { outcome: 'UNKNOWN', plyToWin: null };
     }
 
     // 強制ブロック
     const blockApplied = applySearchMove(ctx.state, hash, block, side);
+
     try {
-      const child = qsearch(ctx, opponent, ply + 1, blockApplied.nextHash, localStartNodes);
+      const child = qsearch(
+        ctx,
+        opponent,
+        ply + 1,
+        blockApplied.nextHash,
+        localStartNodes
+      );
+
       if (child.outcome === 'WIN') {
         // 相手が勝つ → 自分は負け
         return { outcome: 'LOSS', plyToWin: null };
       }
+
       if (child.outcome === 'LOSS') {
         // 相手が負ける → 自分は勝ち
         return { outcome: 'WIN', plyToWin: child.plyToWin };
       }
+
       if (child.outcome === 'ABORTED') {
         return { outcome: 'ABORTED', plyToWin: null };
       }
+
       return { outcome: 'UNKNOWN', plyToWin: null };
     } finally {
       undoSearchMove(ctx.state, blockApplied.undo);
     }
   }
 
-  // 3. ply limit（即時チェックは上記で完了済み）
+  // 3. ply limit
+  // 即時勝ち / 受け不能チェックは上記で完了済み。
   if (ply >= controller.maxPly) {
     return { outcome: 'UNKNOWN', plyToWin: null };
   }
@@ -594,16 +673,22 @@ const qsearch = (
 
   for (const candidate of candidates) {
     const applied = applySearchMove(ctx.state, hash, candidate.pos, side);
+
     try {
       // 相手の反撃即時勝ち確認
       const oppImmediate = findImmediateWinSquares(ctx, opponent);
+
       if (oppImmediate.length > 0) {
         qs.defenderCounterWins++;
         continue;
       }
 
       // 自分の即時勝ちマスを確認
-      const winSquares = collectWinSquaresAfterMove(ctx, candidate.pos, side);
+      const winSquares = collectWinSquaresAfterMove(
+        ctx,
+        candidate.pos,
+        side
+      );
 
       if (winSquares.length >= 2) {
         // 受け不可な四（活四終端）
@@ -627,20 +712,31 @@ const qsearch = (
           blockPos,
           opponent
         );
+
         try {
-          const child = qsearch(ctx, side, ply + 2, blockApplied.nextHash, localStartNodes);
+          const child = qsearch(
+            ctx,
+            side,
+            ply + 2,
+            blockApplied.nextHash,
+            localStartNodes
+          );
+
           if (child.outcome === 'WIN') {
             return { outcome: 'WIN', plyToWin: child.plyToWin };
           }
+
           if (child.outcome === 'ABORTED') {
             return { outcome: 'ABORTED', plyToWin: null };
           }
-          // child LOSS / UNKNOWN → この手は不採用、次を試す
+
+          // child LOSS / UNKNOWN → この手は不採用、次を試す。
         } finally {
           undoSearchMove(ctx.state, blockApplied.undo);
         }
       }
-      // winSquares.length === 0 は四として成立していないため失敗
+
+      // winSquares.length === 0 は四として成立していないため失敗。
     } finally {
       undoSearchMove(ctx.state, applied.undo);
     }
@@ -660,25 +756,34 @@ const makeResultCacheKey = (
 ): bigint => {
   const sideSalt = side === 'Black' ? SIDE_SALT_BLACK : SIDE_SALT_WHITE;
   const ruleSalt = ruleEnabled ? RULE_SALT : 0n;
-  return (hash ^ sideSalt ^ ruleSalt ^ QSEARCH_CONFIG.QSEARCH_VERSION) & MASK64;
+
+  return (
+    (hash ^ sideSalt ^ ruleSalt ^ QSEARCH_CONFIG.QSEARCH_VERSION) & MASK64
+  );
 };
 
 const evictResultCache = (controller: QSearchController): void => {
   const qs = controller.stats.qsearch;
   const limit = QSEARCH_CONFIG.QSEARCH_RESULT_CACHE_LIMIT;
+
   if (limit <= 0) return;
   if (controller.resultCache.size < limit) return;
 
   const deleteCount = Math.max(
     1,
-    Math.floor(controller.resultCache.size * QSEARCH_CONFIG.QSEARCH_CACHE_EVICTION_RATIO)
+    Math.floor(
+      controller.resultCache.size * QSEARCH_CONFIG.QSEARCH_CACHE_EVICTION_RATIO
+    )
   );
+
   let deleted = 0;
+
   for (const key of controller.resultCache.keys()) {
     controller.resultCache.delete(key);
     deleted++;
     if (deleted >= deleteCount) break;
   }
+
   qs.cacheEvictions += deleted;
 };
 
@@ -695,7 +800,16 @@ export const runQuiescenceAtLeaf = (params: {
   controller: QSearchController;
   stats: SearchStats;
 }): QSearchLeafResult => {
-  const { board, lineCache, forbiddenMoves, side, hash, controller, stats } = params;
+  const {
+    board,
+    lineCache,
+    forbiddenMoves,
+    side,
+    hash,
+    controller,
+    stats,
+  } = params;
+
   const qs = stats.qsearch;
   const start = performance.now();
 
@@ -717,16 +831,20 @@ export const runQuiescenceAtLeaf = (params: {
   if (QSEARCH_FEATURES.ENABLE_QSEARCH_CACHE) {
     const cacheKey = makeResultCacheKey(hash, side, controller.ruleEnabled);
     const cached = controller.resultCache.get(cacheKey);
+
     if (cached !== undefined) {
       qs.cacheHits++;
-      // outcome 別集計
+
       if (cached.outcome === 'WIN') qs.win++;
       else if (cached.outcome === 'LOSS') qs.loss++;
       else if (cached.outcome === 'UNKNOWN') qs.unknown++;
+
       if (cached.score === null) qs.fallback++;
+
       qs.timeMs += performance.now() - start;
       return cached;
     }
+
     qs.cacheMisses++;
   }
 
@@ -760,11 +878,14 @@ export const runQuiescenceAtLeaf = (params: {
     // state audit
     if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_QSEARCH_STATE_AUDIT) {
       const stonesAfter = countStones(board);
+
       if (stonesBefore !== stonesAfter) {
         qs.auditFails++;
+
         console.warn(
           `[QSearch] state audit failed: before=${stonesBefore}, after=${stonesAfter}`
         );
+
         controller.errorOccurred = true;
         controller.enabled = false;
       }
@@ -795,11 +916,18 @@ export const runQuiescenceAtLeaf = (params: {
     }
 
     // 結果キャッシュ保存（ABORTED は保存しない）
-    if (QSEARCH_FEATURES.ENABLE_QSEARCH_CACHE && result.outcome !== 'ABORTED') {
+    if (
+      QSEARCH_FEATURES.ENABLE_QSEARCH_CACHE &&
+      result.outcome !== 'ABORTED'
+    ) {
       const cacheKey = makeResultCacheKey(hash, side, controller.ruleEnabled);
+
       evictResultCache(controller);
+
       controller.resultCache.set(cacheKey, { score, outcome });
+
       qs.cacheSize = controller.resultCache.size;
+
       if (qs.cacheSize > qs.cacheMaxSize) {
         qs.cacheMaxSize = qs.cacheSize;
       }
@@ -810,7 +938,7 @@ export const runQuiescenceAtLeaf = (params: {
     if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_QSEARCH_VERBOSE_LOG) {
       console.log(
         `[QSearch] ${outcome} side=${side} hash=${hash} ` +
-        `nodes=${controller.nodes - localStartNodes} ply=${qs.maxPlyReached}`
+          `nodes=${controller.nodes - localStartNodes} ply=${qs.maxPlyReached}`
       );
     }
 
@@ -819,11 +947,14 @@ export const runQuiescenceAtLeaf = (params: {
     qs.error++;
     qs.fallback++;
     qs.timeMs += performance.now() - start;
+
     controller.errorOccurred = true;
     controller.enabled = false;
+
     if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_QSEARCH_VERBOSE_LOG) {
       console.error('[QSearch] exception:', err);
     }
+
     return { score: null, outcome: 'ERROR' };
   }
 };

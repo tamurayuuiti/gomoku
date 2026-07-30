@@ -1,5 +1,5 @@
 // src/utils/ai/vcfSolver.ts
-// 第7.1弾：Root VCF
+// Root VCF を担うモジュール。
 //
 // 責務:
 //   - root での連続四限定 VCF 探索
@@ -8,27 +8,19 @@
 //   - Black 禁手考慮（五連は禁手より優先）
 //   - VCF 統計の更新
 //
-// 非責務:
-//   - Internal VCF
-//   - 通常探索
-//   - 評価関数
-//   - TT 操作
-//   - UI / Worker 通信
-//
-// 設計方針:
-//   - VCF の失敗は「負け」や「最善」を意味しない
-//   - VCF の中断は「不明」を意味し、通常探索へ委譲する
-//   - 勝ち断定は保守的に行う
-//   - board / lineCache は apply / undo で必ず復元する
-//
-// 第7.2弾:
-//   - verbose 診断ログを強化
-//   - skip / fail / abort / win の理由を診断可能化
-//   - 勝ち証明の終端理由（immediate / open-four-terminal / illegal-block / forced）を保持
+// 注意:
+//   - VCF の失敗は負けや最善を意味しない。
+//   - VCF の中断は不明を意味し、通常探索へ委譲する。
+//   - board / lineCache は apply / undo で必ず復元する。
 
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
-import { BOARD_SIZE, checkForbiddenMove, DIRECTIONS, countStones } from '../gameLogic';
+import {
+  BOARD_SIZE,
+  checkForbiddenMove,
+  DIRECTIONS,
+  countStones,
+} from '../gameLogic';
 import {
   AI_FEATURES,
   VCF_FEATURES,
@@ -110,8 +102,7 @@ interface VcfCandidate {
 
 /**
  * VCF 勝ち証明の終端理由。
- *
- * 第7.2弾では診断専用。探索挙動やスコアには影響しない。
+ * 診断専用で、探索挙動やスコアには影響しない。
  */
 type VcfWinKind =
   | 'immediate'
@@ -157,6 +148,7 @@ const resolveRootBudgetMs = (
   }
 
   const raw = timeLimitMs * VCF_CONFIG.ROOT_VCF_TIME_BUDGET_RATIO;
+
   return Math.max(
     VCF_CONFIG.ROOT_VCF_TIME_BUDGET_MIN_MS,
     Math.min(VCF_CONFIG.ROOT_VCF_TIME_BUDGET_MAX_MS, raw)
@@ -171,6 +163,7 @@ const resolveRootNodeLimit = (
       ? options.vcfNodeLimit
       : 0;
   }
+
   return VCF_CONFIG.ROOT_VCF_NODE_LIMIT;
 };
 
@@ -197,6 +190,7 @@ const checkForbiddenCached = (
   }
 
   const index = pos.row * BOARD_SIZE + pos.col;
+
   const key =
     (hash ^
       moveSalt(index) ^
@@ -205,28 +199,37 @@ const checkForbiddenCached = (
     MASK64;
 
   const cached = ctx.forbiddenCache.get(key);
+
   if (cached !== undefined) {
     vcf.rootForbiddenCacheHits++;
     return cached;
   }
 
   vcf.rootForbiddenCacheMisses++;
+
   const result = checkForbiddenMove(ctx.state.board, pos, player).isForbidden;
 
   const limit = VCF_CONFIG.VCF_FORBIDDEN_CACHE_LIMIT;
+
   if (limit > 0) {
     if (ctx.forbiddenCache.size >= limit) {
       const deleteCount = Math.max(
         1,
-        Math.floor(ctx.forbiddenCache.size * VCF_CONFIG.VCF_FORBIDDEN_CACHE_EVICTION_RATIO)
+        Math.floor(
+          ctx.forbiddenCache.size *
+            VCF_CONFIG.VCF_FORBIDDEN_CACHE_EVICTION_RATIO
+        )
       );
+
       let deleted = 0;
+
       for (const cacheKey of ctx.forbiddenCache.keys()) {
         ctx.forbiddenCache.delete(cacheKey);
         deleted++;
         if (deleted >= deleteCount) break;
       }
     }
+
     ctx.forbiddenCache.set(key, result);
   }
 
@@ -241,6 +244,7 @@ const isLegalVcf = (
   hash: bigint
 ): boolean => {
   const { row, col } = pos;
+
   if (ctx.state.board[row][col] !== null) return false;
 
   // root の初手のみ UI 静的 forbiddenMoves を尊重する。
@@ -274,6 +278,7 @@ const findImmediateWinMove = (
       if (isRootMove && ctx.rootForbiddenMoves[r][c]) continue;
 
       const pos: Position = { row: r, col: c };
+
       if (wouldWin(board, pos, player)) {
         return pos;
       }
@@ -309,11 +314,13 @@ const collectWinSquaresAfterMove = (
 
       const key = r * BOARD_SIZE + c;
       if (seen.has(key)) continue;
+
       seen.add(key);
 
       if (board[r][c] !== null) continue;
 
       const pos: Position = { row: r, col: c };
+
       if (wouldWin(board, pos, player)) {
         result.push(pos);
       }
@@ -331,6 +338,7 @@ const generateAttackerCandidates = (
   const board = ctx.state.board;
   const lineCache = ctx.state.lineCache;
   const candidates: VcfCandidate[] = [];
+
   let order = 0;
 
   for (let r = 0; r < BOARD_SIZE; r++) {
@@ -339,6 +347,7 @@ const generateAttackerCandidates = (
       if (!hasStoneNearby(board, r, c)) continue;
 
       const pos: Position = { row: r, col: c };
+
       const counts = getHypotheticalPatternCounts(
         board,
         lineCache,
@@ -367,13 +376,16 @@ const generateAttackerCandidates = (
     }
   }
 
+  // 活四優先、次に閉四数降順、同点は生成順。
   candidates.sort((a, b) => {
     if (a.openFour !== b.openFour) {
       return a.openFour ? -1 : 1;
     }
+
     if (a.closedFour !== b.closedFour) {
       return b.closedFour - a.closedFour;
     }
+
     return a.order - b.order;
   });
 
@@ -409,8 +421,10 @@ const searchAttacker = (
 
   // 1. 即時勝ち
   const immediateWin = findImmediateWinMove(ctx, ctx.mover, isRoot);
+
   if (immediateWin) {
     ctx.stats.vcf.rootImmediateWins++;
+
     return {
       outcome: 'WIN',
       plyToWin: ply + 1,
@@ -419,7 +433,7 @@ const searchAttacker = (
     };
   }
 
-  // 即時勝ちがなく、これ以上深く読めないなら失敗
+  // 即時勝ちがなく、これ以上深く読めないなら失敗。
   if (ply >= ctx.maxPly) {
     return { outcome: 'FAIL', plyToWin: null, move: null, winKind: null };
   }
@@ -446,6 +460,7 @@ const searchAttacker = (
           ctx.opponent,
           false
         );
+
         if (defenderImmediateWin) {
           ctx.stats.vcf.rootDefenderCounterWins++;
           continue;
@@ -464,7 +479,9 @@ const searchAttacker = (
         if (!VCF_FEATURES.VCF_ALLOW_OPEN_FOUR_TERMINAL) {
           continue;
         }
+
         ctx.stats.vcf.rootTerminalOpenFours++;
+
         return {
           outcome: 'WIN',
           plyToWin: ply + 2,
@@ -480,6 +497,7 @@ const searchAttacker = (
         // 防御側がブロックできない（Black 禁手など）なら勝ち
         if (!isLegalVcf(ctx, block, ctx.opponent, false, applied.nextHash)) {
           ctx.stats.vcf.rootIllegalBlockMoves++;
+
           return {
             outcome: 'WIN',
             plyToWin: ply + 2,
@@ -517,13 +535,13 @@ const searchAttacker = (
             };
           }
 
-          // child FAIL → 他の攻撃手を試す
+          // child FAIL → 他の攻撃手を試す。
         } finally {
           undoSearchMove(ctx.state, blockApplied.undo);
         }
       }
 
-      // winSquares.length === 0 は四として成立していないため失敗
+      // winSquares.length === 0 は四として成立していないため失敗。
     } finally {
       undoSearchMove(ctx.state, applied.undo);
     }
@@ -556,6 +574,7 @@ export const runRootVcf = (
     reason: string | null
   ): RootVcfResult => {
     const timeMs = performance.now() - start;
+
     vcf.rootTimeMs = timeMs;
     vcf.rootBudgetMs = budgetMs;
 
@@ -630,7 +649,16 @@ export const runRootVcf = (
 
   if (budgetMs <= 0 || nodeLimit <= 0) {
     vcf.rootSkippedByOption++;
-    return makeResult('SKIPPED', null, null, 0, 0, budgetMs, nodeLimit, 'budget');
+    return makeResult(
+      'SKIPPED',
+      null,
+      null,
+      0,
+      0,
+      budgetMs,
+      nodeLimit,
+      'budget'
+    );
   }
 
   vcf.rootBudgetMs = budgetMs;
@@ -646,7 +674,7 @@ export const runRootVcf = (
         : null;
 
     // apply / undo 用の一時統計。
-    // VCF 固有統計は req 側の stats に記録し、phase6 統計を汚さない。
+    // VCF 固有統計は req 側の stats に記録し、通常探索統計を汚さない。
     const ephemeralStats = createSearchStats(
       req.mover,
       'fixed',
@@ -685,6 +713,7 @@ export const runRootVcf = (
 
     if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_VCF_STATE_AUDIT) {
       const afterStones = countStones(req.board);
+
       if (afterStones !== req.stones) {
         console.warn(
           `[VCF] state audit failed: before=${req.stones}, after=${afterStones}`
@@ -695,6 +724,7 @@ export const runRootVcf = (
     if (result.outcome === 'WIN') {
       if (!result.move) {
         vcf.rootFail++;
+
         return makeResult(
           'FAIL',
           null,
@@ -723,6 +753,7 @@ export const runRootVcf = (
 
     if (result.outcome === 'ABORTED') {
       vcf.rootAborted++;
+
       return makeResult(
         'ABORTED',
         null,
@@ -736,6 +767,7 @@ export const runRootVcf = (
     }
 
     vcf.rootFail++;
+
     return makeResult(
       'FAIL',
       null,

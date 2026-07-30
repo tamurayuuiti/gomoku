@@ -1,34 +1,37 @@
 // src/utils/ai/dynamicForbidden.ts
-// 第6.2弾：限定動的禁手 / 禁手キャッシュ
+// 限定動的禁手と禁手キャッシュを担うモジュール。
 //
 // 責務:
-//   - Black 手番時のみ、root / shallow node で禁手を再判定する。
+//   - Black 手番時のみ root / shallow node で禁手を再判定する。
 //   - 禁手判定結果を Zobrist hash + move index ベースでキャッシュする。
-//   - 探索の意思決定に必要な「候補手として許可するか」だけを返す。
+//   - 候補手として許可するかどうかだけを返す。
 //
-// 非責務:
-//   - 完全増分禁手
-//   - 葉評価への禁手反映
-//   - CandidateSet 自体の動的更新
-//   - UI 表示禁手との完全同期
-//
-// 設計:
-//   - 静的 forbiddenMoves を上書きして合法化する機能は既定で持たない。
+// 注意:
+//   - 静的 forbiddenMoves を上書きして合法化する機能は持たない。
 //   - 静的 forbiddenMoves が false の場合のみ、動的禁手で追加除外する。
-//   - 禁手ルール OFF を明示したい場合は SearchOptions.forbiddenRuleEnabled = false を渡す。
-//
-// v2.0.0 禁手整合性修正:
-//   - ruleEnabled === false の場合、check() 内で禁手判定を一切実行しない。
+//   - forbiddenRuleEnabled === false の場合は禁手判定を一切行わない。
+
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import { BOARD_SIZE, checkForbiddenMove } from '../gameLogic';
-import { THREAT_FORBIDDEN_CONFIG, THREAT_FORBIDDEN_FEATURES } from './constants';
+import {
+  THREAT_FORBIDDEN_CONFIG,
+  THREAT_FORBIDDEN_FEATURES,
+} from './constants';
+
+// ============================================================
+// 定数・ヘルパー
+// ============================================================
 
 const MASK64 = (1n << 64n) - 1n;
 const MOVE_SALT_SEED = 0x9e3779b97f4a7c15n;
 
 const moveSalt = (index: number): bigint =>
   (BigInt(index + 1) * MOVE_SALT_SEED) & MASK64;
+
+// ============================================================
+// 公開型
+// ============================================================
 
 export interface DynamicForbiddenOptions {
   /**
@@ -69,6 +72,10 @@ export interface DynamicForbiddenController {
   ): boolean;
 }
 
+// ============================================================
+// コントローラ生成
+// ============================================================
+
 /**
  * 1回の calculateNextMove 単位で生成する動的禁手コントローラ。
  *
@@ -91,7 +98,9 @@ export const createDynamicForbiddenController = (
 
   const updateCacheSizeStats = (stats?: SearchStats): void => {
     if (!stats) return;
+
     stats.forbidden.cacheSize = cache.size;
+
     if (cache.size > stats.forbidden.cacheMaxSize) {
       stats.forbidden.cacheMaxSize = cache.size;
     }
@@ -99,15 +108,19 @@ export const createDynamicForbiddenController = (
 
   const evictIfNeeded = (stats?: SearchStats): void => {
     const limit = THREAT_FORBIDDEN_CONFIG.FORBIDDEN_CACHE_LIMIT;
+
     if (limit <= 0) return;
     if (cache.size < limit) return;
 
     const deleteCount = Math.max(
       1,
-      Math.floor(cache.size * THREAT_FORBIDDEN_CONFIG.FORBIDDEN_CACHE_EVICTION_RATIO)
+      Math.floor(
+        cache.size * THREAT_FORBIDDEN_CONFIG.FORBIDDEN_CACHE_EVICTION_RATIO
+      )
     );
 
     let deleted = 0;
+
     for (const key of cache.keys()) {
       cache.delete(key);
       deleted++;
@@ -123,6 +136,7 @@ export const createDynamicForbiddenController = (
 
   const makeKey = (pos: Position, currentHash: bigint): bigint => {
     const index = pos.row * BOARD_SIZE + pos.col;
+
     return (
       (currentHash ^
         moveSalt(index) ^
@@ -161,6 +175,7 @@ export const createDynamicForbiddenController = (
           }
           return false;
         }
+
         return true;
       }
 
@@ -171,7 +186,9 @@ export const createDynamicForbiddenController = (
         return false;
       }
 
-      if (depth > THREAT_FORBIDDEN_CONFIG.DYNAMIC_FORBIDDEN_INTERNAL_MAX_DEPTH) {
+      if (
+        depth > THREAT_FORBIDDEN_CONFIG.DYNAMIC_FORBIDDEN_INTERNAL_MAX_DEPTH
+      ) {
         if (stats) {
           stats.forbidden.dynamicSkippedDeep++;
         }
@@ -197,9 +214,11 @@ export const createDynamicForbiddenController = (
 
       if (!THREAT_FORBIDDEN_FEATURES.ENABLE_FORBIDDEN_CACHE) {
         const result = checkForbiddenMove(board, pos, player).isForbidden;
+
         if (result && stats) {
           stats.forbidden.dynamicForbiddenMoves++;
         }
+
         return result;
       }
 
@@ -210,9 +229,11 @@ export const createDynamicForbiddenController = (
         if (stats) {
           stats.forbidden.cacheHits++;
         }
+
         if (cached && stats) {
           stats.forbidden.dynamicForbiddenMoves++;
         }
+
         return cached;
       }
 

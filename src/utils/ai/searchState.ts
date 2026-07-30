@@ -1,23 +1,14 @@
 // src/utils/ai/searchState.ts
-// 第6.2弾：戦術 solver 用 状態管理共通化
+// 探索用の着手・復元を共通化するモジュール。
 //
 // 責務:
 //   - board / LineCache / CandidateSet / Zobrist hash の着手・復元を一元化する。
 //   - minimax の既存挙動を変更しない形で apply / undo を委譲可能にする。
-//   - 将来の VCF / Quiescence / Threat solver から再利用できるようにする。
-//
-// 非責務:
-//   - 探索スコア計算
-//   - 候補手生成
-//   - 禁手判定
-//   - TT 操作
+//   - VCF / Quiescence / Threat solver から再利用できるようにする。
 //
 // 注意:
-//   hash は XOR で元に戻せるが、呼び出し側で扱いやすいよう
-//   applySearchMove は nextHash を返し、undo 情報に hashBefore を保持する。
-//
-// v2.0.0 診断整理:
-//   - ENABLE_STATE_AUDIT は diagnosticsFlags.ts の DIAGNOSTICS_DEBUG_FLAGS へ移動。
+//   - hash は XOR で元に戻せるが、呼び出し側で扱いやすいよう
+//     applySearchMove は nextHash を返し、undo 情報に hashBefore を保持する。
 
 import type { BoardState, Player, Position } from '../../types/game';
 import type {
@@ -31,6 +22,10 @@ import { updateLineCache, undoLineCache } from './lineCache';
 import { applyCandidateSet, undoCandidateSet } from './candidateGenerator';
 import { recordCandidateSetSize } from './searchStats';
 import { DIAGNOSTICS_DEBUG_FLAGS } from './diagnosticsFlags';
+
+// ============================================================
+// 状態コンテナ
+// ============================================================
 
 /**
  * apply / undo が必要な探索状態の最小集合。
@@ -54,6 +49,10 @@ export interface SearchMoveUndo {
   candidateUndo: CandidateSetUndo | null;
 }
 
+// ============================================================
+// 着手・復元
+// ============================================================
+
 /**
  * board / LineCache / CandidateSet / hash を一括で着手状態へ進める。
  *
@@ -75,6 +74,7 @@ export const applySearchMove = (
   }
 
   let candidateUndo: CandidateSetUndo | null = null;
+
   if (state.candidateSet) {
     candidateUndo = applyCandidateSet(
       state.candidateSet,
@@ -83,6 +83,7 @@ export const applySearchMove = (
       row,
       col
     );
+
     state.stats.candidateSet.updates++;
     recordCandidateSetSize(state.stats, state.candidateSet.candidates.size);
   }
@@ -120,6 +121,7 @@ export const undoSearchMove = (
       col,
       player: undo.player,
     });
+
     state.stats.cache.lineCacheUndos++;
   }
 

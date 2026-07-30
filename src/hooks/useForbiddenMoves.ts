@@ -1,17 +1,18 @@
 // src/hooks/useForbiddenMoves.ts
-// 禁じ手の事前計算を行うカスタムフック
+// 禁じ手の事前計算を行うカスタムフック。
 //
-// 第9弾: 表示専用（ホバー UI）へ役割を変更。
-// - 禁手全走査をレンダーフェーズから描画後（useEffect + state）へ退避した。
-//   盤面に対して最大1フレーム遅れるが、表示専用であるため許容する。
-// - 着手受理の権威ある判定は App.handleCellClick 内の checkForbiddenMove
-//   直接呼び出し（単一マス）が担う。このマトリクスをルール判定のゲート
-//   として参照してはならない。
+// 責務:
+//   - 表示専用（ホバー UI）の禁手マトリクスを描画後に計算する。
+//   - 内容が変化していなければ前回の参照を返して再レンダーを抑制する。
+//
+// 注意:
+//   - 着手受理の権威ある判定は App.handleCellClick 内の checkForbiddenMove が担う。
+//   - このマトリクスをルール判定のゲートとして参照してはならない。
 //
 // lint 対応:
-// - 本フックの effect 内 setState は「表示専用の重い全走査を描画後へ退避する」
-//   設計意図に基づくため、今回は局所的に抑止する。
-// - 将来の責務分離では、派生値（useMemo / useDeferredValue 等）への再設計を検討する。
+//   - 本フックの effect 内 setState は「表示専用の重い全走査を描画後へ退避する」
+//     設計意図に基づくため、局所的に抑止する。
+//   - 将来の責務分離では、派生値（useMemo / useDeferredValue 等）への再設計を検討する。
 
 import { useEffect, useState } from 'react';
 import type { Player, BoardState, GameStatus } from '../types/game';
@@ -28,6 +29,7 @@ const isSameMatrix = (a: boolean[][], b: boolean[][]): boolean => {
       if (a[r][c] !== b[r][c]) return false;
     }
   }
+
   return true;
 };
 
@@ -39,10 +41,15 @@ export const useForbiddenMoves = (
 ): boolean[][] => {
   const [matrix, setMatrix] = useState<boolean[][]>(createAllFalseMatrix);
 
-  // 第9弾: 描画後に非同期で計算する。
+  // 描画後に非同期で計算する。
   // 内容が変化していなければ前回の参照を返して再レンダーを抑制する。
   useEffect(() => {
-    const next = computeForbiddenMatrix(board, currentPlayer, gameStatus, useForbiddenRule);
+    const next = computeForbiddenMatrix(
+      board,
+      currentPlayer,
+      gameStatus,
+      useForbiddenRule
+    );
 
     // 設計意図: 表示専用ホバー行列のため、重い全走査をレンダーフェーズから退避する。
     // 権威ある着手判定は App.handleCellClick 内 checkForbiddenMove が担う。

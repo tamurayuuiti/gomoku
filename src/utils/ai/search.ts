@@ -1,14 +1,16 @@
 // src/utils/ai/search.ts
-// AIの次の一手を計算するロジック
+// AI の次の一手を計算する探索マネージャ。
 //
-// 本ファイルは探索マネージャとして以下を担う。
-// - 初手中央
-// - Root VCF
-// - fixed depth search
-// - iterative deepening
-// - 統計最終化 / ログ / セッション記録
+// 責務:
+//   - 初手中央
+//   - Root VCF
+//   - 固定深度探索
+//   - 反復深化
+//   - 統計最終化 / ログ / セッション記録
 //
-// 探索本体は minimax.ts 以下に委譲し、このファイルは薄いアダプタとして扱う。
+// 注意:
+//   - 探索本体は minimax.ts 以下に委譲する。
+//   - 公開 API calculateNextMove のシグネチャは変更しない。
 
 import type { BoardState, Position, Player } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
@@ -83,10 +85,10 @@ const shouldUseAspiration = (
 
   const absScore = Math.abs(prevScore);
 
-  // WIN / LOSS 付近ではウィンドウを狭めるリスクを避ける
+  // WIN / LOSS 付近ではウィンドウを狭めるリスクを避ける。
   if (absScore >= AI_SCORES.WIN / 2) return false;
 
-  // 戦術的スコア領域では score 変動が大きいため、full window を使う
+  // 戦術的スコア領域では score 変動が大きいため、full window を使う。
   if (
     SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_QUIET_ONLY &&
     absScore >= SEARCH_TUNING_CONFIG.ASPIRATION_QUIET_THRESHOLD
@@ -98,7 +100,7 @@ const shouldUseAspiration = (
 };
 
 // ============================================================
-// Game session helpers
+// 対局セッション補助
 // ============================================================
 
 /**
@@ -151,7 +153,7 @@ const isWinningMove = (
 };
 
 // ============================================================
-// Search parameter resolution
+// 探索パラメータ解決
 // ============================================================
 
 interface ResolvedSearchParameters {
@@ -208,7 +210,7 @@ const resolveSearchParameters = (
   const timeLimitMs = explicitTime
     ? (options!.timeLimitMs as number)
     : (!explicitDepth &&
-        (options === undefined || onlyLastMove || onlyForbiddenRule)
+      (options === undefined || onlyLastMove || onlyForbiddenRule)
         ? AI_CONFIG.DEFAULT_TIME_LIMIT_MS
         : undefined);
 
@@ -222,7 +224,7 @@ const resolveSearchParameters = (
 };
 
 // ============================================================
-// Stats finalization helpers
+// 統計確定補助
 // ============================================================
 
 /**
@@ -277,7 +279,7 @@ const recordNormalMoveSessionAndFinalizeWin = (
 };
 
 // ============================================================
-// Per-move shared controllers / caches
+// 1手単位共有コントローラ / キャッシュ
 // ============================================================
 
 /**
@@ -313,7 +315,7 @@ const createPerMoveDynamicForbidden = (
   });
 
 // ============================================================
-// Root forbidden fallback
+// root 禁手フォールバック
 // ============================================================
 
 /**
@@ -377,7 +379,6 @@ const findLegalFallbackMove = (
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (!isLegal(r, c)) continue;
       if (!hasStoneNearby(board, r, c)) continue;
-
       return { row: r, col: c };
     }
   }
@@ -386,7 +387,6 @@ const findLegalFallbackMove = (
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (!isLegal(r, c)) continue;
-
       return { row: r, col: c };
     }
   }
@@ -440,7 +440,7 @@ const resolveRootForbiddenFallback = (
 };
 
 // ============================================================
-// Root VCF helpers
+// Root VCF 補助
 // ============================================================
 
 /**
@@ -543,7 +543,7 @@ const finalizeVcfReturn = (
 };
 
 // ============================================================
-// calculateNextMove internal branches
+// calculateNextMove 内部分岐
 // ============================================================
 
 interface CenterOpeningParams {
@@ -692,6 +692,7 @@ const runFixedDepthSearch = ({
   stats.time.elapsedMs = performance.now() - startTime;
 
   finalizeSearchStatsAndLog(stats, tt);
+
   recordNormalMoveSessionAndFinalizeWin(
     board,
     finalMove,
@@ -807,7 +808,7 @@ const runIterativeDeepeningSearch = ({
   for (let d = 1; d <= maxDepth; d++) {
     const iterStart = performance.now();
 
-    // depth=1 は時間制限なしで探索し、極端に短い timeLimitMs でも AI が無反応にならない保証とする
+    // depth=1 は時間制限なしで探索し、極端に短い timeLimitMs でも AI が無反応にならない保証とする。
     const effectiveDeadline = d === 1 ? Infinity : deadline;
 
     let alpha = -Infinity;
@@ -890,7 +891,7 @@ const runIterativeDeepeningSearch = ({
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-              `re-searching with full window`
+            `re-searching with full window`
           );
         }
 
@@ -917,7 +918,7 @@ const runIterativeDeepeningSearch = ({
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-              `re-searching with full window`
+            `re-searching with full window`
           );
         }
 
@@ -965,7 +966,7 @@ const runIterativeDeepeningSearch = ({
       );
     }
 
-    // 次の深さに進む余地がなければここで打ち切る
+    // 次の深さに進む余地がなければここで打ち切る。
     if (performance.now() >= deadline) break;
 
     // 時間予測（保守的）
@@ -1005,6 +1006,7 @@ const runIterativeDeepeningSearch = ({
   stats.time.elapsedMs = performance.now() - startTime;
 
   finalizeSearchStatsAndLog(stats, tt);
+
   recordNormalMoveSessionAndFinalizeWin(
     board,
     finalBest,
@@ -1017,11 +1019,11 @@ const runIterativeDeepeningSearch = ({
 };
 
 // ============================================================
-// Public API
+// 公開 API
 // ============================================================
 
 /**
- * AIの次の一手を計算して返す。
+ * AI の次の一手を計算して返す。
  *
  * 公開インターフェース: この関数のシグネチャは変更禁止。
  */
@@ -1037,6 +1039,7 @@ export const calculateNextMove = (
   resetCenterPatternCacheStats();
 
   const stonesBefore = countStones(board);
+
   startGameSessionForMove(currentTurn, stonesBefore);
 
   const dynamicForbidden = createPerMoveDynamicForbidden(options);

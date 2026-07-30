@@ -53,7 +53,7 @@ import {
 import type { DynamicForbiddenController } from './dynamicForbidden';
 
 // ============================================================
-// Killer table
+// キラームーブテーブル
 // ============================================================
 
 /**
@@ -66,7 +66,7 @@ export const createKillerTable = (): KillerTable =>
   Array.from({ length: MAX_KILLER_DEPTH }, (): KillerEntry => [null, null]);
 
 // ============================================================
-// History table
+// 履歴テーブル
 // ============================================================
 
 export const createHistoryTable = (): HistoryTable => ({
@@ -75,7 +75,7 @@ export const createHistoryTable = (): HistoryTable => ({
 });
 
 // ============================================================
-// Countermove table
+// 応手テーブル
 // ============================================================
 
 /**
@@ -117,7 +117,7 @@ export const getCountermove = (
 };
 
 // ============================================================
-// Critical threshold
+// 重要度の閾値
 // ============================================================
 
 /**
@@ -128,7 +128,7 @@ export const getCountermove = (
 export const CRITICAL_SCORE_THRESHOLD = AI_SCORES.DOUBLE_THREE;
 
 // ============================================================
-// Killer move management
+// キラームーブの管理
 // ============================================================
 
 /**
@@ -168,7 +168,7 @@ export const isKiller = (
 };
 
 // ============================================================
-// History heuristic management
+// 履歴ヒューリスティックの管理
 // ============================================================
 
 /**
@@ -194,7 +194,7 @@ export const getHistoryScore = (
 ): number => historyTable[player][row][col];
 
 // ============================================================
-// CandidateSet incremental state
+// 候補集合の増分状態
 // ============================================================
 
 const toFlat = (row: number, col: number): number => row * BOARD_SIZE + col;
@@ -361,7 +361,7 @@ export const undoCandidateSet = (
 };
 
 // ============================================================
-// Candidate stats helper
+// 候補手統計の補助関数
 // ============================================================
 
 /**
@@ -384,7 +384,7 @@ const recordReturnedCandidates = (
 };
 
 // ============================================================
-// Candidate generation body
+// 候補手生成の本体
 // ============================================================
 
 const generateOrderedCandidatesInternal = (
@@ -849,7 +849,7 @@ const generateOrderedCandidatesInternal = (
 };
 
 // ============================================================
-// Forced move post-processing
+// forced move の後処理
 // ============================================================
 
 /**
@@ -1051,7 +1051,7 @@ const applyForcedMovePostProcessing = (
 };
 
 // ============================================================
-// Public API
+// 公開 API
 // ============================================================
 
 /**

@@ -1,5 +1,5 @@
 // src/utils/ai/forcedMoveGenerator.ts
-// 第6.1弾：forced move list 生成
+// forced move list 生成を担うモジュール。
 //
 // 責務:
 //   - Threat Model に基づく forced move list の生成
@@ -7,11 +7,10 @@
 //   - OPEN_THREE_DEFENSE は feature flag 付き
 //   - root / internal の生成制御
 //
-// 既存評価値・候補手 tier・LMR / PVS の意味は変更しない。
-//
-// v2.0.0 禁手整合性修正:
-//   - forbiddenRuleEnabled を受け取り、threatModel の禁手判定へ伝搬する。
-//   - 禁手 OFF の場合、Black 禁手判定を一切行わない。
+// 注意:
+//   - 既存評価値・候補手 tier・LMR / PVS の意味は変更しない。
+//   - forbiddenRuleEnabled === false の場合、Black 禁手判定を一切行わない。
+
 import type { BoardState, Player, Position } from '../../types/game';
 import type {
   CandidateSetState,
@@ -22,7 +21,10 @@ import type {
   SearchStats,
 } from '../../types/ai';
 import { BOARD_SIZE } from '../gameLogic';
-import { THREAT_FORBIDDEN_CONFIG, THREAT_FORBIDDEN_FEATURES } from './constants';
+import {
+  THREAT_FORBIDDEN_CONFIG,
+  THREAT_FORBIDDEN_FEATURES,
+} from './constants';
 import { hasStoneNearby, opponentOf } from './evaluator';
 import {
   wouldWin,
@@ -31,6 +33,10 @@ import {
   isMoverLegal,
   getHypotheticalPatternCounts,
 } from './threatModel';
+
+// ============================================================
+// 公開型
+// ============================================================
 
 export interface ForcedMoveGenerationRequest {
   board: BoardState;
@@ -41,9 +47,14 @@ export interface ForcedMoveGenerationRequest {
   currentHash: bigint;
   isRoot: boolean;
   depth: number;
+
   /** 禁手ルールが有効かどうか。false の場合、Black 禁手判定を一切行わない。 */
   forbiddenRuleEnabled: boolean;
 }
+
+// ============================================================
+// 定数・優先度
+// ============================================================
 
 const FORCED_CATEGORIES: ForcedCategory[] = [
   'OWN_WIN',
@@ -79,20 +90,28 @@ export const getForcedPriorityRank = (category: ForcedCategory): number => {
 /**
  * root forced protection で必須扱いするカテゴリ。
  *
- * 第6.1弾では候補手増加を抑えるため、
+ * 候補手増加を抑えるため、
  * OWN_WIN / BLOCK_WIN / OWN_OPEN_FOUR / BLOCK_OPEN_FOUR のみ必須とする。
  */
-export const isEssentialForcedCategory = (category: ForcedCategory): boolean =>
+export const isEssentialForcedCategory = (
+  category: ForcedCategory
+): boolean =>
   category === 'OWN_WIN' ||
   category === 'BLOCK_WIN' ||
   category === 'OWN_OPEN_FOUR' ||
   category === 'BLOCK_OPEN_FOUR';
 
+// ============================================================
+// 内部ヘルパー
+// ============================================================
+
 const createByCategory = (): Record<ForcedCategory, Position[]> => {
   const result = {} as Record<ForcedCategory, Position[]>;
+
   for (const category of FORCED_CATEGORIES) {
     result[category] = [];
   }
+
   return result;
 };
 
@@ -117,6 +136,10 @@ const higherPriority = (
   getForcedPriorityRank(a) <= getForcedPriorityRank(b) ? a : b;
 
 const toKey = (pos: Position): number => pos.row * BOARD_SIZE + pos.col;
+
+// ============================================================
+// forced move list 生成
+// ============================================================
 
 /**
  * forced move list を生成する。
@@ -151,8 +174,10 @@ export const generateForcedMoveList = (
   }
 
   const start = performance.now();
+
   if (stats) {
     stats.threat.modelCalls++;
+
     if (!req.isRoot) {
       stats.threat.internalForcedCalls++;
     }
@@ -165,6 +190,7 @@ export const generateForcedMoveList = (
     lineCache,
     forbiddenRuleEnabled,
   } = req;
+
   const opponent = opponentOf(mover);
 
   const moveMap = new Map<number, ForcedMove>();
@@ -172,6 +198,7 @@ export const generateForcedMoveList = (
   const addCategory = (pos: Position, category: ForcedCategory): void => {
     const key = toKey(pos);
     const existing = moveMap.get(key);
+
     if (!existing) {
       moveMap.set(key, {
         pos: { row: pos.row, col: pos.col },
@@ -186,15 +213,17 @@ export const generateForcedMoveList = (
     if (!existing.categories.includes(category)) {
       existing.categories.push(category);
     }
+
     existing.priority = higherPriority(existing.priority, category);
   };
 
   /**
    * WIN / BLOCK_WIN を中心に判定する。
-   * root では candidateSet 外の即勝ち/即受けも拾うため、全空マス走査でも使う。
+   * root では candidateSet 外の即勝ち / 即受けも拾うため、全空マス走査でも使う。
    */
   const processWin = (row: number, col: number): void => {
     const pos: Position = { row, col };
+
     if (!isUiLegalMove(board, pos, forbiddenMoves)) return;
 
     if (wouldWin(board, pos, mover)) {
@@ -205,7 +234,9 @@ export const generateForcedMoveList = (
       // 自分がその受け場所に着手できない場合、forced move としては除外する。
       // ただし mover が Black で、かつ自分の勝ちにもなっている場合は
       // checkForbiddenMove 内で勝利優先されるため BLOCK_WIN も追加され得る。
-      if (isMoverLegal(board, pos, mover, forbiddenMoves, forbiddenRuleEnabled)) {
+      if (
+        isMoverLegal(board, pos, mover, forbiddenMoves, forbiddenRuleEnabled)
+      ) {
         addCategory(pos, 'BLOCK_WIN');
       }
     }
@@ -217,6 +248,7 @@ export const generateForcedMoveList = (
    */
   const processPatterns = (row: number, col: number): void => {
     const pos: Position = { row, col };
+
     if (!isUiLegalMove(board, pos, forbiddenMoves)) return;
 
     // --- 自分の四 / 活四 ---
@@ -229,10 +261,13 @@ export const generateForcedMoveList = (
     );
 
     if (ownCounts.OPEN_FOUR > 0 || ownCounts.CLOSED_FOUR > 0) {
-      if (isMoverLegal(board, pos, mover, forbiddenMoves, forbiddenRuleEnabled)) {
+      if (
+        isMoverLegal(board, pos, mover, forbiddenMoves, forbiddenRuleEnabled)
+      ) {
         if (ownCounts.OPEN_FOUR > 0) {
           addCategory(pos, 'OWN_OPEN_FOUR');
         }
+
         if (ownCounts.CLOSED_FOUR > 0) {
           addCategory(pos, 'OWN_FOUR');
         }
@@ -250,6 +285,7 @@ export const generateForcedMoveList = (
 
     const oppHasFourThreat =
       oppCounts.OPEN_FOUR > 0 || oppCounts.CLOSED_FOUR > 0;
+
     const oppHasOpenThreeThreat =
       THREAT_FORBIDDEN_FEATURES.ENABLE_OPEN_THREE_DEFENSE &&
       oppCounts.OPEN_THREE > 0;
@@ -258,17 +294,25 @@ export const generateForcedMoveList = (
 
     // 相手が Black の場合、禁手ルールが有効ならその仮着手が禁手なら実際の脅威ではない。
     // 禁手ルール OFF の場合は禁手判定を行わず合法として扱う。
-    if (!isHypotheticalLegal(board, pos, opponent, forbiddenRuleEnabled)) return;
+    if (!isHypotheticalLegal(board, pos, opponent, forbiddenRuleEnabled)) {
+      return;
+    }
 
     // 自分がその場所へ着手できなければ受けとして成立しない。
-    if (!isMoverLegal(board, pos, mover, forbiddenMoves, forbiddenRuleEnabled)) return;
+    if (
+      !isMoverLegal(board, pos, mover, forbiddenMoves, forbiddenRuleEnabled)
+    ) {
+      return;
+    }
 
     if (oppCounts.OPEN_FOUR > 0) {
       addCategory(pos, 'BLOCK_OPEN_FOUR');
     }
+
     if (oppCounts.CLOSED_FOUR > 0) {
       addCategory(pos, 'BLOCK_FOUR');
     }
+
     if (oppHasOpenThreeThreat) {
       addCategory(pos, 'OPEN_THREE_DEFENSE');
     }
@@ -278,7 +322,9 @@ export const generateForcedMoveList = (
 
   const processPatternCandidate = (row: number, col: number): void => {
     const key = row * BOARD_SIZE + col;
+
     if (patternKeys.has(key)) return;
+
     patternKeys.add(key);
 
     processWin(row, col);
@@ -298,7 +344,10 @@ export const generateForcedMoveList = (
   //   CandidateSet があればその中から上限件数だけ走査する。
   //   CandidateSet がなければ近傍候補を走査する。
   // ------------------------------------------------------------
-  const internalLimit = THREAT_FORBIDDEN_CONFIG.INTERNAL_FORCED_MAX_CANDIDATES;
+
+  const internalLimit =
+    THREAT_FORBIDDEN_CONFIG.INTERNAL_FORCED_MAX_CANDIDATES;
+
   let scanned = 0;
 
   if (req.candidateSet) {
@@ -307,6 +356,7 @@ export const generateForcedMoveList = (
 
       const r = Math.floor(idx / BOARD_SIZE);
       const c = idx % BOARD_SIZE;
+
       if (board[r][c] !== null) continue;
 
       processPatternCandidate(r, c);
@@ -316,6 +366,7 @@ export const generateForcedMoveList = (
     outer: for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
         if (!req.isRoot && scanned >= internalLimit) break outer;
+
         if (board[r][c] !== null) continue;
         if (!hasStoneNearby(board, r, c)) continue;
 
@@ -331,9 +382,10 @@ export const generateForcedMoveList = (
         if (board[r][c] !== null) continue;
 
         const key = r * BOARD_SIZE + c;
+
         if (patternKeys.has(key)) continue;
 
-        // candidateSet 外でも即勝ち/即受けだけ拾う。
+        // candidateSet 外でも即勝ち / 即受けだけ拾う。
         processWin(r, c);
       }
     }
@@ -342,16 +394,21 @@ export const generateForcedMoveList = (
   // ------------------------------------------------------------
   // 結果構築
   // ------------------------------------------------------------
+
   const moves = Array.from(moveMap.values());
+
   moves.sort((a, b) => {
     const rankA = getForcedPriorityRank(a.priority);
     const rankB = getForcedPriorityRank(b.priority);
+
     if (rankA !== rankB) return rankA - rankB;
     if (a.pos.row !== b.pos.row) return a.pos.row - b.pos.row;
+
     return a.pos.col - b.pos.col;
   });
 
   const byCategory = createByCategory();
+
   for (const move of moves) {
     for (const category of move.categories) {
       byCategory[category].push(move.pos);
@@ -393,13 +450,15 @@ export const generateForcedMoveList = (
     stats.threat.modelTimeMs += performance.now() - start;
     stats.threat.forcedGenerated += 1;
     stats.threat.forcedMovesTotal += moves.length;
+
     stats.threat.ownWinMoves += byCategory.OWN_WIN.length;
     stats.threat.blockWinMoves += byCategory.BLOCK_WIN.length;
     stats.threat.ownOpenFourMoves += byCategory.OWN_OPEN_FOUR.length;
     stats.threat.blockOpenFourMoves += byCategory.BLOCK_OPEN_FOUR.length;
     stats.threat.ownFourMoves += byCategory.OWN_FOUR.length;
     stats.threat.blockFourMoves += byCategory.BLOCK_FOUR.length;
-    stats.threat.openThreeDefenseMoves += byCategory.OPEN_THREE_DEFENSE.length;
+    stats.threat.openThreeDefenseMoves +=
+      byCategory.OPEN_THREE_DEFENSE.length;
 
     if (nodeKind === 'tactical') {
       stats.threat.tacticalNodes++;

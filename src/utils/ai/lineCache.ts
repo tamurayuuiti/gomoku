@@ -6,23 +6,36 @@
 //   - 着手時の差分更新
 //   - 除去時の復元
 //
-// 評価ロジック（detectPattern / evaluatePosition / evaluateBoard）は持たず、
-// 純粋に「9 文字ライン状態の保持・更新」だけを担う。
-//
-// ライン文字列の意味は evaluator.ts の getLineString と同一。
-//   '1' = 視点プレイヤーの石
-//   '0' = 空マス
-//   '2' = 相手石または盤外
+// 注意:
+//   - 評価ロジックは持たず、9 文字ライン状態の保持・更新だけを担う。
+//   - ライン文字列の意味は evaluator.ts の getLineString と同一。
+//       '1' = 視点プレイヤーの石
+//       '0' = 空マス
+//       '2' = 相手石または盤外
 
 import type { BoardState, Player, Cell } from '../../types/game';
 import type { LineCacheState, LineCacheUndo } from '../../types/ai';
 import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
+
+// ============================================================
+// 共有ヘルパー
+// ============================================================
 
 /**
  * セルの Player|null を getLineString と同じ文字コードへ変換する。
  */
 export const cellChar = (cell: Cell, color: Player): string =>
   cell === color ? '1' : cell === null ? '0' : '2';
+
+/**
+ * 文字列の指定位置を 1 文字だけ置換する。
+ */
+const replaceChar = (s: string, index: number, ch: string): string =>
+  s.slice(0, index) + ch + s.slice(index + 1);
+
+// ============================================================
+// 初期構築
+// ============================================================
 
 /**
  * 指定手番視点の全方向ラインキャッシュを初期構築する。
@@ -72,11 +85,9 @@ export const createLineCache = (board: BoardState): LineCacheState => {
   };
 };
 
-/**
- * 文字列の指定位置を 1 文字だけ置換する。
- */
-const replaceChar = (s: string, index: number, ch: string): string =>
-  s.slice(0, index) + ch + s.slice(index + 1);
+// ============================================================
+// 差分更新
+// ============================================================
 
 /**
  * 着手に伴い LineCache を差分更新する。

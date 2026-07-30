@@ -1,28 +1,15 @@
 // src/utils/ai/boardEvaluator.ts
-// 葉ノード盤面評価を担うモジュール（evaluateBoard: 全盤面の多重脅威スコア算出）
+// 葉ノード盤面評価を担うモジュール。
 //
-// evaluatePosition（位置評価）は evaluator.ts に残し、盤面全体を集約して
-// スカラー値を返す層をここに配置する。
+// 責務:
+//   - evaluateBoard: 全盤面の多重脅威スコア算出
+//   - evaluateBoardWithCache: LineCache / CandidateSet 利用版
 //
-// 【ライン走査（Line Scan）化】
-// 旧実装は空きマスごとに getLineString を都度呼び出し、同じ石を何度も読み直していた。
-// 現実装は盤面の各方向ラインを 1 回だけ走査して 9 文字ウィンドウ文字列を事前計算（キャッシュ）し、
-// 各セルのパターン判定はそのキャッシュを参照するだけにする。パターン判定ロジックとスコア計算式は
-// evaluator.ts の evaluatePosition と同一のものを使うため、評価値の意味・優先順位は変えていない。
-//
-// 第3弾:
-//   - evaluateBoardWithCache を追加し、LineCache を利用した葉評価を実装。
-//   - CandidateSet があれば候補集合だけ走査し、なければ従来通り盤面走査する。
-//
-// 第5弾:
-//   - 中心文字差し替えキャッシュを利用。
-//   - TopK 挿入の固定長最適化を追加（feature flag 付き）。
-//   - 評価式・スコア体系は変更しない。
-//
-// 第8.2弾:
-//   - 通常評価分支に極小の形状ボーナス（接続性）を追加。
-//   - 即時戦術スコア・AI_SCORES・tier は変更しない。
-//   - ENABLE_EVAL_SHAPE_BONUS flag で制御。
+// 注意:
+//   - 位置評価（evaluatePosition）は evaluator.ts に残す。
+//   - 評価値の意味・優先順位・スコア体系は変更しない。
+//   - ライン走査は 9 文字ウィンドウ文字列を事前計算し、パターン判定を軽量化する。
+
 import type { BoardState, Player } from '../../types/game';
 import type {
   PatternCount,
@@ -50,10 +37,10 @@ import { cellChar } from './lineCache';
 // ============================================================
 
 /**
- * 指定方向 (dx, dy) について盤面全体を 1 回走査し、各セルを中心とする
- * 9 文字ウィンドウ文字列（getLineString と同一形式）を事前計算して返す。
+ * 指定方向 (dx, dy) について盤面全体を 1 回走査し、
+ * 各セルを中心とする 9 文字ウィンドウ文字列を事前計算して返す。
  *
- * LineCache 無効時のフォールバックとして残す。
+ * LineCache 無効時のフォールバックとして使う。
  */
 const buildLineCache = (
   board: BoardState,
@@ -64,35 +51,36 @@ const buildLineCache = (
   const cache: string[][] = Array.from({ length: BOARD_SIZE }, () =>
     new Array<string>(BOARD_SIZE).fill('')
   );
+
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       let s = '';
+
       for (let i = -4; i <= 4; i++) {
         const rr = r + i * dx;
         const cc = c + i * dy;
-        s += (rr < 0 || rr >= BOARD_SIZE || cc < 0 || cc >= BOARD_SIZE)
-          ? '2'
-          : cellChar(board[rr][cc], color);
+
+        s +=
+          rr < 0 || rr >= BOARD_SIZE || cc < 0 || cc >= BOARD_SIZE
+            ? '2'
+            : cellChar(board[rr][cc], color);
       }
+
       cache[r][c] = s;
     }
   }
+
   return cache;
 };
 
 /**
- * キャッシュ済み 9 文字ウィンドウから (r, c) への着手価値を playerColor 視点で算出する。
- * ロジックは evaluator.ts の evaluatePosition と完全に同一で、違いは
- * 事前計算済みキャッシュからウィンドウ文字列を取得する点のみ。
+ * キャッシュ済み 9 文字ウィンドウから (r, c) への着手価値を算出する。
  *
- * 第5弾:
- *   detectPatternWithCenter を使い、中心文字差し替え文字列の生成を削減する。
+ * ロジックは evaluator.ts の evaluatePosition と同一で、
+ * 違いは事前計算済みキャッシュからウィンドウ文字列を取得する点のみ。
  *
- * 第8.2弾:
- *   通常評価分支の末尾に形状ボーナスを加算する。
- *
- * @param ownLineCaches 4 方向分の「playerColor 視点」ラインキャッシュ
- * @param oppLineCaches 4 方向分の「相手視点」ラインキャッシュ
+ * @param ownLineCaches 4 方向分の playerColor 視点ラインキャッシュ
+ * @param oppLineCaches 4 方向分の相手視点ラインキャッシュ
  */
 const scoreFromLineCache = (
   r: number,
@@ -105,8 +93,7 @@ const scoreFromLineCache = (
   const oppAfterCounts = createEmptyPatternCount();
 
   for (let d = 0; d < DIRECTIONS.length; d++) {
-    // 中心セルは空マス前提（evaluateBoard は空きマスのみを対象に呼ぶ）のため、
-    // キャッシュ済み文字列の中心文字だけを差し替えて各パターンを判定する。
+    // 中心セルは空マス前提のため、中心文字だけを差し替えて判定する。
     const ownLine = ownLineCaches[d][r][c];
     const attackPtn = detectPatternWithCenter(ownLine, '1');
     attackCounts[attackPtn]++;
@@ -121,28 +108,44 @@ const scoreFromLineCache = (
 
   // --- 即時評価（evaluatePosition と同一の優先順位） ---
   if (attackCounts.WIN > 0) return AI_SCORES.WIN;
+
   if (oppBeforeCounts.WIN > 0 && oppAfterCounts.WIN === 0)
     return AI_SCORES.DEFEND_WIN;
+
   if (attackCounts.OPEN_FOUR > 0) return AI_SCORES.OPEN_FOUR;
+
   if (attackCounts.CLOSED_FOUR >= 2) return AI_SCORES.DOUBLE_FOUR;
+
   if (attackCounts.CLOSED_FOUR >= 1 && attackCounts.OPEN_THREE >= 1)
     return AI_SCORES.FOUR_THREE;
+
   if (
     oppBeforeCounts.OPEN_FOUR > 0 &&
     oppAfterCounts.OPEN_FOUR < oppBeforeCounts.OPEN_FOUR
-  ) return AI_SCORES.OPEN_FOUR;
+  )
+    return AI_SCORES.OPEN_FOUR;
+
   if (oppBeforeCounts.CLOSED_FOUR >= 2 && oppAfterCounts.CLOSED_FOUR < 2)
     return AI_SCORES.DOUBLE_FOUR;
+
   if (
-    oppBeforeCounts.CLOSED_FOUR >= 1 && oppBeforeCounts.OPEN_THREE >= 1 &&
-    !(oppAfterCounts.CLOSED_FOUR >= 1 && oppAfterCounts.OPEN_THREE >= 1)
-  ) return AI_SCORES.FOUR_THREE;
+    oppBeforeCounts.CLOSED_FOUR >= 1 &&
+    oppBeforeCounts.OPEN_THREE >= 1 &&
+    !(
+      oppAfterCounts.CLOSED_FOUR >= 1 &&
+      oppAfterCounts.OPEN_THREE >= 1
+    )
+  )
+    return AI_SCORES.FOUR_THREE;
+
   if (attackCounts.OPEN_THREE >= 2) return AI_SCORES.DOUBLE_THREE;
+
   if (oppBeforeCounts.OPEN_THREE >= 2 && oppAfterCounts.OPEN_THREE < 2)
     return AI_SCORES.DOUBLE_THREE;
 
   // --- 通常評価 ---
   let attackScore = 0;
+
   attackScore += attackCounts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
   attackScore += attackCounts.OPEN_THREE * AI_SCORES.OPEN_THREE;
   attackScore += attackCounts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
@@ -152,11 +155,13 @@ const scoreFromLineCache = (
 
   const calcTotalOppScore = (counts: PatternCount): number => {
     let score = 0;
+
     score += counts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
     score += counts.OPEN_THREE * AI_SCORES.OPEN_THREE;
     score += counts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
     score += counts.OPEN_TWO * AI_SCORES.OPEN_TWO;
     score += counts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
+
     return score;
   };
 
@@ -165,42 +170,52 @@ const scoreFromLineCache = (
     calcTotalOppScore(oppBeforeCounts) - calcTotalOppScore(oppAfterCounts)
   );
 
-  // 第8.2弾: 形状ボーナス（通常評価分支のみ）
+  // 形状ボーナスは通常評価分支にのみ加算する。
   const shapeBonus = computeShapeBonusFromLines(ownLineCaches, r, c);
 
   return attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore + shapeBonus;
 };
 
 /**
- * 上位 K 要素のみを保持するソート済み降順配列へ挿入。
- * K が小さい（≤ 3）ため線形挿入 O(K) で十分。
+ * 上位 K 要素のみを保持するソート済み降順配列へ挿入する。
  *
- * 第5弾:
- *   ENABLE_TOPK_FIXED_ARRAY 有効時は splice を使わない固定長挿入に切り替える。
- *   挿入順序・同点時の挙動は旧実装と一致させる。
+ * K が小さいため線形挿入 O(K) で十分。
+ * ENABLE_TOPK_FIXED_ARRAY 有効時は splice を使わない固定長挿入に切り替える。
  */
 const insertTopK = (arr: number[], val: number, k: number): void => {
   if (!SEARCH_TUNING_FEATURES.ENABLE_TOPK_FIXED_ARRAY) {
     let i = arr.length;
+
     while (i > 0 && arr[i - 1] < val) i--;
+
     arr.splice(i, 0, val);
+
     if (arr.length > k) arr.length = k;
+
     return;
   }
+
   let i = arr.length;
+
   while (i > 0 && arr[i - 1] < val) i--;
+
   if (arr.length < k) {
     arr.length = arr.length + 1;
+
     for (let j = arr.length - 1; j > i; j--) {
       arr[j] = arr[j - 1];
     }
+
     arr[i] = val;
     return;
   }
+
   if (i >= k) return;
+
   for (let j = k - 1; j > i; j--) {
     arr[j] = arr[j - 1];
   }
+
   arr[i] = val;
 };
 
@@ -212,7 +227,7 @@ const insertTopK = (arr: number[], val: number, k: number): void => {
  * 盤面全体を aiPlayer 視点で評価し、スカラースコアを返す。
  *
  * LineCache 無効時のフォールバック。
- * 評価方式・スコアの意味・優先順位は変更していない。
+ * 評価方式・スコアの意味・優先順位は変更しない。
  */
 export const evaluateBoard = (
   board: BoardState,
@@ -220,12 +235,14 @@ export const evaluateBoard = (
   forbiddenMoves: boolean[][]
 ): number => {
   const opp = opponentOf(aiPlayer);
+
   const topK = EVAL_CONFIG.TOP_K;
   const decay = EVAL_CONFIG.TOP_K_DECAY;
 
   const aiLineCaches = DIRECTIONS.map(([dx, dy]) =>
     buildLineCache(board, dx, dy, aiPlayer)
   );
+
   const oppLineCaches = DIRECTIONS.map(([dx, dy]) =>
     buildLineCache(board, dx, dy, opp)
   );
@@ -237,11 +254,13 @@ export const evaluateBoard = (
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
       if (!hasStoneNearby(board, r, c)) continue;
+
       insertTopK(
         aiTopK,
         scoreFromLineCache(r, c, aiLineCaches, oppLineCaches),
         topK
       );
+
       insertTopK(
         oppTopK,
         scoreFromLineCache(r, c, oppLineCaches, aiLineCaches),
@@ -254,12 +273,15 @@ export const evaluateBoard = (
 
   let aiTotal = 0;
   let oppTotal = 0;
+
   for (let i = 0; i < aiTopK.length; i++) {
     aiTotal += aiTopK[i] * Math.pow(decay, i);
   }
+
   for (let i = 0; i < oppTopK.length; i++) {
     oppTotal += oppTopK[i] * Math.pow(decay, i);
   }
+
   return aiTotal - oppTotal;
 };
 
@@ -279,6 +301,7 @@ export const evaluateBoardWithCache = (
   candidateSet: CandidateSetState | null = null
 ): number => {
   const opp = opponentOf(aiPlayer);
+
   const topK = EVAL_CONFIG.TOP_K;
   const decay = EVAL_CONFIG.TOP_K_DECAY;
 
@@ -294,6 +317,7 @@ export const evaluateBoardWithCache = (
       scoreFromLineCache(r, c, aiLineCaches, oppLineCaches),
       topK
     );
+
     insertTopK(
       oppTopK,
       scoreFromLineCache(r, c, oppLineCaches, aiLineCaches),
@@ -305,7 +329,9 @@ export const evaluateBoardWithCache = (
     for (const idx of candidateSet.candidates) {
       const r = Math.floor(idx / BOARD_SIZE);
       const c = idx % BOARD_SIZE;
+
       if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
+
       scoreCell(r, c);
     }
   } else {
@@ -313,6 +339,7 @@ export const evaluateBoardWithCache = (
       for (let c = 0; c < BOARD_SIZE; c++) {
         if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
         if (!hasStoneNearby(board, r, c)) continue;
+
         scoreCell(r, c);
       }
     }
@@ -322,11 +349,14 @@ export const evaluateBoardWithCache = (
 
   let aiTotal = 0;
   let oppTotal = 0;
+
   for (let i = 0; i < aiTopK.length; i++) {
     aiTotal += aiTopK[i] * Math.pow(decay, i);
   }
+
   for (let i = 0; i < oppTopK.length; i++) {
     oppTotal += oppTopK[i] * Math.pow(decay, i);
   }
+
   return aiTotal - oppTotal;
 };
