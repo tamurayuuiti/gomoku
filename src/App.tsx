@@ -48,10 +48,8 @@ const App = () => {
   });
 
   // latest-ref パターンで handleCellClick の identity を安定化し、
-  // memo 化された Cell へ安全に渡せるようにする（components/Cell.tsx 参照）。
-  // ref の更新はレンダー中ではなくコミット後（useLayoutEffect）に行う。
-  // 禁手の権威ある判定は checkForbiddenMove の直接呼び出し（単一マス）で行い、
-  // 表示専用の forbiddenMoves マトリクスは参照しない。
+  // memo 化された Cell に安全に渡す（ref は useLayoutEffect で更新）。
+  // 禁じ手判定は checkForbiddenMove を使用し、forbiddenMoves は表示専用。
   const clickCtxRef = useRef({
     board,
     gameStatus,
