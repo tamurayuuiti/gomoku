@@ -10,7 +10,6 @@
 //   - 評価関数（AI_SCORES / evaluatePosition / evaluateBoard）の意味は変更しない。
 //   - forced move list の分類に必要な戦術情報だけを提供する。
 //   - forbiddenRuleEnabled === false の場合、Black 禁手判定を一切行わない。
-
 import type { BoardState, Player, Position } from '../../types/game';
 import type { LineCacheState, PatternCount } from '../../types/ai';
 import { checkWin, checkForbiddenMove, DIRECTIONS } from '../gameLogic';
@@ -19,6 +18,7 @@ import {
   detectPatternFast,
   detectPatternWithCenter,
   getLineString,
+  PATTERN_INDEX,
 } from './evaluator';
 
 // ============================================================
@@ -37,11 +37,9 @@ export const wouldWin = (
   player: Player
 ): boolean => {
   const { row, col } = pos;
-
   if (board[row][col] !== null) return false;
 
   board[row][col] = player;
-
   try {
     return checkWin(board, pos, player);
   } finally {
@@ -69,7 +67,6 @@ export const isHypotheticalLegal = (
   if (board[pos.row][pos.col] !== null) return false;
   if (player !== 'Black') return true;
   if (!forbiddenRuleEnabled) return true;
-
   return !checkForbiddenMove(board, pos, player).isForbidden;
 };
 
@@ -84,7 +81,6 @@ export const isUiLegalMove = (
   forbiddenMoves: boolean[][]
 ): boolean => {
   const { row, col } = pos;
-
   return board[row][col] === null && !forbiddenMoves[row][col];
 };
 
@@ -106,7 +102,6 @@ export const isMoverLegal = (
   if (!isUiLegalMove(board, pos, forbiddenMoves)) return false;
   if (player !== 'Black') return true;
   if (!forbiddenRuleEnabled) return true;
-
   return !checkForbiddenMove(board, pos, player).isForbidden;
 };
 
@@ -117,6 +112,7 @@ export const isMoverLegal = (
  * なければ getLineString + detectPatternFast で従来通り計算する。
  *
  * 評価スコアは計算しない。パターン種別のカウントのみを返す。
+ * 戻り値は呼び出し元へ渡るため、都度新規配列を生成する。
  */
 export const getHypotheticalPatternCounts = (
   board: BoardState,
@@ -129,20 +125,18 @@ export const getHypotheticalPatternCounts = (
 
   if (lineCache) {
     const caches = lineCache.caches[player];
-
     for (let d = 0; d < DIRECTIONS.length; d++) {
       const line = caches[d][row][col];
       const ptn = detectPatternWithCenter(line, '1');
-      counts[ptn]++;
+      counts[PATTERN_INDEX[ptn]]++;
     }
-
     return counts;
   }
 
   for (const [dx, dy] of DIRECTIONS) {
     const line = getLineString(board, row, col, dx, dy, player, '1');
     const ptn = detectPatternFast(line);
-    counts[ptn]++;
+    counts[PATTERN_INDEX[ptn]]++;
   }
 
   return counts;

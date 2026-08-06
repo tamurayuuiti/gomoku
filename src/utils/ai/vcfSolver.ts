@@ -12,7 +12,6 @@
 //   - VCF の失敗は負けや最善を意味しない。
 //   - VCF の中断は不明を意味し、通常探索へ委譲する。
 //   - board / lineCache は apply / undo で必ず復元する。
-
 import type { BoardState, Player, Position } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
 import {
@@ -35,7 +34,7 @@ import {
 } from './searchState';
 import type { SearchStateContainers } from './searchState';
 import { createSearchStats } from './searchStats';
-import { hasStoneNearby, opponentOf } from './evaluator';
+import { hasStoneNearby, opponentOf, PATTERN_INDEX } from './evaluator';
 import { wouldWin, getHypotheticalPatternCounts } from './threatModel';
 
 // ============================================================
@@ -138,17 +137,13 @@ const resolveRootBudgetMs = (
       ? options.vcfTimeBudgetMs
       : 0;
   }
-
   if (timeLimitMs === null) {
     return VCF_CONFIG.ROOT_VCF_FIXED_TIME_BUDGET_MS;
   }
-
   if (!Number.isFinite(timeLimitMs)) {
     return 0;
   }
-
   const raw = timeLimitMs * VCF_CONFIG.ROOT_VCF_TIME_BUDGET_RATIO;
-
   return Math.max(
     VCF_CONFIG.ROOT_VCF_TIME_BUDGET_MIN_MS,
     Math.min(VCF_CONFIG.ROOT_VCF_TIME_BUDGET_MAX_MS, raw)
@@ -163,7 +158,6 @@ const resolveRootNodeLimit = (
       ? options.vcfNodeLimit
       : 0;
   }
-
   return VCF_CONFIG.ROOT_VCF_NODE_LIMIT;
 };
 
@@ -190,7 +184,6 @@ const checkForbiddenCached = (
   }
 
   const index = pos.row * BOARD_SIZE + pos.col;
-
   const key =
     (hash ^
       moveSalt(index) ^
@@ -199,18 +192,15 @@ const checkForbiddenCached = (
     MASK64;
 
   const cached = ctx.forbiddenCache.get(key);
-
   if (cached !== undefined) {
     vcf.rootForbiddenCacheHits++;
     return cached;
   }
 
   vcf.rootForbiddenCacheMisses++;
-
   const result = checkForbiddenMove(ctx.state.board, pos, player).isForbidden;
 
   const limit = VCF_CONFIG.VCF_FORBIDDEN_CACHE_LIMIT;
-
   if (limit > 0) {
     if (ctx.forbiddenCache.size >= limit) {
       const deleteCount = Math.max(
@@ -220,16 +210,13 @@ const checkForbiddenCached = (
             VCF_CONFIG.VCF_FORBIDDEN_CACHE_EVICTION_RATIO
         )
       );
-
       let deleted = 0;
-
       for (const cacheKey of ctx.forbiddenCache.keys()) {
         ctx.forbiddenCache.delete(cacheKey);
         deleted++;
         if (deleted >= deleteCount) break;
       }
     }
-
     ctx.forbiddenCache.set(key, result);
   }
 
@@ -244,7 +231,6 @@ const isLegalVcf = (
   hash: bigint
 ): boolean => {
   const { row, col } = pos;
-
   if (ctx.state.board[row][col] !== null) return false;
 
   // root の初手のみ UI 静的 forbiddenMoves を尊重する。
@@ -270,21 +256,17 @@ const findImmediateWinMove = (
   isRootMove: boolean
 ): Position | null => {
   const board = ctx.state.board;
-
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (board[r][c] !== null) continue;
       if (!hasStoneNearby(board, r, c)) continue;
       if (isRootMove && ctx.rootForbiddenMoves[r][c]) continue;
-
       const pos: Position = { row: r, col: c };
-
       if (wouldWin(board, pos, player)) {
         return pos;
       }
     }
   }
-
   return null;
 };
 
@@ -306,27 +288,19 @@ const collectWinSquaresAfterMove = (
   for (const [dr, dc] of DIRECTIONS) {
     for (let offset = -4; offset <= 4; offset++) {
       if (offset === 0) continue;
-
       const r = lastMove.row + dr * offset;
       const c = lastMove.col + dc * offset;
-
       if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) continue;
-
       const key = r * BOARD_SIZE + c;
       if (seen.has(key)) continue;
-
       seen.add(key);
-
       if (board[r][c] !== null) continue;
-
       const pos: Position = { row: r, col: c };
-
       if (wouldWin(board, pos, player)) {
         result.push(pos);
       }
     }
   }
-
   return result;
 };
 
@@ -338,7 +312,6 @@ const generateAttackerCandidates = (
   const board = ctx.state.board;
   const lineCache = ctx.state.lineCache;
   const candidates: VcfCandidate[] = [];
-
   let order = 0;
 
   for (let r = 0; r < BOARD_SIZE; r++) {
@@ -347,7 +320,6 @@ const generateAttackerCandidates = (
       if (!hasStoneNearby(board, r, c)) continue;
 
       const pos: Position = { row: r, col: c };
-
       const counts = getHypotheticalPatternCounts(
         board,
         lineCache,
@@ -355,22 +327,23 @@ const generateAttackerCandidates = (
         c,
         ctx.mover
       );
-
       const currentOrder = order;
       order++;
 
-      if (counts.OPEN_FOUR === 0 && counts.CLOSED_FOUR === 0) {
+      if (
+        counts[PATTERN_INDEX.OPEN_FOUR] === 0 &&
+        counts[PATTERN_INDEX.CLOSED_FOUR] === 0
+      ) {
         continue;
       }
-
       if (!isLegalVcf(ctx, pos, ctx.mover, isRootMove, hash)) {
         continue;
       }
 
       candidates.push({
         pos,
-        openFour: counts.OPEN_FOUR > 0,
-        closedFour: counts.CLOSED_FOUR,
+        openFour: counts[PATTERN_INDEX.OPEN_FOUR] > 0,
+        closedFour: counts[PATTERN_INDEX.CLOSED_FOUR],
         order: currentOrder,
       });
     }
@@ -381,11 +354,9 @@ const generateAttackerCandidates = (
     if (a.openFour !== b.openFour) {
       return a.openFour ? -1 : 1;
     }
-
     if (a.closedFour !== b.closedFour) {
       return b.closedFour - a.closedFour;
     }
-
     return a.order - b.order;
   });
 
@@ -403,11 +374,9 @@ const searchAttacker = (
   if (ctx.nodes > ctx.nodeLimit) {
     return { outcome: 'ABORTED', plyToWin: null, move: null, winKind: null };
   }
-
   if (isVcfTimeUp(ctx)) {
     return { outcome: 'ABORTED', plyToWin: null, move: null, winKind: null };
   }
-
   if (ply > ctx.maxPly) {
     return { outcome: 'FAIL', plyToWin: null, move: null, winKind: null };
   }
@@ -421,10 +390,8 @@ const searchAttacker = (
 
   // 1. 即時勝ち
   const immediateWin = findImmediateWinMove(ctx, ctx.mover, isRoot);
-
   if (immediateWin) {
     ctx.stats.vcf.rootImmediateWins++;
-
     return {
       outcome: 'WIN',
       plyToWin: ply + 1,
@@ -448,7 +415,6 @@ const searchAttacker = (
       candidate.pos,
       ctx.mover
     );
-
     try {
       // 3. 防御側の即時勝ち確認
       //
@@ -460,7 +426,6 @@ const searchAttacker = (
           ctx.opponent,
           false
         );
-
         if (defenderImmediateWin) {
           ctx.stats.vcf.rootDefenderCounterWins++;
           continue;
@@ -479,9 +444,7 @@ const searchAttacker = (
         if (!VCF_FEATURES.VCF_ALLOW_OPEN_FOUR_TERMINAL) {
           continue;
         }
-
         ctx.stats.vcf.rootTerminalOpenFours++;
-
         return {
           outcome: 'WIN',
           plyToWin: ply + 2,
@@ -497,7 +460,6 @@ const searchAttacker = (
         // 防御側がブロックできない（Black 禁手など）なら勝ち
         if (!isLegalVcf(ctx, block, ctx.opponent, false, applied.nextHash)) {
           ctx.stats.vcf.rootIllegalBlockMoves++;
-
           return {
             outcome: 'WIN',
             plyToWin: ply + 2,
@@ -513,10 +475,8 @@ const searchAttacker = (
           block,
           ctx.opponent
         );
-
         try {
           const child = searchAttacker(ctx, ply + 2, blockApplied.nextHash);
-
           if (child.outcome === 'WIN') {
             return {
               outcome: 'WIN',
@@ -525,7 +485,6 @@ const searchAttacker = (
               winKind: child.winKind ?? 'forced',
             };
           }
-
           if (child.outcome === 'ABORTED') {
             return {
               outcome: 'ABORTED',
@@ -534,13 +493,11 @@ const searchAttacker = (
               winKind: null,
             };
           }
-
           // child FAIL → 他の攻撃手を試す。
         } finally {
           undoSearchMove(ctx.state, blockApplied.undo);
         }
       }
-
       // winSquares.length === 0 は四として成立していないため失敗。
     } finally {
       undoSearchMove(ctx.state, applied.undo);
@@ -560,7 +517,6 @@ export const runRootVcf = (
 ): RootVcfResult => {
   const vcf = stats.vcf;
   const start = performance.now();
-
   vcf.rootCalls++;
 
   const makeResult = (
@@ -574,7 +530,6 @@ export const runRootVcf = (
     reason: string | null
   ): RootVcfResult => {
     const timeMs = performance.now() - start;
-
     vcf.rootTimeMs = timeMs;
     vcf.rootBudgetMs = budgetMs;
 
@@ -582,7 +537,6 @@ export const runRootVcf = (
       const moveText = move ? `(${move.row},${move.col})` : 'none';
       const plyText = plyToWin === null ? '-' : String(plyToWin);
       const reasonText = reason === null ? '-' : reason;
-
       console.log(
         `[VCF] root ${outcome} ` +
           `move=${moveText} ` +
@@ -612,7 +566,6 @@ export const runRootVcf = (
   // ------------------------------------------------------------
   // 有効性チェック
   // ------------------------------------------------------------
-
   if (
     !VCF_FEATURES.ENABLE_VCF ||
     !VCF_FEATURES.ENABLE_ROOT_VCF
@@ -620,22 +573,18 @@ export const runRootVcf = (
     vcf.rootDisabled++;
     return makeResult('DISABLED', null, null, 0, 0, 0, 0, 'flag');
   }
-
   if (req.options?.vcfEnabled === false) {
     vcf.rootSkippedByOption++;
     return makeResult('SKIPPED', null, null, 0, 0, 0, 0, 'option');
   }
-
   if (req.stones < VCF_CONFIG.ROOT_VCF_MIN_STONES) {
     vcf.rootSkippedEarlyGame++;
     return makeResult('SKIPPED', null, null, 0, 0, 0, 0, 'early-game');
   }
-
   if (req.maxDepth < VCF_CONFIG.ROOT_VCF_MIN_MAX_DEPTH) {
     vcf.rootSkippedLowDepth++;
     return makeResult('SKIPPED', null, null, 0, 0, 0, 0, 'low-depth');
   }
-
   if (
     req.timeLimitMs !== null &&
     req.timeLimitMs < VCF_CONFIG.ROOT_VCF_MIN_TIME_LIMIT_MS
@@ -666,7 +615,6 @@ export const runRootVcf = (
   // ------------------------------------------------------------
   // VCF 探索本体
   // ------------------------------------------------------------
-
   try {
     const lineCache =
       AI_FEATURES.ENABLE_LINE_CACHE && VCF_FEATURES.VCF_USE_LINE_CACHE
@@ -713,7 +661,6 @@ export const runRootVcf = (
 
     if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_VCF_STATE_AUDIT) {
       const afterStones = countStones(req.board);
-
       if (afterStones !== req.stones) {
         console.warn(
           `[VCF] state audit failed: before=${req.stones}, after=${afterStones}`
@@ -724,7 +671,6 @@ export const runRootVcf = (
     if (result.outcome === 'WIN') {
       if (!result.move) {
         vcf.rootFail++;
-
         return makeResult(
           'FAIL',
           null,
@@ -736,9 +682,7 @@ export const runRootVcf = (
           'no-root-move'
         );
       }
-
       vcf.rootFound++;
-
       return makeResult(
         'WIN',
         result.move,
@@ -753,7 +697,6 @@ export const runRootVcf = (
 
     if (result.outcome === 'ABORTED') {
       vcf.rootAborted++;
-
       return makeResult(
         'ABORTED',
         null,
@@ -767,7 +710,6 @@ export const runRootVcf = (
     }
 
     vcf.rootFail++;
-
     return makeResult(
       'FAIL',
       null,
@@ -780,7 +722,6 @@ export const runRootVcf = (
     );
   } catch (err) {
     vcf.rootError++;
-
     const message = err instanceof Error ? err.message : String(err);
 
     if (DIAGNOSTICS_DEBUG_FLAGS.ENABLE_VCF_VERBOSE_LOG) {

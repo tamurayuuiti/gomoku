@@ -10,7 +10,6 @@
 // 注意:
 //   - 全盤評価（evaluateBoard）は boardEvaluator.ts に委譲する。
 //   - 評価スコア体系・即時評価の優先順位は変更しない。
-
 import type { BoardState, Player } from '../../types/game';
 import type { PatternType, PatternCount, LineCacheState } from '../../types/ai';
 import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
@@ -41,7 +40,6 @@ export const hasStoneNearby = (
   col: number
 ): boolean => {
   const range = AI_CONFIG.SEARCH_RANGE;
-
   for (
     let r = Math.max(0, row - range);
     r <= Math.min(BOARD_SIZE - 1, row + range);
@@ -55,7 +53,6 @@ export const hasStoneNearby = (
       if (board[r][c] !== null) return true;
     }
   }
-
   return false;
 };
 
@@ -83,16 +80,13 @@ export const getLineString = (
   centerChar: string = '1'
 ): string => {
   let s = '';
-
   for (let i = -4; i <= 4; i++) {
     if (i === 0) {
       s += centerChar;
       continue;
     }
-
     const r = row + i * dx;
     const c = col + i * dy;
-
     if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) {
       s += '2';
     } else if (board[r][c] === color) {
@@ -103,7 +97,6 @@ export const getLineString = (
       s += '2';
     }
   }
-
   return s;
 };
 
@@ -214,20 +207,16 @@ export const detectPatternFast = (s: string): PatternType => {
   }
 
   const cached = patternCache.get(s);
-
   if (cached !== undefined) {
     patternCacheHits++;
     return cached;
   }
 
   patternCacheMisses++;
-
   const ptn = detectPattern(s);
-
   if (patternCache.size < PATTERN_CACHE_LIMIT) {
     patternCache.set(s, ptn);
   }
-
   return ptn;
 };
 
@@ -279,23 +268,70 @@ export const detectPatternWithCenter = (
 
   const cache = center === '1' ? center1PatternCache : center2PatternCache;
   const cached = cache.get(line);
-
   if (cached !== undefined) {
     centerPatternHits++;
     return cached;
   }
 
   centerPatternMisses++;
-
   const substituted = line.slice(0, 4) + center + line.slice(5);
   const ptn = detectPatternFast(substituted);
-
   if (cache.size < SEARCH_TUNING_CONFIG.CENTER_PATTERN_CACHE_LIMIT) {
     cache.set(line, ptn);
   }
-
   return ptn;
 };
+
+// ============================================================
+// パターン集計
+// ============================================================
+
+/**
+ * PatternType を固定長配列のインデックスへ変換するマッピング。
+ * PatternCount はこのインデックスで集計する固定長数値配列として扱う。
+ */
+export const PATTERN_INDEX: Record<PatternType, number> = {
+  WIN: 0,
+  OPEN_FOUR: 1,
+  CLOSED_FOUR: 2,
+  OPEN_THREE: 3,
+  CLOSED_THREE: 4,
+  OPEN_TWO: 5,
+  CLOSED_TWO: 6,
+  SINGLE: 7,
+};
+
+/** PatternCount の固定長 */
+export const PATTERN_COUNT_SIZE = 8;
+
+/**
+ * 空のパターン集計配列を生成する。
+ * 固定長数値配列であり、インデックスは PATTERN_INDEX と対応する。
+ */
+export const createEmptyPatternCount = (): PatternCount => {
+  return new Array<number>(PATTERN_COUNT_SIZE).fill(0);
+};
+
+/**
+ * 相手パターン集計から防御側の脅威スコア合計を算出する。
+ * 即時評価には含めない通常評価分支でのみ使用する。
+ */
+export const calcTotalOppScore = (counts: PatternCount): number => {
+  let score = 0;
+  score += counts[PATTERN_INDEX.CLOSED_FOUR] * AI_SCORES.CLOSED_FOUR;
+  score += counts[PATTERN_INDEX.OPEN_THREE] * AI_SCORES.OPEN_THREE;
+  score += counts[PATTERN_INDEX.CLOSED_THREE] * AI_SCORES.CLOSED_THREE;
+  score += counts[PATTERN_INDEX.OPEN_TWO] * AI_SCORES.OPEN_TWO;
+  score += counts[PATTERN_INDEX.CLOSED_TWO] * AI_SCORES.CLOSED_TWO;
+  return score;
+};
+
+// 位置評価のホットパスで再利用するスクラッチバッファ。
+// 評価関数は同期的・単一スレッドで呼び出され、戻り値はスカラ―のため、
+// バッファを再利用しても評価結果に影響しない。
+const scratchAttackCounts = createEmptyPatternCount();
+const scratchOppBeforeCounts = createEmptyPatternCount();
+const scratchOppAfterCounts = createEmptyPatternCount();
 
 // ============================================================
 // 位置評価
@@ -315,7 +351,6 @@ const computePositionBonus = (row: number, col: number): number => {
   const distance = Math.sqrt(
     (row - BOARD_CENTER) ** 2 + (col - BOARD_CENTER) ** 2
   );
-
   return (1 - distance / MAX_CENTER_DISTANCE) * POSITION_BONUS_EPSILON;
 };
 
@@ -338,12 +373,10 @@ const computeShapeBonusFromBoard = (
   if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
 
   let bonus = 0;
-
   for (const [dx, dy] of DIRECTIONS) {
     for (const dist of [1, 2]) {
       const r1 = row + dx * dist;
       const c1 = col + dy * dist;
-
       if (
         r1 >= 0 &&
         r1 < BOARD_SIZE &&
@@ -353,10 +386,8 @@ const computeShapeBonusFromBoard = (
       ) {
         bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
       }
-
       const r2 = row - dx * dist;
       const c2 = col - dy * dist;
-
       if (
         r2 >= 0 &&
         r2 < BOARD_SIZE &&
@@ -368,7 +399,6 @@ const computeShapeBonusFromBoard = (
       }
     }
   }
-
   return Math.min(bonus, EVAL_CONFIG.SHAPE_MAX_BONUS);
 };
 
@@ -386,34 +416,20 @@ export const computeShapeBonusFromLines = (
   if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
 
   let bonus = 0;
-
   for (let d = 0; d < DIRECTIONS.length; d++) {
     const line = ownLineCaches[d][r][c];
-
     // index 2 = 距離-2, index 3 = 距離-1, index 5 = 距離+1, index 6 = 距離+2
     if (line[2] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
     if (line[3] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
     if (line[5] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
     if (line[6] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
   }
-
   return Math.min(bonus, EVAL_CONFIG.SHAPE_MAX_BONUS);
 };
 
 // ============================================================
 // 位置評価本体
 // ============================================================
-
-export const createEmptyPatternCount = (): PatternCount => ({
-  WIN: 0,
-  OPEN_FOUR: 0,
-  CLOSED_FOUR: 0,
-  OPEN_THREE: 0,
-  CLOSED_THREE: 0,
-  OPEN_TWO: 0,
-  CLOSED_TWO: 0,
-  SINGLE: 0,
-});
 
 /**
  * 指定位置への着手価値を playerColor の視点で返す（位置補正なしの素点）。
@@ -432,95 +448,87 @@ const evaluatePositionRaw = (
 ): number => {
   const opponentColor = opponentOf(playerColor);
 
-  const attackCounts = createEmptyPatternCount();
-  const oppBeforeCounts = createEmptyPatternCount();
-  const oppAfterCounts = createEmptyPatternCount();
+  scratchAttackCounts.fill(0);
+  scratchOppBeforeCounts.fill(0);
+  scratchOppAfterCounts.fill(0);
 
   for (const [dx, dy] of DIRECTIONS) {
     const attackPtn = detectPatternFast(
       getLineString(board, row, col, dx, dy, playerColor, '1')
     );
-    attackCounts[attackPtn]++;
+    scratchAttackCounts[PATTERN_INDEX[attackPtn]]++;
 
     const beforePtn = detectPatternFast(
       getLineString(board, row, col, dx, dy, opponentColor, '1')
     );
-    oppBeforeCounts[beforePtn]++;
+    scratchOppBeforeCounts[PATTERN_INDEX[beforePtn]]++;
 
     const afterPtn = detectPatternFast(
       getLineString(board, row, col, dx, dy, opponentColor, '2')
     );
-    oppAfterCounts[afterPtn]++;
+    scratchOppAfterCounts[PATTERN_INDEX[afterPtn]]++;
   }
 
   // --- 即時評価 ---
-  if (attackCounts.WIN > 0) return AI_SCORES.WIN;
-
-  if (oppBeforeCounts.WIN > 0 && oppAfterCounts.WIN === 0) {
+  if (scratchAttackCounts[PATTERN_INDEX.WIN] > 0) return AI_SCORES.WIN;
+  if (
+    scratchOppBeforeCounts[PATTERN_INDEX.WIN] > 0 &&
+    scratchOppAfterCounts[PATTERN_INDEX.WIN] === 0
+  ) {
     return AI_SCORES.DEFEND_WIN;
   }
-
-  if (attackCounts.OPEN_FOUR > 0) return AI_SCORES.OPEN_FOUR;
-
-  if (attackCounts.CLOSED_FOUR >= 2) return AI_SCORES.DOUBLE_FOUR;
-
-  if (attackCounts.CLOSED_FOUR >= 1 && attackCounts.OPEN_THREE >= 1) {
+  if (scratchAttackCounts[PATTERN_INDEX.OPEN_FOUR] > 0) return AI_SCORES.OPEN_FOUR;
+  if (scratchAttackCounts[PATTERN_INDEX.CLOSED_FOUR] >= 2) return AI_SCORES.DOUBLE_FOUR;
+  if (
+    scratchAttackCounts[PATTERN_INDEX.CLOSED_FOUR] >= 1 &&
+    scratchAttackCounts[PATTERN_INDEX.OPEN_THREE] >= 1
+  ) {
     return AI_SCORES.FOUR_THREE;
   }
-
   if (
-    oppBeforeCounts.OPEN_FOUR > 0 &&
-    oppAfterCounts.OPEN_FOUR < oppBeforeCounts.OPEN_FOUR
+    scratchOppBeforeCounts[PATTERN_INDEX.OPEN_FOUR] > 0 &&
+    scratchOppAfterCounts[PATTERN_INDEX.OPEN_FOUR] <
+      scratchOppBeforeCounts[PATTERN_INDEX.OPEN_FOUR]
   ) {
     return AI_SCORES.OPEN_FOUR;
   }
-
-  if (oppBeforeCounts.CLOSED_FOUR >= 2 && oppAfterCounts.CLOSED_FOUR < 2) {
+  if (
+    scratchOppBeforeCounts[PATTERN_INDEX.CLOSED_FOUR] >= 2 &&
+    scratchOppAfterCounts[PATTERN_INDEX.CLOSED_FOUR] < 2
+  ) {
     return AI_SCORES.DOUBLE_FOUR;
   }
-
   if (
-    oppBeforeCounts.CLOSED_FOUR >= 1 &&
-    oppBeforeCounts.OPEN_THREE >= 1 &&
+    scratchOppBeforeCounts[PATTERN_INDEX.CLOSED_FOUR] >= 1 &&
+    scratchOppBeforeCounts[PATTERN_INDEX.OPEN_THREE] >= 1 &&
     !(
-      oppAfterCounts.CLOSED_FOUR >= 1 &&
-      oppAfterCounts.OPEN_THREE >= 1
+      scratchOppAfterCounts[PATTERN_INDEX.CLOSED_FOUR] >= 1 &&
+      scratchOppAfterCounts[PATTERN_INDEX.OPEN_THREE] >= 1
     )
   ) {
     return AI_SCORES.FOUR_THREE;
   }
-
-  if (attackCounts.OPEN_THREE >= 2) return AI_SCORES.DOUBLE_THREE;
-
-  if (oppBeforeCounts.OPEN_THREE >= 2 && oppAfterCounts.OPEN_THREE < 2) {
+  if (scratchAttackCounts[PATTERN_INDEX.OPEN_THREE] >= 2) return AI_SCORES.DOUBLE_THREE;
+  if (
+    scratchOppBeforeCounts[PATTERN_INDEX.OPEN_THREE] >= 2 &&
+    scratchOppAfterCounts[PATTERN_INDEX.OPEN_THREE] < 2
+  ) {
     return AI_SCORES.DOUBLE_THREE;
   }
 
   // --- 通常評価 ---
   let attackScore = 0;
-
-  attackScore += attackCounts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
-  attackScore += attackCounts.OPEN_THREE * AI_SCORES.OPEN_THREE;
-  attackScore += attackCounts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
-  attackScore += attackCounts.OPEN_TWO * AI_SCORES.OPEN_TWO;
-  attackScore += attackCounts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
-  attackScore += attackCounts.SINGLE * AI_SCORES.SINGLE;
-
-  const calcTotalOppScore = (counts: PatternCount): number => {
-    let score = 0;
-
-    score += counts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
-    score += counts.OPEN_THREE * AI_SCORES.OPEN_THREE;
-    score += counts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
-    score += counts.OPEN_TWO * AI_SCORES.OPEN_TWO;
-    score += counts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
-
-    return score;
-  };
+  attackScore += scratchAttackCounts[PATTERN_INDEX.CLOSED_FOUR] * AI_SCORES.CLOSED_FOUR;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.OPEN_THREE] * AI_SCORES.OPEN_THREE;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.CLOSED_THREE] * AI_SCORES.CLOSED_THREE;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.OPEN_TWO] * AI_SCORES.OPEN_TWO;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.CLOSED_TWO] * AI_SCORES.CLOSED_TWO;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.SINGLE] * AI_SCORES.SINGLE;
 
   const defenseScore = Math.max(
     0,
-    calcTotalOppScore(oppBeforeCounts) - calcTotalOppScore(oppAfterCounts)
+    calcTotalOppScore(scratchOppBeforeCounts) -
+      calcTotalOppScore(scratchOppAfterCounts)
   );
 
   const shapeBonus = computeShapeBonusFromBoard(board, row, col, playerColor);
@@ -560,107 +568,97 @@ export const evaluatePositionWithCache = (
   playerColor: Player
 ): number => {
   const opponentColor = opponentOf(playerColor);
-
   const ownCaches = lineCache.caches[playerColor];
   const oppCaches = lineCache.caches[opponentColor];
 
-  const attackCounts = createEmptyPatternCount();
-  const oppBeforeCounts = createEmptyPatternCount();
-  const oppAfterCounts = createEmptyPatternCount();
+  scratchAttackCounts.fill(0);
+  scratchOppBeforeCounts.fill(0);
+  scratchOppAfterCounts.fill(0);
 
   for (let d = 0; d < DIRECTIONS.length; d++) {
     const ownLine = ownCaches[d][row][col];
     const attackPtn = detectPatternWithCenter(ownLine, '1');
-    attackCounts[attackPtn]++;
+    scratchAttackCounts[PATTERN_INDEX[attackPtn]]++;
 
     const oppLine = oppCaches[d][row][col];
     const beforePtn = detectPatternWithCenter(oppLine, '1');
-    oppBeforeCounts[beforePtn]++;
+    scratchOppBeforeCounts[PATTERN_INDEX[beforePtn]]++;
 
     const afterPtn = detectPatternWithCenter(oppLine, '2');
-    oppAfterCounts[afterPtn]++;
+    scratchOppAfterCounts[PATTERN_INDEX[afterPtn]]++;
   }
 
   // --- 即時評価（evaluatePosition と同一） ---
-  if (attackCounts.WIN > 0) {
+  if (scratchAttackCounts[PATTERN_INDEX.WIN] > 0) {
     return AI_SCORES.WIN + computePositionBonus(row, col);
   }
-
-  if (oppBeforeCounts.WIN > 0 && oppAfterCounts.WIN === 0) {
+  if (
+    scratchOppBeforeCounts[PATTERN_INDEX.WIN] > 0 &&
+    scratchOppAfterCounts[PATTERN_INDEX.WIN] === 0
+  ) {
     return AI_SCORES.DEFEND_WIN + computePositionBonus(row, col);
   }
-
-  if (attackCounts.OPEN_FOUR > 0) {
+  if (scratchAttackCounts[PATTERN_INDEX.OPEN_FOUR] > 0) {
     return AI_SCORES.OPEN_FOUR + computePositionBonus(row, col);
   }
-
-  if (attackCounts.CLOSED_FOUR >= 2) {
+  if (scratchAttackCounts[PATTERN_INDEX.CLOSED_FOUR] >= 2) {
     return AI_SCORES.DOUBLE_FOUR + computePositionBonus(row, col);
   }
-
-  if (attackCounts.CLOSED_FOUR >= 1 && attackCounts.OPEN_THREE >= 1) {
+  if (
+    scratchAttackCounts[PATTERN_INDEX.CLOSED_FOUR] >= 1 &&
+    scratchAttackCounts[PATTERN_INDEX.OPEN_THREE] >= 1
+  ) {
     return AI_SCORES.FOUR_THREE + computePositionBonus(row, col);
   }
-
   if (
-    oppBeforeCounts.OPEN_FOUR > 0 &&
-    oppAfterCounts.OPEN_FOUR < oppBeforeCounts.OPEN_FOUR
+    scratchOppBeforeCounts[PATTERN_INDEX.OPEN_FOUR] > 0 &&
+    scratchOppAfterCounts[PATTERN_INDEX.OPEN_FOUR] <
+      scratchOppBeforeCounts[PATTERN_INDEX.OPEN_FOUR]
   ) {
     return AI_SCORES.OPEN_FOUR + computePositionBonus(row, col);
   }
-
-  if (oppBeforeCounts.CLOSED_FOUR >= 2 && oppAfterCounts.CLOSED_FOUR < 2) {
+  if (
+    scratchOppBeforeCounts[PATTERN_INDEX.CLOSED_FOUR] >= 2 &&
+    scratchOppAfterCounts[PATTERN_INDEX.CLOSED_FOUR] < 2
+  ) {
     return AI_SCORES.DOUBLE_FOUR + computePositionBonus(row, col);
   }
-
   if (
-    oppBeforeCounts.CLOSED_FOUR >= 1 &&
-    oppBeforeCounts.OPEN_THREE >= 1 &&
+    scratchOppBeforeCounts[PATTERN_INDEX.CLOSED_FOUR] >= 1 &&
+    scratchOppBeforeCounts[PATTERN_INDEX.OPEN_THREE] >= 1 &&
     !(
-      oppAfterCounts.CLOSED_FOUR >= 1 &&
-      oppAfterCounts.OPEN_THREE >= 1
+      scratchOppAfterCounts[PATTERN_INDEX.CLOSED_FOUR] >= 1 &&
+      scratchOppAfterCounts[PATTERN_INDEX.OPEN_THREE] >= 1
     )
   ) {
     return AI_SCORES.FOUR_THREE + computePositionBonus(row, col);
   }
-
-  if (attackCounts.OPEN_THREE >= 2) {
+  if (scratchAttackCounts[PATTERN_INDEX.OPEN_THREE] >= 2) {
     return AI_SCORES.DOUBLE_THREE + computePositionBonus(row, col);
   }
-
-  if (oppBeforeCounts.OPEN_THREE >= 2 && oppAfterCounts.OPEN_THREE < 2) {
+  if (
+    scratchOppBeforeCounts[PATTERN_INDEX.OPEN_THREE] >= 2 &&
+    scratchOppAfterCounts[PATTERN_INDEX.OPEN_THREE] < 2
+  ) {
     return AI_SCORES.DOUBLE_THREE + computePositionBonus(row, col);
   }
 
   // --- 通常評価 ---
   let attackScore = 0;
-
-  attackScore += attackCounts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
-  attackScore += attackCounts.OPEN_THREE * AI_SCORES.OPEN_THREE;
-  attackScore += attackCounts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
-  attackScore += attackCounts.OPEN_TWO * AI_SCORES.OPEN_TWO;
-  attackScore += attackCounts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
-  attackScore += attackCounts.SINGLE * AI_SCORES.SINGLE;
-
-  const calcTotalOppScore = (counts: PatternCount): number => {
-    let score = 0;
-
-    score += counts.CLOSED_FOUR * AI_SCORES.CLOSED_FOUR;
-    score += counts.OPEN_THREE * AI_SCORES.OPEN_THREE;
-    score += counts.CLOSED_THREE * AI_SCORES.CLOSED_THREE;
-    score += counts.OPEN_TWO * AI_SCORES.OPEN_TWO;
-    score += counts.CLOSED_TWO * AI_SCORES.CLOSED_TWO;
-
-    return score;
-  };
+  attackScore += scratchAttackCounts[PATTERN_INDEX.CLOSED_FOUR] * AI_SCORES.CLOSED_FOUR;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.OPEN_THREE] * AI_SCORES.OPEN_THREE;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.CLOSED_THREE] * AI_SCORES.CLOSED_THREE;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.OPEN_TWO] * AI_SCORES.OPEN_TWO;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.CLOSED_TWO] * AI_SCORES.CLOSED_TWO;
+  attackScore += scratchAttackCounts[PATTERN_INDEX.SINGLE] * AI_SCORES.SINGLE;
 
   const defenseScore = Math.max(
     0,
-    calcTotalOppScore(oppBeforeCounts) - calcTotalOppScore(oppAfterCounts)
+    calcTotalOppScore(scratchOppBeforeCounts) -
+      calcTotalOppScore(scratchOppAfterCounts)
   );
 
   const raw = attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore;
-
   const shapeBonus = computeShapeBonusFromLines(ownCaches, row, col);
 
   return raw + computePositionBonus(row, col) + shapeBonus;

@@ -10,7 +10,6 @@
 // 注意:
 //   - 既存評価値・候補手 tier・LMR / PVS の意味は変更しない。
 //   - forbiddenRuleEnabled === false の場合、Black 禁手判定を一切行わない。
-
 import type { BoardState, Player, Position } from '../../types/game';
 import type {
   CandidateSetState,
@@ -25,7 +24,7 @@ import {
   THREAT_FORBIDDEN_CONFIG,
   THREAT_FORBIDDEN_FEATURES,
 } from './constants';
-import { hasStoneNearby, opponentOf } from './evaluator';
+import { hasStoneNearby, opponentOf, PATTERN_INDEX } from './evaluator';
 import {
   wouldWin,
   isHypotheticalLegal,
@@ -47,7 +46,6 @@ export interface ForcedMoveGenerationRequest {
   currentHash: bigint;
   isRoot: boolean;
   depth: number;
-
   /** 禁手ルールが有効かどうか。false の場合、Black 禁手判定を一切行わない。 */
   forbiddenRuleEnabled: boolean;
 }
@@ -107,11 +105,9 @@ export const isEssentialForcedCategory = (
 
 const createByCategory = (): Record<ForcedCategory, Position[]> => {
   const result = {} as Record<ForcedCategory, Position[]>;
-
   for (const category of FORCED_CATEGORIES) {
     result[category] = [];
   }
-
   return result;
 };
 
@@ -161,11 +157,9 @@ export const generateForcedMoveList = (
   ) {
     return empty;
   }
-
   if (!req.isRoot && !THREAT_FORBIDDEN_FEATURES.ENABLE_INTERNAL_FORCED_LIST) {
     return empty;
   }
-
   if (
     !req.isRoot &&
     req.depth > THREAT_FORBIDDEN_CONFIG.INTERNAL_FORCED_MAX_DEPTH
@@ -174,10 +168,8 @@ export const generateForcedMoveList = (
   }
 
   const start = performance.now();
-
   if (stats) {
     stats.threat.modelCalls++;
-
     if (!req.isRoot) {
       stats.threat.internalForcedCalls++;
     }
@@ -190,15 +182,12 @@ export const generateForcedMoveList = (
     lineCache,
     forbiddenRuleEnabled,
   } = req;
-
   const opponent = opponentOf(mover);
-
   const moveMap = new Map<number, ForcedMove>();
 
   const addCategory = (pos: Position, category: ForcedCategory): void => {
     const key = toKey(pos);
     const existing = moveMap.get(key);
-
     if (!existing) {
       moveMap.set(key, {
         pos: { row: pos.row, col: pos.col },
@@ -209,11 +198,9 @@ export const generateForcedMoveList = (
       });
       return;
     }
-
     if (!existing.categories.includes(category)) {
       existing.categories.push(category);
     }
-
     existing.priority = higherPriority(existing.priority, category);
   };
 
@@ -223,13 +210,11 @@ export const generateForcedMoveList = (
    */
   const processWin = (row: number, col: number): void => {
     const pos: Position = { row, col };
-
     if (!isUiLegalMove(board, pos, forbiddenMoves)) return;
 
     if (wouldWin(board, pos, mover)) {
       addCategory(pos, 'OWN_WIN');
     }
-
     if (wouldWin(board, pos, opponent)) {
       // 自分がその受け場所に着手できない場合、forced move としては除外する。
       // ただし mover が Black で、かつ自分の勝ちにもなっている場合は
@@ -248,7 +233,6 @@ export const generateForcedMoveList = (
    */
   const processPatterns = (row: number, col: number): void => {
     const pos: Position = { row, col };
-
     if (!isUiLegalMove(board, pos, forbiddenMoves)) return;
 
     // --- 自分の四 / 活四 ---
@@ -259,16 +243,17 @@ export const generateForcedMoveList = (
       col,
       mover
     );
-
-    if (ownCounts.OPEN_FOUR > 0 || ownCounts.CLOSED_FOUR > 0) {
+    if (
+      ownCounts[PATTERN_INDEX.OPEN_FOUR] > 0 ||
+      ownCounts[PATTERN_INDEX.CLOSED_FOUR] > 0
+    ) {
       if (
         isMoverLegal(board, pos, mover, forbiddenMoves, forbiddenRuleEnabled)
       ) {
-        if (ownCounts.OPEN_FOUR > 0) {
+        if (ownCounts[PATTERN_INDEX.OPEN_FOUR] > 0) {
           addCategory(pos, 'OWN_OPEN_FOUR');
         }
-
-        if (ownCounts.CLOSED_FOUR > 0) {
+        if (ownCounts[PATTERN_INDEX.CLOSED_FOUR] > 0) {
           addCategory(pos, 'OWN_FOUR');
         }
       }
@@ -282,13 +267,12 @@ export const generateForcedMoveList = (
       col,
       opponent
     );
-
     const oppHasFourThreat =
-      oppCounts.OPEN_FOUR > 0 || oppCounts.CLOSED_FOUR > 0;
-
+      oppCounts[PATTERN_INDEX.OPEN_FOUR] > 0 ||
+      oppCounts[PATTERN_INDEX.CLOSED_FOUR] > 0;
     const oppHasOpenThreeThreat =
       THREAT_FORBIDDEN_FEATURES.ENABLE_OPEN_THREE_DEFENSE &&
-      oppCounts.OPEN_THREE > 0;
+      oppCounts[PATTERN_INDEX.OPEN_THREE] > 0;
 
     if (!oppHasFourThreat && !oppHasOpenThreeThreat) return;
 
@@ -305,28 +289,22 @@ export const generateForcedMoveList = (
       return;
     }
 
-    if (oppCounts.OPEN_FOUR > 0) {
+    if (oppCounts[PATTERN_INDEX.OPEN_FOUR] > 0) {
       addCategory(pos, 'BLOCK_OPEN_FOUR');
     }
-
-    if (oppCounts.CLOSED_FOUR > 0) {
+    if (oppCounts[PATTERN_INDEX.CLOSED_FOUR] > 0) {
       addCategory(pos, 'BLOCK_FOUR');
     }
-
     if (oppHasOpenThreeThreat) {
       addCategory(pos, 'OPEN_THREE_DEFENSE');
     }
   };
 
   const patternKeys = new Set<number>();
-
   const processPatternCandidate = (row: number, col: number): void => {
     const key = row * BOARD_SIZE + col;
-
     if (patternKeys.has(key)) return;
-
     patternKeys.add(key);
-
     processWin(row, col);
     processPatterns(row, col);
   };
@@ -344,21 +322,16 @@ export const generateForcedMoveList = (
   //   CandidateSet があればその中から上限件数だけ走査する。
   //   CandidateSet がなければ近傍候補を走査する。
   // ------------------------------------------------------------
-
   const internalLimit =
     THREAT_FORBIDDEN_CONFIG.INTERNAL_FORCED_MAX_CANDIDATES;
-
   let scanned = 0;
 
   if (req.candidateSet) {
     for (const idx of req.candidateSet.candidates) {
       if (!req.isRoot && scanned >= internalLimit) break;
-
       const r = Math.floor(idx / BOARD_SIZE);
       const c = idx % BOARD_SIZE;
-
       if (board[r][c] !== null) continue;
-
       processPatternCandidate(r, c);
       scanned++;
     }
@@ -366,10 +339,8 @@ export const generateForcedMoveList = (
     outer: for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
         if (!req.isRoot && scanned >= internalLimit) break outer;
-
         if (board[r][c] !== null) continue;
         if (!hasStoneNearby(board, r, c)) continue;
-
         processPatternCandidate(r, c);
         scanned++;
       }
@@ -380,11 +351,8 @@ export const generateForcedMoveList = (
     for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
         if (board[r][c] !== null) continue;
-
         const key = r * BOARD_SIZE + c;
-
         if (patternKeys.has(key)) continue;
-
         // candidateSet 外でも即勝ち / 即受けだけ拾う。
         processWin(r, c);
       }
@@ -394,21 +362,16 @@ export const generateForcedMoveList = (
   // ------------------------------------------------------------
   // 結果構築
   // ------------------------------------------------------------
-
   const moves = Array.from(moveMap.values());
-
   moves.sort((a, b) => {
     const rankA = getForcedPriorityRank(a.priority);
     const rankB = getForcedPriorityRank(b.priority);
-
     if (rankA !== rankB) return rankA - rankB;
     if (a.pos.row !== b.pos.row) return a.pos.row - b.pos.row;
-
     return a.pos.col - b.pos.col;
   });
 
   const byCategory = createByCategory();
-
   for (const move of moves) {
     for (const category of move.categories) {
       byCategory[category].push(move.pos);
@@ -450,7 +413,6 @@ export const generateForcedMoveList = (
     stats.threat.modelTimeMs += performance.now() - start;
     stats.threat.forcedGenerated += 1;
     stats.threat.forcedMovesTotal += moves.length;
-
     stats.threat.ownWinMoves += byCategory.OWN_WIN.length;
     stats.threat.blockWinMoves += byCategory.BLOCK_WIN.length;
     stats.threat.ownOpenFourMoves += byCategory.OWN_OPEN_FOUR.length;
@@ -459,7 +421,6 @@ export const generateForcedMoveList = (
     stats.threat.blockFourMoves += byCategory.BLOCK_FOUR.length;
     stats.threat.openThreeDefenseMoves +=
       byCategory.OPEN_THREE_DEFENSE.length;
-
     if (nodeKind === 'tactical') {
       stats.threat.tacticalNodes++;
     } else {
