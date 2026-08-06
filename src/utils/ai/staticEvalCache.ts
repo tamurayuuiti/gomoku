@@ -9,20 +9,16 @@
 // 注意:
 //   - key = Zobrist hash ^ playerSalt ^ forbiddenSalt ^ candidateSetSalt ^ staticEvalVersion
 //   - forbiddenMoves は思考中に固定のため、思考単位キャッシュであれば十分。
-//   - eviction 統計は削除エントリ数として記録する。
+//   - 内部構造は固定サイズ Typed Array による直接マッピング方式ハッシュテーブル。
+//     異なるキーの衝突時は無条件で上書きする（depth による優先度がないため）。
 
 import type { Player } from '../../types/game';
 import { BOARD_SIZE } from '../gameLogic';
-import { SEARCH_TUNING_CONFIG } from './constants';
+import { SEARCH_TUNING_CONFIG, SEC_TABLE_SIZE } from './constants';
 
 // ============================================================
 // 公開型
 // ============================================================
-
-export interface StaticEvalCacheOptions {
-  limit: number;
-  evictionRatio: number;
-}
 
 export interface StaticEvalCacheStats {
   lookups: number;
@@ -55,6 +51,20 @@ const PLAYER_SALT_BLACK = 0x9e3779b97f4a7c15n;
 const PLAYER_SALT_WHITE = 0xbf58476d1ce4e5b9n;
 const CANDIDATE_SET_SALT = 0x94d049bb133111ebn;
 
+/** テーブルインデックス算出用のビットマスク */
+const SEC_INDEX_MASK = SEC_TABLE_SIZE - 1;
+
+/** インデックス計算用の bigint マスク（生成コスト回避のため事前計算） */
+const SEC_INDEX_MASK_BIGINT = BigInt(SEC_INDEX_MASK);
+
+/** bigint の上位 32bit を数値として取り出す */
+const toHigh = (hash: bigint): number =>
+  Number((hash >> 32n) & 0xFFFFFFFFn);
+
+/** bigint の下位 32bit を数値として取り出す */
+const toLow = (hash: bigint): number =>
+  Number(hash & 0xFFFFFFFFn);
+
 /**
  * forbiddenMoves 状態を簡易的に salt 化する。
  *
@@ -63,16 +73,13 @@ const CANDIDATE_SET_SALT = 0x94d049bb133111ebn;
  */
 const computeForbiddenSalt = (forbiddenMoves: boolean[][]): bigint => {
   let h = 0xcbf29ce484222325n;
-
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
       if (!forbiddenMoves[r][c]) continue;
-
       h ^= BigInt(r * BOARD_SIZE + c + 1);
       h = (h * 0x100000001b3n) & MASK64;
     }
   }
-
   return h;
 };
 
@@ -83,12 +90,21 @@ const computeForbiddenSalt = (forbiddenMoves: boolean[][]): bigint => {
 /**
  * Static Eval Cache を生成する。
  * 1回の calculateNextMove（思考）ごとに新規生成する想定。
+ *
+ * 内部に固定サイズ Typed Array ハッシュテーブルを確保する。
+ * テーブルサイズは SEC_TABLE_SIZE で確定している。
  */
 export const createStaticEvalCache = (
-  options: StaticEvalCacheOptions,
   source: StaticEvalCacheSaltSource
 ): StaticEvalCache => {
-  const table = new Map<bigint, number>();
+  // --- 固定サイズ Typed Array ---
+  const keyHigh = new Uint32Array(SEC_TABLE_SIZE);
+  const keyLow = new Uint32Array(SEC_TABLE_SIZE);
+  const occupied = new Uint8Array(SEC_TABLE_SIZE);
+  const values = new Float64Array(SEC_TABLE_SIZE);
+
+  /** 現在の使用エントリ数 */
+  let entryCount = 0;
 
   const stats: StaticEvalCacheStats = {
     lookups: 0,
@@ -100,15 +116,13 @@ export const createStaticEvalCache = (
     maxSize: 0,
   };
 
+  // --- キー salt の計算 ---
   const playerSalt =
     source.aiPlayer === 'Black' ? PLAYER_SALT_BLACK : PLAYER_SALT_WHITE;
-
   const forbiddenSalt = computeForbiddenSalt(source.forbiddenMoves);
-
   const candidateSetSalt = source.candidateSetEnabled
     ? CANDIDATE_SET_SALT
     : 0n;
-
   const keySalt =
     (playerSalt ^
       forbiddenSalt ^
@@ -116,30 +130,8 @@ export const createStaticEvalCache = (
       SEARCH_TUNING_CONFIG.STATIC_EVAL_VERSION) &
     MASK64;
 
+  /** Zobrist hash に salt を合成してキャッシュキーを生成する */
   const makeKey = (hash: bigint): bigint => (hash ^ keySalt) & MASK64;
-
-  const evictIfNeeded = (): void => {
-    if (options.limit <= 0) return;
-    if (table.size < options.limit) return;
-
-    const deleteCount = Math.max(
-      1,
-      Math.floor(table.size * options.evictionRatio)
-    );
-
-    let deleted = 0;
-
-    // Map は挿入順を保持するため、先頭から古いエントリを削除できる。
-    for (const key of table.keys()) {
-      table.delete(key);
-      deleted++;
-      if (deleted >= deleteCount) break;
-    }
-
-    // evictions は削除されたエントリ数として記録する。
-    stats.evictions += deleted;
-    stats.size = table.size;
-  };
 
   return {
     stats,
@@ -148,40 +140,61 @@ export const createStaticEvalCache = (
       stats.lookups++;
 
       const key = makeKey(hash);
-      const value = table.get(key);
+      const index = Number(key & SEC_INDEX_MASK_BIGINT);
 
-      if (value !== undefined) {
-        stats.hits++;
-        return value;
+      // 空スロット
+      if (occupied[index] === 0) {
+        stats.misses++;
+        return undefined;
       }
 
-      stats.misses++;
-      return undefined;
+      // キー不一致（ハッシュ衝突）
+      if (
+        keyHigh[index] !== toHigh(key) ||
+        keyLow[index] !== toLow(key)
+      ) {
+        stats.misses++;
+        return undefined;
+      }
+
+      stats.hits++;
+      return values[index];
     },
 
     store(hash: bigint, score: number): void {
-      if (options.limit <= 0) return;
-
       const key = makeKey(hash);
+      const index = Number(key & SEC_INDEX_MASK_BIGINT);
+      const high = toHigh(key);
+      const low = toLow(key);
 
-      // 既存エントリの更新は insertion order を刷新する。
-      if (table.has(key)) {
-        table.delete(key);
-        table.set(key, score);
-        stats.size = table.size;
+      // --- 空スロット: 新規格納 ---
+      if (occupied[index] === 0) {
+        keyHigh[index] = high;
+        keyLow[index] = low;
+        occupied[index] = 1;
+        values[index] = score;
+        entryCount++;
+        stats.stores++;
+        stats.size = entryCount;
+        if (entryCount > stats.maxSize) {
+          stats.maxSize = entryCount;
+        }
         return;
       }
 
-      evictIfNeeded();
-
-      table.set(key, score);
-
-      stats.stores++;
-      stats.size = table.size;
-
-      if (stats.size > stats.maxSize) {
-        stats.maxSize = stats.size;
+      // --- 同一キー: スコア上書き（stores は加算しない） ---
+      if (keyHigh[index] === high && keyLow[index] === low) {
+        values[index] = score;
+        return;
       }
+
+      // --- 異なるキー: 無条件上書き ---
+      stats.evictions++;
+      keyHigh[index] = high;
+      keyLow[index] = low;
+      values[index] = score;
+      // entryCount は不変（スロット数は変わらない）
+      stats.size = entryCount;
     },
   };
 };

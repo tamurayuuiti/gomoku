@@ -105,18 +105,20 @@ export const EVAL_CONFIG = {
 // ============================================================
 
 export const TT_CONFIG = {
-  /** 置換表の最大エントリ数 */
-  MAX_ENTRIES: 200_000,
-
   /**
    * Aspiration Window の初期幅。
    * 現在、Aspiration Window 自体が master OFF のため、実運用では inactive。
    */
   ASPIRATION_WINDOW: 100,
-
-  /** TT oldest eviction 時に削除する割合 */
-  EVICTION_RATIO: 0.2,
 } as const;
+
+/**
+ * TranspositionTable の固定テーブルサイズ（2^18 = 262,144）。
+ * 最大 200,000 エントリを保持できる 2 の累乗として設定している。
+ * 直接マッピング方式のハッシュテーブルとして使用するため、
+ * 2 の累乗であることでインデックス計算をビット AND に限定できる。
+ */
+export const TT_TABLE_SIZE = 262_144;
 
 // ============================================================
 // 本番 Feature Flags
@@ -152,9 +154,6 @@ export const AI_FEATURES = {
    * 有効化すると SEARCH_TUNING_FEATURES 側の Aspiration 関連設定が active になる。
    */
   ENABLE_ASPIRATION_WINDOW: false,
-
-  /** TT 上限到達時の oldest eviction */
-  ENABLE_TT_OLDEST_EVICTION: true,
 } as const;
 
 // ============================================================
@@ -272,8 +271,6 @@ export type PvsNullMode = 'baseline' | 'quiet_only' | 'off';
  * inactive / experimental flag に依存する項目はコメントで明示する。
  */
 export const SEARCH_TUNING_CONFIG: {
-  STATIC_EVAL_CACHE_LIMIT: number;
-  STATIC_EVAL_CACHE_EVICTION_RATIO: number;
   STATIC_EVAL_VERSION: bigint;
   /** inactive when ENABLE_ASPIRATION_WINDOW = false */
   ASPIRATION_WINDOW_OVERRIDE: number;
@@ -288,9 +285,6 @@ export const SEARCH_TUNING_CONFIG: {
   /** used only when ENABLE_CONDITIONAL_ROOT_PVS = true */
   ROOT_PVS_MIN_DEPTH: number;
 } = {
-  STATIC_EVAL_CACHE_LIMIT: 50_000,
-  STATIC_EVAL_CACHE_EVICTION_RATIO: 0.2,
-
   /**
    * Static Eval Cache の世代。
    * 評価関数変更時はこの値を増やす。
@@ -311,6 +305,13 @@ export const SEARCH_TUNING_CONFIG: {
   // Conditional root PVS が有効な場合のみ使用（experimental / 既定 OFF）。
   ROOT_PVS_MIN_DEPTH: 3,
 };
+
+/**
+ * StaticEvalCache の固定テーブルサイズ（2^16 = 65,536）。
+ * 最大 50,000 エントリを保持できる 2 の累乗として設定している。
+ * 直接マッピング方式のハッシュテーブルとして使用する。
+ */
+export const SEC_TABLE_SIZE = 65_536;
 
 // ============================================================
 // Threat Model / Forbidden Flags

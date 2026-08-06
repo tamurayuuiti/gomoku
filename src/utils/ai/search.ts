@@ -274,17 +274,11 @@ const createPerMoveStaticEvalCache = (
   aiPlayer: Player
 ): StaticEvalCache | null => {
   if (!SEARCH_TUNING_FEATURES.ENABLE_STATIC_EVAL_CACHE) return null;
-  return createStaticEvalCache(
-    {
-      limit: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_LIMIT,
-      evictionRatio: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_EVICTION_RATIO,
-    },
-    {
-      aiPlayer,
-      forbiddenMoves,
-      candidateSetEnabled: AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES,
-    }
-  );
+  return createStaticEvalCache({
+    aiPlayer,
+    forbiddenMoves,
+    candidateSetEnabled: AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES,
+  });
 };
 
 /**
@@ -509,7 +503,6 @@ const finalizeVcfReturn = (
 
   finalizeSearchStatsAndLog(stats, null);
   recordMoveToSession(stats, stonesBefore + 1, true);
-
   if (immediateWin) {
     finalizeGameSession('Win');
   }
@@ -816,8 +809,10 @@ const runIterativeDeepeningSearch = ({
         adaptiveAspirationWindow = window;
         stats.aspiration.adaptiveExpansions++;
       }
+
       alpha = (prevScore as number) - window;
       beta = (prevScore as number) + window;
+
       stats.aspiration.attempts++;
       stats.aspiration.windowSum += window;
       if (window > stats.aspiration.windowMax) {
@@ -851,14 +846,12 @@ const runIterativeDeepeningSearch = ({
         stats.aspiration.failHigh++;
         stats.aspiration.fullResearches++;
         depthAspirationFailed = true;
-
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
               `re-searching with full window`
           );
         }
-
         result = findBestMove(
           board,
           forbiddenMoves,
@@ -878,14 +871,12 @@ const runIterativeDeepeningSearch = ({
         stats.aspiration.failLow++;
         stats.aspiration.fullResearches++;
         depthAspirationFailed = true;
-
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
               `re-searching with full window`
           );
         }
-
         result = findBestMove(
           board,
           forbiddenMoves,
@@ -996,8 +987,8 @@ export const calculateNextMove = (
   options?: SearchOptions
 ): Position | null => {
   const startTime = performance.now();
-
   const stonesBefore = countStones(board);
+
   startGameSessionForMove(currentTurn, stonesBefore);
   const dynamicForbidden = createPerMoveDynamicForbidden(options);
 

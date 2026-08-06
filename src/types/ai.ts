@@ -85,35 +85,46 @@ export interface ForcedMoveList {
 export interface SearchOptions {
   /** 探索深さの上書き。未指定時は AI_CONFIG.MINIMAX_DEPTH */
   depth?: number;
+
   /**
    * 探索時間上限 [ms]。
    * 指定時は反復深化を行い、制限時間内に完了した最後の深さの結果を採用する。
    */
   timeLimitMs?: number;
+
   /**
    * 直前手。
    * Countermove Heuristic のルート精度を上げたい場合に渡す。
    */
   lastMove?: Position | null;
+
   /**
    * 禁手ルールが有効かどうか。
    * false の場合は動的禁手を明示的に無効化する。
    */
   forbiddenRuleEnabled?: boolean;
+
   /** Root VCF を明示的に有効 / 無効化する */
   vcfEnabled?: boolean;
+
   /** Root VCF 時間予算 [ms] */
   vcfTimeBudgetMs?: number;
+
   /** Root VCF ノード上限 */
   vcfNodeLimit?: number;
+
   /** 戦術 Quiescence を明示的に有効 / 無効化する */
   qsearchEnabled?: boolean;
+
   /** Quiescence 最大 ply */
   qsearchMaxPly?: number;
+
   /** Quiescence 1葉あたりノード上限 */
   qsearchNodeLimitPerLeaf?: number;
+
   /** Quiescence 総ノード上限 */
   qsearchTotalNodeLimit?: number;
+
   /** Quiescence 時間予算 [ms] */
   qsearchTimeBudgetMs?: number;
 }
@@ -214,23 +225,6 @@ export type CountermoveTable = Record<Player, (Position | null)[]>;
  * - UPPERBOUND: 上限値
  */
 export type TTFlag = 'EXACT' | 'LOWERBOUND' | 'UPPERBOUND';
-
-/**
- * Transposition Table に保存するエントリ。
- * hash は Map キーと同一値を保持し、衝突時の二重チェックに使う。
- */
-export interface TTEntry {
-  /** 盤面ハッシュ（衝突検知用） */
-  hash: bigint;
-  /** このエントリを生成した探索の残り深さ */
-  depth: number;
-  /** 探索スコア（aiPlayer 視点） */
-  score: number;
-  /** スコアの信頼性種別 */
-  flag: TTFlag;
-  /** この局面での最善手（Move Ordering に使用） */
-  bestMove: Position | null;
-}
 
 // ============================================================
 // LineCache
@@ -366,7 +360,7 @@ export interface SearchTTStats {
   bestMoveProvided: number;
   /** TT Move が候補手 tier に実際に含まれた回数 */
   bestMoveUsed: number;
-  /** サイズ上限超過による退避が発生した回数 */
+  /** 異なるキーによる上書きが発生した回数 */
   evictions: number;
   /** 最大サイズ */
   maxSize: number;
@@ -518,7 +512,7 @@ export interface SearchStaticEvalCacheStats {
   misses: number;
   /** 新規保存回数 */
   stores: number;
-  /** eviction 発生回数 */
+  /** 異なるキーによる上書きが発生した回数 */
   evictions: number;
   /** 現在のサイズ */
   size: number;

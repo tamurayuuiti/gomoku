@@ -126,17 +126,11 @@ const createSearchContext = (
     sharedStaticEvalCache !== undefined
       ? sharedStaticEvalCache
       : SEARCH_TUNING_FEATURES.ENABLE_STATIC_EVAL_CACHE
-        ? createStaticEvalCache(
-            {
-              limit: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_LIMIT,
-              evictionRatio: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_EVICTION_RATIO,
-            },
-            {
-              aiPlayer,
-              forbiddenMoves,
-              candidateSetEnabled: candidateSet !== null,
-            }
-          )
+        ? createStaticEvalCache({
+            aiPlayer,
+            forbiddenMoves,
+            candidateSetEnabled: candidateSet !== null,
+          })
         : null;
 
   const ctx: SearchContext = {
@@ -575,7 +569,6 @@ const minimax = (
           currentMove,
           false
         );
-
         if (ctx.aborted) {
           undoSearchMove(ctx, moveUndo);
           return score;
@@ -590,7 +583,6 @@ const minimax = (
           if (reduction > 0) {
             ctx.stats.lmr.researches++;
           }
-
           score = minimax(
             board,
             depth - 1,
@@ -603,7 +595,6 @@ const minimax = (
             currentMove,
             false
           );
-
           if (ctx.aborted) {
             undoSearchMove(ctx, moveUndo);
             return score;
@@ -626,7 +617,6 @@ const minimax = (
           currentMove,
           false
         );
-
         if (ctx.aborted) {
           undoSearchMove(ctx, moveUndo);
           return score;
@@ -750,7 +740,6 @@ const minimax = (
           currentMove,
           false
         );
-
         if (ctx.aborted) {
           undoSearchMove(ctx, moveUndo);
           return score;
@@ -765,7 +754,6 @@ const minimax = (
           if (reduction > 0) {
             ctx.stats.lmr.researches++;
           }
-
           score = minimax(
             board,
             depth - 1,
@@ -778,7 +766,6 @@ const minimax = (
             currentMove,
             false
           );
-
           if (ctx.aborted) {
             undoSearchMove(ctx, moveUndo);
             return score;
@@ -801,7 +788,6 @@ const minimax = (
           currentMove,
           false
         );
-
         if (ctx.aborted) {
           undoSearchMove(ctx, moveUndo);
           return score;
@@ -1021,7 +1007,6 @@ export const findBestMove = (
         currentMove,
         false
       );
-
       if (ctx.aborted) {
         undoSearchMove(ctx, moveUndo);
         if (verboseLog) {
@@ -1048,7 +1033,6 @@ export const findBestMove = (
           currentMove,
           false
         );
-
         if (ctx.aborted) {
           undoSearchMove(ctx, moveUndo);
           if (verboseLog) {
@@ -1070,7 +1054,6 @@ export const findBestMove = (
         currentMove,
         false
       );
-
       if (ctx.aborted) {
         undoSearchMove(ctx, moveUndo);
         if (verboseLog) {
