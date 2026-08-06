@@ -1,25 +1,23 @@
 // src/utils/ai/evaluator.ts
-// 位置評価・パターン検出・パターンキャッシュを担うモジュール。
+// 位置評価・パターン検出・パターンテーブルを担うモジュール。
 //
 // 責務:
-//   - 9 文字ラインのパターン検出
+//   - 3 進整数エンコードされたラインのパターン判定（テーブル参照）
 //   - 1手単位の位置評価（evaluatePosition）
 //   - LineCache 利用版の評価
-//   - パターンキャッシュ統計
+//   - ライン整数エンコード・WIN_MASK による高速勝利判定
 //
 // 注意:
 //   - 全盤評価（evaluateBoard）は boardEvaluator.ts に委譲する。
 //   - 評価スコア体系・即時評価の優先順位は変更しない。
+
 import type { BoardState, Player } from '../../types/game';
 import type { PatternType, PatternCount, LineCacheState } from '../../types/ai';
 import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
 import {
   AI_SCORES,
   AI_CONFIG,
-  AI_FEATURES,
   EVAL_CONFIG,
-  SEARCH_TUNING_FEATURES,
-  SEARCH_TUNING_CONFIG,
   EVALUATION_FEATURES,
 } from './constants';
 
@@ -54,232 +52,6 @@ export const hasStoneNearby = (
     }
   }
   return false;
-};
-
-// ============================================================
-// パターン検出
-// ============================================================
-
-/**
- * 指定位置を中心とした 1 方向 9 セルの文字列を返す。
- *
- * - '1' = color の石
- * - '0' = 空マス
- * - '2' = 盤外 / 相手石
- *
- * centerChar を '2' にすると、
- * 「ここに相手石が置かれた場合」の after-state パターンとして使える。
- */
-export const getLineString = (
-  board: BoardState,
-  row: number,
-  col: number,
-  dx: number,
-  dy: number,
-  color: Player,
-  centerChar: string = '1'
-): string => {
-  let s = '';
-  for (let i = -4; i <= 4; i++) {
-    if (i === 0) {
-      s += centerChar;
-      continue;
-    }
-    const r = row + i * dx;
-    const c = col + i * dy;
-    if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) {
-      s += '2';
-    } else if (board[r][c] === color) {
-      s += '1';
-    } else if (board[r][c] === null) {
-      s += '0';
-    } else {
-      s += '2';
-    }
-  }
-  return s;
-};
-
-/**
- * 9 文字のライン文字列からパターン種別を判定する。
- */
-export const detectPattern = (s: string): PatternType => {
-  if (s.includes('11111')) return 'WIN';
-
-  if (s.includes('011110')) return 'OPEN_FOUR';
-
-  if (
-    s.includes('011112') ||
-    s.includes('211110') ||
-    s.includes('10111') ||
-    s.includes('11011') ||
-    s.includes('11101')
-  ) {
-    return 'CLOSED_FOUR';
-  }
-
-  if (
-    s.includes('011100') ||
-    s.includes('001110') ||
-    s.includes('010110') ||
-    s.includes('011010')
-  ) {
-    return 'OPEN_THREE';
-  }
-
-  if (
-    s.includes('001112') ||
-    s.includes('211100') ||
-    s.includes('010112') ||
-    s.includes('211010') ||
-    s.includes('011012') ||
-    s.includes('210110') ||
-    s.includes('10011') ||
-    s.includes('11001') ||
-    s.includes('10101')
-  ) {
-    return 'CLOSED_THREE';
-  }
-
-  if (
-    s.includes('001100') ||
-    s.includes('011000') ||
-    s.includes('000110') ||
-    s.includes('010100') ||
-    s.includes('001010') ||
-    s.includes('010010')
-  ) {
-    return 'OPEN_TWO';
-  }
-
-  if (
-    s.includes('000112') ||
-    s.includes('211000') ||
-    s.includes('001012') ||
-    s.includes('210100') ||
-    s.includes('010012') ||
-    s.includes('210010') ||
-    s.includes('10001')
-  ) {
-    return 'CLOSED_TWO';
-  }
-
-  return 'SINGLE';
-};
-
-// ============================================================
-// パターンキャッシュ
-// ============================================================
-
-/**
- * detectPattern の結果をキャッシュする。
- *
- * 9 文字ラインは '0','1','2' の 9 桁なので、理論上 3^9 = 19683 通りに収まる。
- * 実際には中心文字を差し替えたラインなどが繰り返し登場するため、
- * 小さなキャッシュでも命中率が高い。
- */
-const PATTERN_CACHE_LIMIT = 20_000;
-const patternCache = new Map<string, PatternType>();
-
-export interface PatternCacheStats {
-  hits: number;
-  misses: number;
-  size: number;
-}
-
-let patternCacheHits = 0;
-let patternCacheMisses = 0;
-
-export const resetPatternCacheStats = (): void => {
-  patternCacheHits = 0;
-  patternCacheMisses = 0;
-};
-
-export const getPatternCacheStats = (): PatternCacheStats => ({
-  hits: patternCacheHits,
-  misses: patternCacheMisses,
-  size: patternCache.size,
-});
-
-export const detectPatternFast = (s: string): PatternType => {
-  if (!AI_FEATURES.ENABLE_PATTERN_CACHE) {
-    return detectPattern(s);
-  }
-
-  const cached = patternCache.get(s);
-  if (cached !== undefined) {
-    patternCacheHits++;
-    return cached;
-  }
-
-  patternCacheMisses++;
-  const ptn = detectPattern(s);
-  if (patternCache.size < PATTERN_CACHE_LIMIT) {
-    patternCache.set(s, ptn);
-  }
-  return ptn;
-};
-
-// ============================================================
-// 中心文字差し替えパターンキャッシュ
-// ============================================================
-
-/**
- * LineCache 上の 9 文字ラインについて、中心文字だけを差し替えた後の
- * detectPattern 結果をキャッシュする。
- *
- * key は「元の 9 文字ライン文字列」であり、内容ベースのため、
- * LineCache 更新後も古いキャッシュが不正に再利用されることはない。
- */
-const center1PatternCache = new Map<string, PatternType>();
-const center2PatternCache = new Map<string, PatternType>();
-
-let centerPatternHits = 0;
-let centerPatternMisses = 0;
-
-export interface CenterPatternCacheStats {
-  hits: number;
-  misses: number;
-  size: number;
-}
-
-export const resetCenterPatternCacheStats = (): void => {
-  centerPatternHits = 0;
-  centerPatternMisses = 0;
-};
-
-export const getCenterPatternCacheStats = (): CenterPatternCacheStats => ({
-  hits: centerPatternHits,
-  misses: centerPatternMisses,
-  size: center1PatternCache.size + center2PatternCache.size,
-});
-
-export const detectPatternWithCenter = (
-  line: string,
-  center: '1' | '2'
-): PatternType => {
-  if (
-    !AI_FEATURES.ENABLE_PATTERN_CACHE ||
-    !SEARCH_TUNING_FEATURES.ENABLE_CENTER_PATTERN_CACHE
-  ) {
-    const substituted = line.slice(0, 4) + center + line.slice(5);
-    return detectPatternFast(substituted);
-  }
-
-  const cache = center === '1' ? center1PatternCache : center2PatternCache;
-  const cached = cache.get(line);
-  if (cached !== undefined) {
-    centerPatternHits++;
-    return cached;
-  }
-
-  centerPatternMisses++;
-  const substituted = line.slice(0, 4) + center + line.slice(5);
-  const ptn = detectPatternFast(substituted);
-  if (cache.size < SEARCH_TUNING_CONFIG.CENTER_PATTERN_CACHE_LIMIT) {
-    cache.set(line, ptn);
-  }
-  return ptn;
 };
 
 // ============================================================
@@ -324,6 +96,268 @@ export const calcTotalOppScore = (counts: PatternCount): number => {
   score += counts[PATTERN_INDEX.OPEN_TWO] * AI_SCORES.OPEN_TWO;
   score += counts[PATTERN_INDEX.CLOSED_TWO] * AI_SCORES.CLOSED_TWO;
   return score;
+};
+
+// ============================================================
+// ライン整数エンコード
+// ============================================================
+
+/**
+ * 各ライン位置の 3 進重み。POSITION_WEIGHT[i] = 3^i。
+ * ラインコードは code = d[0]*3^0 + d[1]*3^1 + ... + d[8]*3^8 で構成される。
+ * d[i] の取りうる値: 0 = 空マス, 1 = 視点プレイヤーの石, 2 = 相手石または盤外。
+ */
+export const POSITION_WEIGHT: readonly number[] = [
+  1, 3, 9, 27, 81, 243, 729, 2187, 6561,
+];
+
+/** ラインコードの全パターン数（= 3^9） */
+export const LINE_CODE_SPACE = 19683;
+
+/** 中心セル（index 4）の 3 進重み */
+const CENTER_WEIGHT = POSITION_WEIGHT[4];
+
+/**
+ * ラインコードの指定位置のセル値（0/1/2）を取り出す。
+ */
+const extractDigit = (code: number, pos: number): number =>
+  Math.floor(code / POSITION_WEIGHT[pos]) % 3;
+
+/**
+ * 指定位置を中心とした 1 方向 9 セルのラインコード（3 進整数）を返す。
+ *
+ * - 1 = color の石
+ * - 0 = 空マス
+ * - 2 = 盤外 / 相手石
+ *
+ * centerValue を 2 にすると、
+ * 「ここに相手石が置かれた場合」の after-state パターンとして使える。
+ */
+export const getLineCode = (
+  board: BoardState,
+  row: number,
+  col: number,
+  dx: number,
+  dy: number,
+  color: Player,
+  centerValue: number = 1
+): number => {
+  let code = 0;
+  for (let i = -4; i <= 4; i++) {
+    const pos = i + 4;
+    let value: number;
+    if (i === 0) {
+      value = centerValue;
+    } else {
+      const r = row + i * dx;
+      const c = col + i * dy;
+      if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) {
+        value = 2;
+      } else if (board[r][c] === color) {
+        value = 1;
+      } else if (board[r][c] === null) {
+        value = 0;
+      } else {
+        value = 2;
+      }
+    }
+    code += value * POSITION_WEIGHT[pos];
+  }
+  return code;
+};
+
+// ============================================================
+// パターンテーブル
+// ============================================================
+
+/**
+ * テーブル生成専用のパターン判定。
+ * 9 文字ライン文字列を受け取り、PATTERN_INDEX のインデックス値（0〜7）を返す。
+ * 判定ロジック・優先順位は従来のパターン検出と完全に一致する。
+ */
+const detectPatternForTable = (s: string): number => {
+  if (s.includes('11111')) return PATTERN_INDEX.WIN;
+  if (s.includes('011110')) return PATTERN_INDEX.OPEN_FOUR;
+  if (
+    s.includes('011112') ||
+    s.includes('211110') ||
+    s.includes('10111') ||
+    s.includes('11011') ||
+    s.includes('11101')
+  ) {
+    return PATTERN_INDEX.CLOSED_FOUR;
+  }
+  if (
+    s.includes('011100') ||
+    s.includes('001110') ||
+    s.includes('010110') ||
+    s.includes('011010')
+  ) {
+    return PATTERN_INDEX.OPEN_THREE;
+  }
+  if (
+    s.includes('001112') ||
+    s.includes('211100') ||
+    s.includes('010112') ||
+    s.includes('211010') ||
+    s.includes('011012') ||
+    s.includes('210110') ||
+    s.includes('10011') ||
+    s.includes('11001') ||
+    s.includes('10101')
+  ) {
+    return PATTERN_INDEX.CLOSED_THREE;
+  }
+  if (
+    s.includes('001100') ||
+    s.includes('011000') ||
+    s.includes('000110') ||
+    s.includes('010100') ||
+    s.includes('001010') ||
+    s.includes('010010')
+  ) {
+    return PATTERN_INDEX.OPEN_TWO;
+  }
+  if (
+    s.includes('000112') ||
+    s.includes('211000') ||
+    s.includes('001012') ||
+    s.includes('210100') ||
+    s.includes('010012') ||
+    s.includes('210010') ||
+    s.includes('10001')
+  ) {
+    return PATTERN_INDEX.CLOSED_TWO;
+  }
+  return PATTERN_INDEX.SINGLE;
+};
+
+/**
+ * 3 進エンコードされた 9 セルライン → パターン種別インデックスの変換テーブル。
+ * 19,683 エントリ。モジュールロード時に 1 回だけ生成される。
+ *
+ * PATTERN_TABLE[code] でパターン種別インデックス（0〜7）を直接取得できる。
+ */
+export const PATTERN_TABLE: Uint8Array = (() => {
+  const table = new Uint8Array(LINE_CODE_SPACE);
+  for (let code = 0; code < LINE_CODE_SPACE; code++) {
+    let temp = code;
+    let s = '';
+    for (let i = 0; i < 9; i++) {
+      s += String(temp % 3);
+      temp = Math.floor(temp / 3);
+    }
+    table[code] = detectPatternForTable(s);
+  }
+  return table;
+})();
+
+// ============================================================
+// 勝利判定マスク
+// ============================================================
+
+/**
+ * 9 桁のセル値配列にちょうど 5 連（長連を除外）があるか判定する。
+ * Black の勝利判定に使用する。
+ */
+const hasExactFiveInDigits = (digits: number[]): boolean => {
+  for (let start = 0; start <= 4; start++) {
+    if (
+      digits[start] === 1 &&
+      digits[start + 1] === 1 &&
+      digits[start + 2] === 1 &&
+      digits[start + 3] === 1 &&
+      digits[start + 4] === 1
+    ) {
+      const beforeOk = start === 0 || digits[start - 1] !== 1;
+      const afterOk = start + 5 >= 9 || digits[start + 5] !== 1;
+      if (beforeOk && afterOk) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+/**
+ * 9 桁のセル値配列に 5 連以上があるか判定する。
+ * White の勝利判定に使用する。
+ */
+const hasFiveOrMoreInDigits = (digits: number[]): boolean => {
+  for (let start = 0; start <= 4; start++) {
+    if (
+      digits[start] === 1 &&
+      digits[start + 1] === 1 &&
+      digits[start + 2] === 1 &&
+      digits[start + 3] === 1 &&
+      digits[start + 4] === 1
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * Black 用勝利判定マスク。
+ * ちょうど 5 連があるラインコードを 1、それ以外を 0 とする。
+ * 6 連以上（長連）は含まない。
+ */
+export const BLACK_WIN_MASK: Uint8Array = (() => {
+  const mask = new Uint8Array(LINE_CODE_SPACE);
+  for (let code = 0; code < LINE_CODE_SPACE; code++) {
+    let temp = code;
+    const digits: number[] = [];
+    for (let i = 0; i < 9; i++) {
+      digits.push(temp % 3);
+      temp = Math.floor(temp / 3);
+    }
+    mask[code] = hasExactFiveInDigits(digits) ? 1 : 0;
+  }
+  return mask;
+})();
+
+/**
+ * White 用勝利判定マスク。
+ * 5 連以上があるラインコードを 1、それ以外を 0 とする。
+ */
+export const WHITE_WIN_MASK: Uint8Array = (() => {
+  const mask = new Uint8Array(LINE_CODE_SPACE);
+  for (let code = 0; code < LINE_CODE_SPACE; code++) {
+    let temp = code;
+    const digits: number[] = [];
+    for (let i = 0; i < 9; i++) {
+      digits.push(temp % 3);
+      temp = Math.floor(temp / 3);
+    }
+    mask[code] = hasFiveOrMoreInDigits(digits) ? 1 : 0;
+  }
+  return mask;
+})();
+
+/**
+ * LineCache を利用した高速勝利判定。
+ *
+ * applySearchMove 直後に LineCache が更新済みの状態で呼び出す。
+ * 着手位置の 4 方向ラインコードを WIN_MASK テーブルで参照し、
+ * いずれかの方向で勝利パターンが検出されれば true を返す。
+ *
+ * Black はちょうど 5 連（BLACK_WIN_MASK）、
+ * White は 5 連以上（WHITE_WIN_MASK）で判定する。
+ */
+export const checkWinWithLineCache = (
+  lineCache: LineCacheState,
+  row: number,
+  col: number,
+  player: Player
+): boolean => {
+  const mask = player === 'Black' ? BLACK_WIN_MASK : WHITE_WIN_MASK;
+  const caches = lineCache.caches[player];
+  for (let d = 0; d < DIRECTIONS.length; d++) {
+    const code = caches[d][row][col];
+    if (mask[code] === 1) return true;
+  }
+  return false;
 };
 
 // 位置評価のホットパスで再利用するスクラッチバッファ。
@@ -371,7 +405,6 @@ const computeShapeBonusFromBoard = (
   playerColor: Player
 ): number => {
   if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
-
   let bonus = 0;
   for (const [dx, dy] of DIRECTIONS) {
     for (const dist of [1, 2]) {
@@ -405,24 +438,23 @@ const computeShapeBonusFromBoard = (
 /**
  * LineCache ベースの形状ボーナス。
  *
- * 9 文字ライン文字列の index 2,3,5,6（中心から距離 1,2）に
- * 自石 '1' があるかを数える。
+ * ラインコードの index 2,3,5,6（中心から距離 1,2）に
+ * 自石（値 1）があるかを数える。
  */
 export const computeShapeBonusFromLines = (
-  ownLineCaches: string[][][],
+  ownLineCaches: number[][][],
   r: number,
   c: number
 ): number => {
   if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
-
   let bonus = 0;
   for (let d = 0; d < DIRECTIONS.length; d++) {
-    const line = ownLineCaches[d][r][c];
+    const code = ownLineCaches[d][r][c];
     // index 2 = 距離-2, index 3 = 距離-1, index 5 = 距離+1, index 6 = 距離+2
-    if (line[2] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
-    if (line[3] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
-    if (line[5] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
-    if (line[6] === '1') bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+    if (extractDigit(code, 2) === 1) bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+    if (extractDigit(code, 3) === 1) bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+    if (extractDigit(code, 5) === 1) bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+    if (extractDigit(code, 6) === 1) bonus += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
   }
   return Math.min(bonus, EVAL_CONFIG.SHAPE_MAX_BONUS);
 };
@@ -453,20 +485,14 @@ const evaluatePositionRaw = (
   scratchOppAfterCounts.fill(0);
 
   for (const [dx, dy] of DIRECTIONS) {
-    const attackPtn = detectPatternFast(
-      getLineString(board, row, col, dx, dy, playerColor, '1')
-    );
-    scratchAttackCounts[PATTERN_INDEX[attackPtn]]++;
+    const attackCode = getLineCode(board, row, col, dx, dy, playerColor, 1);
+    scratchAttackCounts[PATTERN_TABLE[attackCode]]++;
 
-    const beforePtn = detectPatternFast(
-      getLineString(board, row, col, dx, dy, opponentColor, '1')
-    );
-    scratchOppBeforeCounts[PATTERN_INDEX[beforePtn]]++;
+    const beforeCode = getLineCode(board, row, col, dx, dy, opponentColor, 1);
+    scratchOppBeforeCounts[PATTERN_TABLE[beforeCode]]++;
 
-    const afterPtn = detectPatternFast(
-      getLineString(board, row, col, dx, dy, opponentColor, '2')
-    );
-    scratchOppAfterCounts[PATTERN_INDEX[afterPtn]]++;
+    const afterCode = getLineCode(board, row, col, dx, dy, opponentColor, 2);
+    scratchOppAfterCounts[PATTERN_TABLE[afterCode]]++;
   }
 
   // --- 即時評価 ---
@@ -559,7 +585,12 @@ export const evaluatePosition = (
  * LineCache を利用して指定位置への着手価値を playerColor 視点で返す。
  *
  * 評価ロジック・スコア体系は evaluatePosition と完全に同一。
- * 違いは、getLineString の代わりに LineCache の 9 文字ラインを使う点のみ。
+ * 違いは、ラインコードを LineCache から取得し、
+ * 中心セルへの仮想着手を整数加算で表現する点のみ。
+ *
+ * LineCache の中心セル（index 4）は空マス（値 0）であるため、
+ * 自石を置く場合は CENTER_WEIGHT を加算、
+ * 相手石を置く場合は 2 * CENTER_WEIGHT を加算する。
  */
 export const evaluatePositionWithCache = (
   lineCache: LineCacheState,
@@ -576,16 +607,16 @@ export const evaluatePositionWithCache = (
   scratchOppAfterCounts.fill(0);
 
   for (let d = 0; d < DIRECTIONS.length; d++) {
-    const ownLine = ownCaches[d][row][col];
-    const attackPtn = detectPatternWithCenter(ownLine, '1');
-    scratchAttackCounts[PATTERN_INDEX[attackPtn]]++;
+    // 自石を置いた場合: 中心セル 0 → 1
+    const ownCode = ownCaches[d][row][col];
+    scratchAttackCounts[PATTERN_TABLE[ownCode + CENTER_WEIGHT]]++;
 
-    const oppLine = oppCaches[d][row][col];
-    const beforePtn = detectPatternWithCenter(oppLine, '1');
-    scratchOppBeforeCounts[PATTERN_INDEX[beforePtn]]++;
+    // 相手が置いた場合の before: 中心セル 0 → 1（相手視点の自石）
+    const oppCode = oppCaches[d][row][col];
+    scratchOppBeforeCounts[PATTERN_TABLE[oppCode + CENTER_WEIGHT]]++;
 
-    const afterPtn = detectPatternWithCenter(oppLine, '2');
-    scratchOppAfterCounts[PATTERN_INDEX[afterPtn]]++;
+    // 相手が置いた場合の after: 中心セル 0 → 2（相手視点の相手石）
+    scratchOppAfterCounts[PATTERN_TABLE[oppCode + 2 * CENTER_WEIGHT]]++;
   }
 
   // --- 即時評価（evaluatePosition と同一） ---

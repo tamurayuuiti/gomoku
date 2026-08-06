@@ -13,7 +13,6 @@
 import type { Player, Position } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
-import type { PatternCacheStats, CenterPatternCacheStats } from './evaluator';
 import { DIAGNOSTICS_CONFIG } from './diagnosticsFlags';
 import { BOARD_SIZE } from '../gameLogic';
 
@@ -32,7 +31,7 @@ export const createSearchStats = (
   timeLimitMs: number | null,
   lastMove: Position | null
 ): SearchStats => ({
-  schemaVersion: 8,
+  schemaVersion: 9,
   turn,
   searchMode,
   selectedMove: null,
@@ -124,12 +123,6 @@ export const createSearchStats = (
     lineCacheUndos: 0,
     lineCacheEvalCalls: 0,
     lineCacheFallbackCalls: 0,
-    patternCacheHits: 0,
-    patternCacheMisses: 0,
-    patternCacheSize: 0,
-    centerPatternHits: 0,
-    centerPatternMisses: 0,
-    centerPatternSize: 0,
   },
   candidateSet: {
     used: false,
@@ -294,30 +287,6 @@ export const mergeTTStats = (
   stats.tt.finalSize = ttStats.size;
 };
 
-/**
- * パターンキャッシュ統計を SearchStats へ反映する。
- */
-export const mergePatternCacheStats = (
-  stats: SearchStats,
-  patternStats: PatternCacheStats
-): void => {
-  stats.cache.patternCacheHits = patternStats.hits;
-  stats.cache.patternCacheMisses = patternStats.misses;
-  stats.cache.patternCacheSize = patternStats.size;
-};
-
-/**
- * 中心パターンキャッシュ統計を SearchStats へ反映する。
- */
-export const mergeCenterPatternCacheStats = (
-  stats: SearchStats,
-  centerStats: CenterPatternCacheStats
-): void => {
-  stats.cache.centerPatternHits = centerStats.hits;
-  stats.cache.centerPatternMisses = centerStats.misses;
-  stats.cache.centerPatternSize = centerStats.size;
-};
-
 // ============================================================
 // 1手ごとの統計: 派生指標の確定
 // ============================================================
@@ -353,35 +322,27 @@ export const finalizeSearchStats = (stats: SearchStats): void => {
   ) {
     stats.selectedScore = null;
   }
-
   if (!Number.isFinite(stats.tt.hitRate)) {
     stats.tt.hitRate = 0;
   }
-
   if (!Number.isFinite(stats.candidates.avgPerNode)) {
     stats.candidates.avgPerNode = 0;
   }
-
   if (!Number.isFinite(stats.candidateSet.avgSize)) {
     stats.candidateSet.avgSize = 0;
   }
-
   if (!Number.isFinite(stats.staticEvalCache.hitRate)) {
     stats.staticEvalCache.hitRate = 0;
   }
-
   if (!Number.isFinite(stats.threat.modelTimeMs)) {
     stats.threat.modelTimeMs = 0;
   }
-
   if (!Number.isFinite(stats.vcf.rootTimeMs)) {
     stats.vcf.rootTimeMs = 0;
   }
-
   if (!Number.isFinite(stats.vcf.rootBudgetMs)) {
     stats.vcf.rootBudgetMs = 0;
   }
-
   stats.vcf.rootTimeMs = Math.round(stats.vcf.rootTimeMs);
   stats.vcf.rootBudgetMs = Math.round(stats.vcf.rootBudgetMs);
 
@@ -397,15 +358,12 @@ export const finalizeSearchStats = (stats: SearchStats): void => {
   if (!Number.isFinite(stats.qsearch.timeMs)) {
     stats.qsearch.timeMs = 0;
   }
-
   if (!Number.isFinite(stats.qsearch.cacheHitRate)) {
     stats.qsearch.cacheHitRate = 0;
   }
-
   if (!Number.isFinite(stats.qsearch.forbiddenCacheHitRate)) {
     stats.qsearch.forbiddenCacheHitRate = 0;
   }
-
   stats.qsearch.timeMs = Math.round(stats.qsearch.timeMs);
   stats.qsearch.budgetMs = Math.round(stats.qsearch.budgetMs);
 };
@@ -441,7 +399,6 @@ const safeRate = (
   if (denominator <= 0) {
     return (0).toFixed(digits);
   }
-
   const value = (100 * numerator) / denominator;
   return Number.isFinite(value) ? value.toFixed(digits) : (0).toFixed(digits);
 };
@@ -453,7 +410,6 @@ const safeAvgUs = (timeMs: number, calls: number): string => {
   if (calls <= 0 || timeMs <= 0) {
     return '0.00';
   }
-
   const value = (timeMs * 1000) / calls;
   return Number.isFinite(value) ? value.toFixed(2) : '0.00';
 };
@@ -476,37 +432,24 @@ export const logSearchSummary = (stats: SearchStats): void => {
 
   const aspirationFail =
     stats.aspiration.failHigh + stats.aspiration.failLow;
-
   const aspFailRate = safeRate(
     aspirationFail,
     stats.aspiration.attempts,
     1
   );
 
-  const centerCalls =
-    stats.cache.centerPatternHits + stats.cache.centerPatternMisses;
-
-  const centerHitRate = safeRate(
-    stats.cache.centerPatternHits,
-    centerCalls,
-    2
-  );
-
   const chkAvgUs = safeAvgUs(
     stats.diagnostics.checkWinTimeMs,
     stats.diagnostics.checkWinCalls
   );
-
   const leafAvgUs = safeAvgUs(
     stats.diagnostics.leafEvalTimeMs,
     stats.diagnostics.leafEvalCalls
   );
-
   const candAvgUs = safeAvgUs(
     stats.candidates.genTimeMs,
     stats.candidates.genCalls
   );
-
   const threatAvgUs = safeAvgUs(
     stats.threat.modelTimeMs,
     stats.threat.modelCalls
@@ -514,7 +457,6 @@ export const logSearchSummary = (stats: SearchStats): void => {
 
   const forbiddenCacheCalls =
     stats.forbidden.cacheHits + stats.forbidden.cacheMisses;
-
   const forbiddenCacheHitRate = safeRate(
     stats.forbidden.cacheHits,
     forbiddenCacheCalls,
@@ -555,11 +497,8 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `chkMs=${Math.round(stats.diagnostics.checkWinTimeMs)} ` +
     `leafEval=${stats.diagnostics.leafEvalCalls} ` +
     `leafMs=${Math.round(stats.diagnostics.leafEvalTimeMs)} ` +
-    `centerHit=${stats.cache.centerPatternHits} ` +
-    `centerMiss=${stats.cache.centerPatternMisses} ` +
     `timeSkip=${stats.time.predictedSkips} ` +
     `aspFailRate=${aspFailRate}% ` +
-    `centerHitRate=${centerHitRate}% ` +
     `chkAvgUs=${chkAvgUs} ` +
     `leafAvgUs=${leafAvgUs} ` +
     `candAvgUs=${candAvgUs} ` +
@@ -644,412 +583,268 @@ export type GameSessionResult =
 
 export interface GameSessionStats {
   schemaVersion: number;
-
   /** AI から見た勝敗 */
   result: GameSessionResult | null;
-
   /** AI プレイヤー色 */
   aiPlayer: Player | null;
-
   /** セッション開始時刻（performance.now 基準） */
   startedAtMs: number;
-
   /** セッション終了時刻（performance.now 基準） */
   finishedAtMs: number;
-
   /** 対局経過時間（参考値。人間の手番待ちを含む） */
   durationMs: number;
-
   /** AI が実際に着手した回数 */
   aiMoves: number;
-
   /** 推定総手数（盤上の石数ベース） */
   totalMoves: number;
-
   /** 最後に観測した盤面手数（AI 着手後） */
   lastObservedPlies: number;
-
   /** 完了深度合計 */
   completedDepthSum: number;
-
   /** 最大完了深度 */
   completedDepthMax: number;
-
   /** 平均完了深度 */
   avgDepth: number;
-
   /** AI 思考時間合計 [ms] */
   elapsedSumMs: number;
-
   /** AI 最大思考時間 [ms] */
   elapsedMaxMs: number;
-
   /** AI 平均思考時間 [ms] */
   avgTimeMs: number;
-
   /** 時間切れ中断が発生した AI 手数 */
   abortCount: number;
-
   /** 即時勝利検出回数 */
   immediateWinCount: number;
-
   /** 即時負け検出回数 */
   immediateLossCount: number;
-
   /** TT 参照回数合計 */
   ttLookups: number;
-
   /** TT ヒット回数合計 */
   ttHits: number;
-
   /** TT ヒット率合計 */
   ttHitRate: number;
-
   /** TT 保存回数合計 */
   ttStores: number;
-
   /** TT eviction 回数合計 */
   ttEvictions: number;
-
   /** 最終 TT サイズ（直近 AI 手のもの） */
   ttFinalSize: number;
-
   /** TT 最大サイズ（AI 手ごと最大） */
   ttMaxSize: number;
-
   /** Aspiration fail-high 回数 */
   aspirationFailHigh: number;
-
   /** Aspiration fail-low 回数 */
   aspirationFailLow: number;
-
   /** Aspiration fail 合計 */
   aspirationFailTotal: number;
-
   /** Aspiration full re-search 回数 */
   aspirationFullResearches: number;
-
   /** PVS full re-search 回数 */
   pvsFullResearches: number;
-
   /** root PVS re-search 回数（現在は予約。default では 0） */
   rootPvsResearches: number;
-
   /** root PVS null 探索回数（参考） */
   rootPvsNullSearches: number;
-
   /** LMR 適用回数 */
   lmrReduced: number;
-
   /** LMR 再探索回数 */
   lmrResearches: number;
-
   /** 候補手生成回数 */
   candidateGenCalls: number;
-
   /** 候補手生成時間合計 [ms] */
   candidateGenTimeMs: number;
-
   /** Static Eval Cache 参照回数（予約） */
   staticEvalCacheLookups: number;
-
   /** Static Eval Cache ヒット回数（予約） */
   staticEvalCacheHits: number;
-
   /** Static Eval Cache ヒット率（予約） */
   staticEvalCacheHitRate: number;
-
   /** LineCache 評価呼び出し回数 */
   lineCacheEvalCalls: number;
-
   /** LineCache フォールバック呼び出し回数 */
   lineCacheFallbackCalls: number;
-
-  /** パターンキャッシュヒット回数 */
-  patternCacheHits: number;
-
-  /** パターンキャッシュミス回数 */
-  patternCacheMisses: number;
-
   /** checkWin 呼び出し回数 */
   checkWinCalls: number;
-
   /** checkWin 時間合計 [ms] */
   checkWinTimeMs: number;
-
   /** 葉評価実行回数 */
   leafEvalCalls: number;
-
   /** 葉評価時間合計 [ms] */
   leafEvalTimeMs: number;
-
   /** PVS null-window 回数 */
   pvsNullSearches: number;
-
   /** PVS fail-high 再探索回数 */
   pvsFailHighResearches: number;
-
   /** PVS fail-low 再探索回数 */
   pvsFailLowResearches: number;
-
   /** PVS null-window 抑制回数 */
   pvsTacticalNullSkips: number;
-
   /** quiet 手での PVS null-window 回数 */
   pvsQuietNullSearches: number;
-
   /** TT カットオフ回数 */
   ttCutoffs: number;
-
   /** TT bestMove が候補 tier に含まれた回数 */
   ttBestMoveUsed: number;
-
   /** 直近 AI 手の TT 最終サイズ（生の値） */
   ttActualFinalSize: number;
-
   /** 直近の非ゼロ TT 最終サイズ（ttSize=0 問題の補正用） */
   ttLastNonZeroSize: number;
-
   /** Aspiration 適用回数 */
   aspirationAttempts: number;
-
   /** Aspiration 窓幅合計 */
   aspirationWindowSum: number;
-
   /** Aspiration 窓幅最大 */
   aspirationWindowMax: number;
-
   /** Aspiration adaptive 拡張回数 */
   aspirationAdaptiveExpansions: number;
-
   /** Aspiration WIN/LOSS 付近無効化回数 */
   aspirationDisabledNearWin: number;
-
   /** Static Eval Cache 新規保存回数 */
   staticEvalCacheStores: number;
-
   /** Static Eval Cache ミス回数 */
   staticEvalCacheMisses: number;
-
   /** Static Eval Cache eviction 回数 */
   staticEvalCacheEvictions: number;
-
   /** Static Eval Cache 最大サイズ */
   staticEvalCacheMaxSize: number;
-
-  /** 中心パターンキャッシュヒット回数 */
-  centerPatternHits: number;
-
-  /** 中心パターンキャッシュミス回数 */
-  centerPatternMisses: number;
-
   /** 時間予測による打ち切り回数 */
   timePredictedSkips: number;
-
   /** Threat Model / forced move list 生成呼び出し回数 */
   threatModelCalls: number;
-
   /** Threat Model / forced move list 生成時間合計 [ms] */
   threatModelTimeMs: number;
-
   /** forced move list を生成した回数 */
   forcedGenerated: number;
-
   /** 生成された forced move の延べ件数 */
   forcedMovesTotal: number;
-
   /** OWN_WIN に分類された手の延べ件数 */
   ownWinMoves: number;
-
   /** BLOCK_WIN に分類された手の延べ件数 */
   blockWinMoves: number;
-
   /** OWN_OPEN_FOUR に分類された手の延べ件数 */
   ownOpenFourMoves: number;
-
   /** BLOCK_OPEN_FOUR に分類された手の延べ件数 */
   blockOpenFourMoves: number;
-
   /** OWN_FOUR に分類された手の延べ件数 */
   ownFourMoves: number;
-
   /** BLOCK_FOUR に分類された手の延べ件数 */
   blockFourMoves: number;
-
   /** OPEN_THREE_DEFENSE に分類された手の延べ件数 */
   openThreeDefenseMoves: number;
-
   /** root で既存候補に不足していた必須 forced move を追加した件数 */
   rootForcedIncluded: number;
-
   /** root で既存候補に不足していた必須 forced move の件数 */
   rootForcedMissing: number;
-
   /** root で容量上限により追加できなかった必須 forced move の件数 */
   rootForcedDropped: number;
-
   /** internal node で forced move list 生成を呼び出した回数 */
   internalForcedCalls: number;
-
   /** tactical node と分類された回数 */
   tacticalNodes: number;
-
   /** quiet node と分類された回数 */
   quietNodes: number;
-
   /** 動的禁手判定を実行した回数 */
   dynamicChecks: number;
-
   /** 動的禁手判定により禁手と判定された回数 */
   dynamicForbiddenMoves: number;
-
   /** White 手番のため動的禁手をスキップしたノード数 */
   dynamicSkippedWhite: number;
-
   /** 深度条件により動的禁手をスキップしたノード数 */
   dynamicSkippedDeep: number;
-
   /** flag / ルール設定により動的禁手をスキップしたノード数 */
   dynamicSkippedDisabled: number;
-
   /** 禁手キャッシュ hit 回数 */
   forbiddenCacheHits: number;
-
   /** 禁手キャッシュ miss 回数 */
   forbiddenCacheMisses: number;
-
   /** 禁手キャッシュ eviction 回数 */
   forbiddenCacheEvictions: number;
-
   /** 禁手キャッシュ最大サイズ */
   forbiddenCacheMaxSize: number;
-
   /** root 最終着手が禁手と判定され、フォールバックした回数 */
   rootMoveRejectedByForbidden: number;
-
   /** 静的 forbiddenMoves では合法だが動的禁手で禁手となった回数 */
   forbiddenMismatch: number;
-
   /** Root VCF 呼び出し回数 */
   vcfRootCalls: number;
-
   /** Root VCF 勝ち証明回数 */
   vcfRootFound: number;
-
   /** Root VCF 証明失敗回数 */
   vcfRootFail: number;
-
   /** Root VCF 中断回数 */
   vcfRootAborted: number;
-
   /** Root VCF エラー回数 */
   vcfRootError: number;
-
   /** Root VCF が最終手として採用された回数 */
   vcfRootUsedAsFinalMove: number;
-
   /** Root VCF 結果が禁手検証で棄却された回数 */
   vcfRootRejectedByForbidden: number;
-
   /** Root VCF 時間合計 [ms] */
   vcfRootTimeMs: number;
-
   /** Root VCF ノード数合計 */
   vcfRootNodes: number;
-
   /** Root VCF 最大到達 ply */
   vcfRootMaxPlyReached: number;
-
   /** Root VCF が flag により無効化された回数 */
   vcfRootDisabled: number;
-
   /** Root VCF が序盤石数不足で skip された回数 */
   vcfRootSkippedEarlyGame: number;
-
   /** Root VCF が時間制限不足で skip された回数 */
   vcfRootSkippedLowTime: number;
-
   /** Root VCF が低深度で skip された回数 */
   vcfRootSkippedLowDepth: number;
-
   /** Root VCF が option / budget により skip された回数 */
   vcfRootSkippedByOption: number;
-
   /** Root VCF 内で即時勝ちを検出した回数 */
   vcfRootImmediateWins: number;
-
   /** Root VCF 内で受け不可な四を終端とした回数 */
   vcfRootTerminalOpenFours: number;
-
   /** Root VCF 内で防御側即時勝ちにより攻撃枝を失敗とした回数 */
   vcfRootDefenderCounterWins: number;
-
   /** Root VCF 内で防御側ブロック不能により勝ちとした回数 */
   vcfRootIllegalBlockMoves: number;
-
   /** qsearch 葉呼び出し回数 */
   qsearchCalls: number;
-
   /** qsearch 勝ち証明回数 */
   qsearchWin: number;
-
   /** qsearch 負け証明回数 */
   qsearchLoss: number;
-
   /** qsearch 不明回数 */
   qsearchUnknown: number;
-
   /** qsearch 中断回数 */
   qsearchAbort: number;
-
   /** qsearch エラー回数 */
   qsearchError: number;
-
   /** qsearch fallback 回数 */
   qsearchFallback: number;
-
   /** qsearch 時間合計 [ms] */
   qsearchTimeMs: number;
-
   /** qsearch ノード数合計 */
   qsearchNodes: number;
-
   /** qsearch 最大到達 ply */
   qsearchMaxPlyReached: number;
-
   /** qsearch 予算切れ回数 */
   qsearchBudgetExhausted: number;
-
   /** qsearch 無効化回数 */
   qsearchDisabled: number;
-
   /** qsearch 序盤 skip 回数 */
   qsearchSkippedEarlyGame: number;
-
   /** qsearch 時間不足 skip 回数 */
   qsearchSkippedLowTime: number;
-
   /** qsearch 低深度 skip 回数 */
   qsearchSkippedLowDepth: number;
-
   /** qsearch option skip 回数 */
   qsearchSkippedByOption: number;
-
   /** qsearch 結果キャッシュ hit 回数 */
   qsearchCacheHits: number;
-
   /** qsearch 結果キャッシュ miss 回数 */
   qsearchCacheMisses: number;
-
   /** qsearch 禁手判定回数 */
   qsearchForbiddenChecks: number;
-
   /** qsearch 禁手キャッシュ hit 回数 */
   qsearchForbiddenCacheHits: number;
-
   /** qsearch 禁手キャッシュ miss 回数 */
   qsearchForbiddenCacheMisses: number;
-
   /** qsearch state audit 失敗回数 */
   qsearchAuditFails: number;
 }
@@ -1063,7 +858,7 @@ let activeGameSession: GameSessionStats | null = null;
 const createGameSessionStats = (
   aiPlayer: Player | null
 ): GameSessionStats => ({
-  schemaVersion: 8,
+  schemaVersion: 9,
   result: null,
   aiPlayer,
   startedAtMs: performance.now(),
@@ -1104,8 +899,6 @@ const createGameSessionStats = (
   staticEvalCacheHitRate: 0,
   lineCacheEvalCalls: 0,
   lineCacheFallbackCalls: 0,
-  patternCacheHits: 0,
-  patternCacheMisses: 0,
   checkWinCalls: 0,
   checkWinTimeMs: 0,
   leafEvalCalls: 0,
@@ -1128,8 +921,6 @@ const createGameSessionStats = (
   staticEvalCacheMisses: 0,
   staticEvalCacheEvictions: 0,
   staticEvalCacheMaxSize: 0,
-  centerPatternHits: 0,
-  centerPatternMisses: 0,
   timePredictedSkips: 0,
   threatModelCalls: 0,
   threatModelTimeMs: 0,
@@ -1218,7 +1009,6 @@ export const getActiveGameSession = (): GameSessionStats | null =>
  */
 export const ensureGameSession = (aiPlayer: Player | null): void => {
   if (!DIAGNOSTICS_CONFIG.ENABLE_STATS) return;
-
   if (!activeGameSession) {
     activeGameSession = createGameSessionStats(aiPlayer);
   }
@@ -1245,7 +1035,6 @@ export const recordMoveToSession = (
   movePlayed: boolean
 ): void => {
   if (!activeGameSession) return;
-
   const s = activeGameSession;
 
   if (movePlayed) {
@@ -1272,11 +1061,9 @@ export const recordMoveToSession = (
   s.ttEvictions += stats.tt.evictions;
   s.ttFinalSize = stats.tt.finalSize;
   s.ttActualFinalSize = stats.tt.finalSize;
-
   if (stats.tt.finalSize > 0) {
     s.ttLastNonZeroSize = stats.tt.finalSize;
   }
-
   s.ttMaxSize = Math.max(s.ttMaxSize, stats.tt.maxSize);
 
   s.aspirationFailHigh += stats.aspiration.failHigh;
@@ -1294,8 +1081,6 @@ export const recordMoveToSession = (
 
   s.lineCacheEvalCalls += stats.cache.lineCacheEvalCalls;
   s.lineCacheFallbackCalls += stats.cache.lineCacheFallbackCalls;
-  s.patternCacheHits += stats.cache.patternCacheHits;
-  s.patternCacheMisses += stats.cache.patternCacheMisses;
 
   s.checkWinCalls += stats.diagnostics.checkWinCalls;
   s.checkWinTimeMs += stats.diagnostics.checkWinTimeMs;
@@ -1329,9 +1114,6 @@ export const recordMoveToSession = (
     s.staticEvalCacheMaxSize,
     stats.staticEvalCache.maxSize
   );
-
-  s.centerPatternHits += stats.cache.centerPatternHits;
-  s.centerPatternMisses += stats.cache.centerPatternMisses;
 
   s.timePredictedSkips += stats.time.predictedSkips;
 
@@ -1382,7 +1164,6 @@ export const recordMoveToSession = (
     s.vcfRootMaxPlyReached,
     stats.vcf.rootMaxPlyReached
   );
-
   s.vcfRootDisabled += stats.vcf.rootDisabled;
   s.vcfRootSkippedEarlyGame += stats.vcf.rootSkippedEarlyGame;
   s.vcfRootSkippedLowTime += stats.vcf.rootSkippedLowTime;
@@ -1432,15 +1213,12 @@ export const recordMoveToSession = (
  */
 const estimateGameSessionTotalMoves = (s: GameSessionStats): number => {
   let totalMoves = s.lastObservedPlies;
-
   if (s.result === 'Loss') {
     totalMoves += 1;
   }
-
   if (s.result === 'Draw' && totalMoves < BOARD_SIZE * BOARD_SIZE) {
     totalMoves += 1;
   }
-
   return totalMoves;
 };
 
@@ -1449,13 +1227,10 @@ const estimateGameSessionTotalMoves = (s: GameSessionStats): number => {
  */
 const finalizeGameSessionDerivedStats = (s: GameSessionStats): void => {
   s.totalMoves = estimateGameSessionTotalMoves(s);
-
   s.avgDepth = s.aiMoves > 0 ? s.completedDepthSum / s.aiMoves : 0;
   s.avgTimeMs = s.aiMoves > 0 ? s.elapsedSumMs / s.aiMoves : 0;
-
   s.ttHitRate = s.ttLookups > 0 ? s.ttHits / s.ttLookups : 0;
   s.aspirationFailTotal = s.aspirationFailHigh + s.aspirationFailLow;
-
   s.staticEvalCacheHitRate =
     s.staticEvalCacheLookups > 0
       ? s.staticEvalCacheHits / s.staticEvalCacheLookups
@@ -1464,7 +1239,6 @@ const finalizeGameSessionDerivedStats = (s: GameSessionStats): void => {
   if (!Number.isFinite(s.ttHitRate)) {
     s.ttHitRate = 0;
   }
-
   if (!Number.isFinite(s.staticEvalCacheHitRate)) {
     s.staticEvalCacheHitRate = 0;
   }
@@ -1492,30 +1266,18 @@ const logGameSessionSummary = (s: GameSessionStats): void => {
       : 0;
 
   const abortRate = safeRate(s.abortCount, s.aiMoves, 1);
-
   const aspFailRate = safeRate(
     s.aspirationFailTotal,
     s.aspirationAttempts,
     1
   );
 
-  const centerCalls =
-    s.centerPatternHits + s.centerPatternMisses;
-
-  const centerHitRate = safeRate(
-    s.centerPatternHits,
-    centerCalls,
-    2
-  );
-
   const chkAvgUs = safeAvgUs(s.checkWinTimeMs, s.checkWinCalls);
   const leafAvgUs = safeAvgUs(s.leafEvalTimeMs, s.leafEvalCalls);
-
   const candAvgUs = safeAvgUs(
     s.candidateGenTimeMs,
     s.candidateGenCalls
   );
-
   const threatAvgUs = safeAvgUs(
     s.threatModelTimeMs,
     s.threatModelCalls
@@ -1523,7 +1285,6 @@ const logGameSessionSummary = (s: GameSessionStats): void => {
 
   const forbiddenCacheCalls =
     s.forbiddenCacheHits + s.forbiddenCacheMisses;
-
   const forbiddenCacheHitRate = safeRate(
     s.forbiddenCacheHits,
     forbiddenCacheCalls,
@@ -1577,12 +1338,9 @@ const logGameSessionSummary = (s: GameSessionStats): void => {
     `secMiss=${s.staticEvalCacheMisses} ` +
     `secEvict=${s.staticEvalCacheEvictions} ` +
     `secMax=${s.staticEvalCacheMaxSize} ` +
-    `centerHit=${s.centerPatternHits} ` +
-    `centerMiss=${s.centerPatternMisses} ` +
     `timeSkip=${s.timePredictedSkips} ` +
     `abortRate=${abortRate}% ` +
     `aspFailRate=${aspFailRate}% ` +
-    `centerHitRate=${centerHitRate}% ` +
     `chkAvgUs=${chkAvgUs} ` +
     `leafAvgUs=${leafAvgUs} ` +
     `candAvgUs=${candAvgUs} ` +

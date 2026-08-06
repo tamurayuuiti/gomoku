@@ -5,6 +5,7 @@
 //   - 盤面・進行状態とは責務が異なる探索内部の型をここに集約する。
 //   - 単一ファイル内でのみ使う型は定義元に残す。
 //   - ファクトリ関数・定数・スコア値はロジックのため定義元に残す。
+
 import type { Position, Player } from './game';
 
 // ============================================================
@@ -237,9 +238,9 @@ export interface TTEntry {
 
 /**
  * 1方向分のラインキャッシュ。
- * [row][col] に 9 文字ライン文字列を保持する。
+ * [row][col] に 3 進整数エンコードされたラインコード（0〜19682）を保持する。
  */
-export type LineCacheDirectionCache = string[][];
+export type LineCacheDirectionCache = number[][];
 
 /**
  * ある手番視点の全方向ラインキャッシュ。
@@ -469,21 +470,12 @@ export interface SearchOrderingStats {
   historyStores: number;
 }
 
-/** LineCache / パターンキャッシュ関連の統計 */
+/** LineCache 関連の統計 */
 export interface SearchCacheStats {
   lineCacheUpdates: number;
   lineCacheUndos: number;
   lineCacheEvalCalls: number;
   lineCacheFallbackCalls: number;
-  patternCacheHits: number;
-  patternCacheMisses: number;
-  patternCacheSize: number;
-  /** 中心文字差し替えキャッシュ hit 数 */
-  centerPatternHits: number;
-  /** 中心文字差し替えキャッシュ miss 数 */
-  centerPatternMisses: number;
-  /** 中心文字差し替えキャッシュサイズ */
-  centerPatternSize: number;
 }
 
 /** CandidateSet 関連の統計 */

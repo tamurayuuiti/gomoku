@@ -7,31 +7,27 @@
 //   - 除去時の復元
 //
 // 注意:
-//   - 評価ロジックは持たず、9 文字ライン状態の保持・更新だけを担う。
-//   - ライン文字列の意味は evaluator.ts の getLineString と同一。
-//       '1' = 視点プレイヤーの石
-//       '0' = 空マス
-//       '2' = 相手石または盤外
+//   - 評価ロジックは持たず、ラインコード（3 進整数）の保持・更新だけを担う。
+//   - ラインコードの意味は evaluator.ts の getLineCode と同一。
+//       各桁の値: 1 = 視点プレイヤーの石, 0 = 空マス, 2 = 相手石または盤外
+//   - ラインコードは 9 桁の 3 進整数（0〜19682）で、
+//       POSITION_WEIGHT[i] = 3^i の重みでエンコードされる。
 
 import type { BoardState, Player, Cell } from '../../types/game';
 import type { LineCacheState, LineCacheUndo } from '../../types/ai';
 import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
+import { POSITION_WEIGHT } from './evaluator';
 
 // ============================================================
 // 共有ヘルパー
 // ============================================================
 
 /**
- * セルの Player|null を getLineString と同じ文字コードへ変換する。
+ * セルの Player|null を getLineCode と同じ数値コードへ変換する。
+ * 1 = 視点プレイヤーの石, 0 = 空マス, 2 = 相手石または盤外
  */
-export const cellChar = (cell: Cell, color: Player): string =>
-  cell === color ? '1' : cell === null ? '0' : '2';
-
-/**
- * 文字列の指定位置を 1 文字だけ置換する。
- */
-const replaceChar = (s: string, index: number, ch: string): string =>
-  s.slice(0, index) + ch + s.slice(index + 1);
+export const cellCode = (cell: Cell, color: Player): number =>
+  cell === color ? 1 : cell === null ? 0 : 2;
 
 // ============================================================
 // 初期構築
@@ -39,35 +35,33 @@ const replaceChar = (s: string, index: number, ch: string): string =>
 
 /**
  * 指定手番視点の全方向ラインキャッシュを初期構築する。
+ *
+ * 各セルに 9 桁の 3 進整数ラインコードを格納する。
  */
 const buildPerspective = (
   board: BoardState,
   color: Player
-): string[][][] => {
+): number[][][] => {
   return DIRECTIONS.map(([dx, dy]) => {
-    const cache: string[][] = Array.from({ length: BOARD_SIZE }, () =>
-      new Array<string>(BOARD_SIZE).fill('')
+    const cache: number[][] = Array.from({ length: BOARD_SIZE }, () =>
+      new Array<number>(BOARD_SIZE).fill(0)
     );
-
     for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
-        let s = '';
-
+        let code = 0;
         for (let i = -4; i <= 4; i++) {
+          const pos = i + 4;
           const rr = r + i * dx;
           const cc = c + i * dy;
-
           if (rr < 0 || rr >= BOARD_SIZE || cc < 0 || cc >= BOARD_SIZE) {
-            s += '2';
+            code += 2 * POSITION_WEIGHT[pos];
           } else {
-            s += cellChar(board[rr][cc], color);
+            code += cellCode(board[rr][cc], color) * POSITION_WEIGHT[pos];
           }
         }
-
-        cache[r][c] = s;
+        cache[r][c] = code;
       }
     }
-
     return cache;
   });
 };
@@ -93,10 +87,10 @@ export const createLineCache = (board: BoardState): LineCacheState => {
  * 着手に伴い LineCache を差分更新する。
  *
  * あるマス (row, col) に player の石を置いたとき、
- * そのマスを含む 9 文字ウィンドウの中心マスだけを更新する。
+ * そのマスを含むラインウィンドウの該当桁だけを更新する。
  *
  * 各方向について中心候補は最大 9 個。
- * 15x15 盤面では 1手あたり最大 4 * 9 * 2 = 72 文字列の更新で済む。
+ * 15x15 盤面では 1手あたり最大 4 * 9 * 2 = 72 セルの整数加算で済む。
  */
 export const updateLineCache = (
   cache: LineCacheState,
@@ -124,17 +118,11 @@ export const updateLineCache = (
 
       const charIndex = offset + 4;
 
-      cache.caches[player][d][centerRow][centerCol] = replaceChar(
-        cache.caches[player][d][centerRow][centerCol],
-        charIndex,
-        '1'
-      );
+      // 着手プレイヤー視点: 該当桁が 0（空）→ 1（自石）に変化
+      cache.caches[player][d][centerRow][centerCol] += POSITION_WEIGHT[charIndex];
 
-      cache.caches[opponent][d][centerRow][centerCol] = replaceChar(
-        cache.caches[opponent][d][centerRow][centerCol],
-        charIndex,
-        '2'
-      );
+      // 相手視点: 該当桁が 0（空）→ 2（相手石）に変化
+      cache.caches[opponent][d][centerRow][centerCol] += 2 * POSITION_WEIGHT[charIndex];
     }
   }
 
@@ -144,7 +132,7 @@ export const updateLineCache = (
 /**
  * 着手前の空マス状態へ LineCache を復元する。
  *
- * updateLineCache と逆操作を行い、着手位置を '0' に戻す。
+ * updateLineCache と逆操作を行い、着手位置の桁を 0 に戻す。
  */
 export const undoLineCache = (
   cache: LineCacheState,
@@ -170,17 +158,11 @@ export const undoLineCache = (
 
       const charIndex = offset + 4;
 
-      cache.caches[undo.player][d][centerRow][centerCol] = replaceChar(
-        cache.caches[undo.player][d][centerRow][centerCol],
-        charIndex,
-        '0'
-      );
+      // 着手プレイヤー視点: 該当桁が 1（自石）→ 0（空）に戻す
+      cache.caches[undo.player][d][centerRow][centerCol] -= POSITION_WEIGHT[charIndex];
 
-      cache.caches[opponent][d][centerRow][centerCol] = replaceChar(
-        cache.caches[opponent][d][centerRow][centerCol],
-        charIndex,
-        '0'
-      );
+      // 相手視点: 該当桁が 2（相手石）→ 0（空）に戻す
+      cache.caches[opponent][d][centerRow][centerCol] -= 2 * POSITION_WEIGHT[charIndex];
     }
   }
 };

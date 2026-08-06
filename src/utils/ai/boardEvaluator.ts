@@ -8,7 +8,9 @@
 // 注意:
 //   - 位置評価（evaluatePosition）は evaluator.ts に残す。
 //   - 評価値の意味・優先順位・スコア体系は変更しない。
-//   - ライン走査は 9 文字ウィンドウ文字列を事前計算し、パターン判定を軽量化する。
+//   - ライン走査は 3 進整数エンコードされたラインコードを事前計算し、
+//     パターン判定をテーブル参照で軽量化する。
+
 import type { BoardState, Player } from '../../types/game';
 import type {
   PatternCount,
@@ -23,14 +25,15 @@ import {
 } from './constants';
 import {
   createEmptyPatternCount,
-  detectPatternWithCenter,
   hasStoneNearby,
   opponentOf,
   computeShapeBonusFromLines,
   PATTERN_INDEX,
+  PATTERN_TABLE,
+  POSITION_WEIGHT,
   calcTotalOppScore,
 } from './evaluator';
-import { cellChar } from './lineCache';
+import { cellCode } from './lineCache';
 
 // ============================================================
 // ライン走査キャッシュ（フォールバック用）
@@ -38,7 +41,7 @@ import { cellChar } from './lineCache';
 
 /**
  * 指定方向 (dx, dy) について盤面全体を 1 回走査し、
- * 各セルを中心とする 9 文字ウィンドウ文字列を事前計算して返す。
+ * 各セルを中心とする 3 進整数ラインコードを事前計算して返す。
  *
  * LineCache 無効時のフォールバックとして使う。
  */
@@ -47,33 +50,39 @@ const buildLineCache = (
   dx: number,
   dy: number,
   color: Player
-): string[][] => {
-  const cache: string[][] = Array.from({ length: BOARD_SIZE }, () =>
-    new Array<string>(BOARD_SIZE).fill('')
+): number[][] => {
+  const cache: number[][] = Array.from({ length: BOARD_SIZE }, () =>
+    new Array<number>(BOARD_SIZE).fill(0)
   );
-
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
-      let s = '';
+      let code = 0;
       for (let i = -4; i <= 4; i++) {
+        const pos = i + 4;
         const rr = r + i * dx;
         const cc = c + i * dy;
-        s +=
-          rr < 0 || rr >= BOARD_SIZE || cc < 0 || cc >= BOARD_SIZE
-            ? '2'
-            : cellChar(board[rr][cc], color);
+        if (rr < 0 || rr >= BOARD_SIZE || cc < 0 || cc >= BOARD_SIZE) {
+          code += 2 * POSITION_WEIGHT[pos];
+        } else {
+          code += cellCode(board[rr][cc], color) * POSITION_WEIGHT[pos];
+        }
       }
-      cache[r][c] = s;
+      cache[r][c] = code;
     }
   }
   return cache;
 };
 
 /**
- * キャッシュ済み 9 文字ウィンドウから (r, c) への着手価値を算出する。
+ * キャッシュ済みラインコードから (r, c) への着手価値を算出する。
  *
  * ロジックは evaluator.ts の evaluatePosition と同一で、
- * 違いは事前計算済みキャッシュからウィンドウ文字列を取得する点のみ。
+ * 違いは事前計算済みキャッシュからラインコードを取得し、
+ * 中心セルへの仮想着手を整数加算で表現する点のみ。
+ *
+ * LineCache の中心セル（index 4）は空マス（値 0）であるため、
+ * 自石を置く場合は POSITION_WEIGHT[4] を加算、
+ * 相手石を置く場合は 2 * POSITION_WEIGHT[4] を加算する。
  *
  * パターン集計バッファは呼び出し元で確保・再利用し、
  * 本関数の先頭で fill(0) して使う。
@@ -87,8 +96,8 @@ const buildLineCache = (
 const scoreFromLineCache = (
   r: number,
   c: number,
-  ownLineCaches: string[][][],
-  oppLineCaches: string[][][],
+  ownLineCaches: number[][][],
+  oppLineCaches: number[][][],
   attackCounts: PatternCount,
   oppBeforeCounts: PatternCount,
   oppAfterCounts: PatternCount
@@ -97,18 +106,16 @@ const scoreFromLineCache = (
   oppBeforeCounts.fill(0);
   oppAfterCounts.fill(0);
 
+  const centerWeight = POSITION_WEIGHT[4];
+
   for (let d = 0; d < DIRECTIONS.length; d++) {
-    // 中心セルは空マス前提のため、中心文字だけを差し替えて判定する。
-    const ownLine = ownLineCaches[d][r][c];
-    const attackPtn = detectPatternWithCenter(ownLine, '1');
-    attackCounts[PATTERN_INDEX[attackPtn]]++;
+    // 中心セルは空マス前提のため、中心値を加算してテーブル参照する。
+    const ownCode = ownLineCaches[d][r][c];
+    attackCounts[PATTERN_TABLE[ownCode + centerWeight]]++;
 
-    const oppLine = oppLineCaches[d][r][c];
-    const beforePtn = detectPatternWithCenter(oppLine, '1');
-    oppBeforeCounts[PATTERN_INDEX[beforePtn]]++;
-
-    const afterPtn = detectPatternWithCenter(oppLine, '2');
-    oppAfterCounts[PATTERN_INDEX[afterPtn]]++;
+    const oppCode = oppLineCaches[d][r][c];
+    oppBeforeCounts[PATTERN_TABLE[oppCode + centerWeight]]++;
+    oppAfterCounts[PATTERN_TABLE[oppCode + 2 * centerWeight]]++;
   }
 
   // --- 即時評価（evaluatePosition と同一の優先順位） ---
@@ -294,7 +301,6 @@ export const evaluateBoard = (
   }
 
   if (aiTopK.count === 0 && oppTopK.count === 0) return 0;
-
   return computeTopKScore(aiTopK, decay) - computeTopKScore(oppTopK, decay);
 };
 
@@ -315,6 +321,7 @@ export const evaluateBoardWithCache = (
 ): number => {
   const opp = opponentOf(aiPlayer);
   const decay = EVAL_CONFIG.TOP_K_DECAY;
+
   const aiLineCaches = lineCache.caches[aiPlayer];
   const oppLineCaches = lineCache.caches[opp];
 
@@ -371,6 +378,5 @@ export const evaluateBoardWithCache = (
   }
 
   if (aiTopK.count === 0 && oppTopK.count === 0) return 0;
-
   return computeTopKScore(aiTopK, decay) - computeTopKScore(oppTopK, decay);
 };

@@ -10,15 +10,15 @@
 //   - 評価関数（AI_SCORES / evaluatePosition / evaluateBoard）の意味は変更しない。
 //   - forced move list の分類に必要な戦術情報だけを提供する。
 //   - forbiddenRuleEnabled === false の場合、Black 禁手判定を一切行わない。
+
 import type { BoardState, Player, Position } from '../../types/game';
 import type { LineCacheState, PatternCount } from '../../types/ai';
 import { checkWin, checkForbiddenMove, DIRECTIONS } from '../gameLogic';
 import {
   createEmptyPatternCount,
-  detectPatternFast,
-  detectPatternWithCenter,
-  getLineString,
-  PATTERN_INDEX,
+  getLineCode,
+  PATTERN_TABLE,
+  POSITION_WEIGHT,
 } from './evaluator';
 
 // ============================================================
@@ -38,7 +38,6 @@ export const wouldWin = (
 ): boolean => {
   const { row, col } = pos;
   if (board[row][col] !== null) return false;
-
   board[row][col] = player;
   try {
     return checkWin(board, pos, player);
@@ -108,8 +107,8 @@ export const isMoverLegal = (
 /**
  * player が (row, col) へ着手したと仮定したときのパターン集計を返す。
  *
- * LineCache があれば中心文字差し替えキャッシュを使い、
- * なければ getLineString + detectPatternFast で従来通り計算する。
+ * LineCache があればラインコードに中心値を加算してテーブル参照し、
+ * なければ getLineCode + PATTERN_TABLE で計算する。
  *
  * 評価スコアは計算しない。パターン種別のカウントのみを返す。
  * 戻り値は呼び出し元へ渡るため、都度新規配列を生成する。
@@ -122,22 +121,21 @@ export const getHypotheticalPatternCounts = (
   player: Player
 ): PatternCount => {
   const counts = createEmptyPatternCount();
+  const centerWeight = POSITION_WEIGHT[4];
 
   if (lineCache) {
     const caches = lineCache.caches[player];
     for (let d = 0; d < DIRECTIONS.length; d++) {
-      const line = caches[d][row][col];
-      const ptn = detectPatternWithCenter(line, '1');
-      counts[PATTERN_INDEX[ptn]]++;
+      // 中心セルは空マス（値 0）前提。自石を置くため centerWeight を加算。
+      const code = caches[d][row][col] + centerWeight;
+      counts[PATTERN_TABLE[code]]++;
     }
     return counts;
   }
 
   for (const [dx, dy] of DIRECTIONS) {
-    const line = getLineString(board, row, col, dx, dy, player, '1');
-    const ptn = detectPatternFast(line);
-    counts[PATTERN_INDEX[ptn]]++;
+    const code = getLineCode(board, row, col, dx, dy, player, 1);
+    counts[PATTERN_TABLE[code]]++;
   }
-
   return counts;
 };

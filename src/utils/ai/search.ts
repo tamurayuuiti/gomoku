@@ -32,13 +32,7 @@ import {
 } from './constants';
 import { findBestMove } from './minimax';
 import { TranspositionTable } from './transpositionTable';
-import {
-  resetPatternCacheStats,
-  getPatternCacheStats,
-  resetCenterPatternCacheStats,
-  getCenterPatternCacheStats,
-  hasStoneNearby,
-} from './evaluator';
+import { hasStoneNearby } from './evaluator';
 import {
   createStaticEvalCache,
   type StaticEvalCache,
@@ -50,8 +44,6 @@ import {
 import {
   createSearchStats,
   mergeTTStats,
-  mergePatternCacheStats,
-  mergeCenterPatternCacheStats,
   finalizeSearchStats,
   logSearchSummary,
   shouldLogVerboseSearch,
@@ -119,7 +111,6 @@ const startGameSessionForMove = (
 ): void => {
   if (isGameSessionActive()) {
     const active = getActiveGameSession();
-
     if (
       !active ||
       active.aiPlayer !== aiPlayer ||
@@ -129,7 +120,6 @@ const startGameSessionForMove = (
       finalizeGameSession('Reset');
     }
   }
-
   ensureGameSession(aiPlayer);
 };
 
@@ -242,10 +232,6 @@ const finalizeSearchStatsAndLog = (
   if (tt) {
     mergeTTStats(stats, tt.stats);
   }
-
-  mergePatternCacheStats(stats, getPatternCacheStats());
-  mergeCenterPatternCacheStats(stats, getCenterPatternCacheStats());
-
   finalizeSearchStats(stats);
   logSearchSummary(stats);
 };
@@ -266,13 +252,11 @@ const recordNormalMoveSessionAndFinalizeWin = (
   stonesBefore: number
 ): void => {
   const movePlayed = move !== null;
-
   recordMoveToSession(
     stats,
     stonesBefore + (movePlayed ? 1 : 0),
     movePlayed
   );
-
   if (move && isWinningMove(board, move, player)) {
     finalizeGameSession('Win');
   }
@@ -290,7 +274,6 @@ const createPerMoveStaticEvalCache = (
   aiPlayer: Player
 ): StaticEvalCache | null => {
   if (!SEARCH_TUNING_FEATURES.ENABLE_STATIC_EVAL_CACHE) return null;
-
   return createStaticEvalCache(
     {
       limit: SEARCH_TUNING_CONFIG.STATIC_EVAL_CACHE_LIMIT,
@@ -332,14 +315,12 @@ const isRootMoveDynamicallyForbidden = (
 ): boolean => {
   if (player !== 'Black') return false;
   if (!dynamicForbidden.ruleEnabled) return false;
-
   if (
     !THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN ||
     !THREAT_FORBIDDEN_FEATURES.ENABLE_DYNAMIC_FORBIDDEN_ROOT
   ) {
     return false;
   }
-
   return checkForbiddenMove(board, move, player).isForbidden;
 };
 
@@ -359,7 +340,6 @@ const findLegalFallbackMove = (
   const isLegal = (row: number, col: number): boolean => {
     if (board[row][col] !== null) return false;
     if (forbiddenMoves[row][col]) return false;
-
     if (
       player === 'Black' &&
       dynamicForbidden.ruleEnabled &&
@@ -370,7 +350,6 @@ const findLegalFallbackMove = (
         return false;
       }
     }
-
     return true;
   };
 
@@ -425,14 +404,12 @@ const resolveRootForbiddenFallback = (
     )
   ) {
     stats.forbidden.rootMoveRejectedByForbidden++;
-
     move = findLegalFallbackMove(
       board,
       forbiddenMoves,
       player,
       dynamicForbidden
     );
-
     score = null;
   }
 
@@ -490,7 +467,6 @@ const tryRootVcfMove = (
     stats.vcf.rootRejectedByForbidden++;
     return null;
   }
-
   if (
     currentTurn === 'Black' &&
     dynamicForbidden.ruleEnabled &&
@@ -527,7 +503,6 @@ const finalizeVcfReturn = (
   stats.vcf.rootUsedAsFinalMove++;
 
   const immediateWin = isWinningMove(board, move, player);
-
   if (immediateWin) {
     stats.nodes.immediateWin++;
   }
@@ -565,7 +540,6 @@ const handleCenterOpening = ({
 
   const stats = createSearchStats(currentTurn, 'center', 0, null, null);
   stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
-
   stats.selectedMove = centerMove;
   stats.selectedScore = 0;
   stats.completedDepth = 0;
@@ -624,7 +598,6 @@ const runFixedDepthSearch = ({
     stonesBefore,
     stats
   );
-
   if (vcfMove) {
     return finalizeVcfReturn(
       board,
@@ -651,7 +624,6 @@ const runFixedDepthSearch = ({
   );
 
   const tt = new TranspositionTable();
-
   const staticEvalCache = createPerMoveStaticEvalCache(
     forbiddenMoves,
     currentTurn
@@ -692,7 +664,6 @@ const runFixedDepthSearch = ({
   stats.time.elapsedMs = performance.now() - startTime;
 
   finalizeSearchStatsAndLog(stats, tt);
-
   recordNormalMoveSessionAndFinalizeWin(
     board,
     finalMove,
@@ -756,7 +727,6 @@ const runIterativeDeepeningSearch = ({
     stonesBefore,
     stats
   );
-
   if (vcfMove) {
     return finalizeVcfReturn(
       board,
@@ -801,7 +771,6 @@ const runIterativeDeepeningSearch = ({
   const baseAspirationWindow = SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_WINDOW_TUNING
     ? SEARCH_TUNING_CONFIG.ASPIRATION_WINDOW_OVERRIDE
     : TT_CONFIG.ASPIRATION_WINDOW;
-
   let adaptiveAspirationWindow = baseAspirationWindow;
   let prevAspirationFailed = false;
 
@@ -818,7 +787,6 @@ const runIterativeDeepeningSearch = ({
       AI_FEATURES.ENABLE_ASPIRATION_WINDOW &&
       d >= 2 &&
       prevScore !== null;
-
     const useAspiration = shouldUseAspiration(d, prevScore);
 
     if (aspirationCandidate && !useAspiration) {
@@ -837,7 +805,6 @@ const runIterativeDeepeningSearch = ({
 
     if (useAspiration) {
       let window = adaptiveAspirationWindow;
-
       if (
         SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_ADAPTIVE_EXPANSION &&
         prevAspirationFailed
@@ -849,13 +816,10 @@ const runIterativeDeepeningSearch = ({
         adaptiveAspirationWindow = window;
         stats.aspiration.adaptiveExpansions++;
       }
-
       alpha = (prevScore as number) - window;
       beta = (prevScore as number) + window;
-
       stats.aspiration.attempts++;
       stats.aspiration.windowSum += window;
-
       if (window > stats.aspiration.windowMax) {
         stats.aspiration.windowMax = window;
       }
@@ -891,7 +855,7 @@ const runIterativeDeepeningSearch = ({
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-            `re-searching with full window`
+              `re-searching with full window`
           );
         }
 
@@ -918,7 +882,7 @@ const runIterativeDeepeningSearch = ({
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
-            `re-searching with full window`
+              `re-searching with full window`
           );
         }
 
@@ -976,7 +940,6 @@ const runIterativeDeepeningSearch = ({
     ) {
       const remaining = deadline - performance.now();
       const estimate = iterElapsed * SEARCH_TUNING_CONFIG.TIME_PREDICTION_SAFETY;
-
       if (remaining < estimate) {
         stats.time.predictedSkips++;
         stats.time.remainingAtSkipMs = remaining;
@@ -1006,7 +969,6 @@ const runIterativeDeepeningSearch = ({
   stats.time.elapsedMs = performance.now() - startTime;
 
   finalizeSearchStatsAndLog(stats, tt);
-
   recordNormalMoveSessionAndFinalizeWin(
     board,
     finalBest,
@@ -1035,13 +997,8 @@ export const calculateNextMove = (
 ): Position | null => {
   const startTime = performance.now();
 
-  resetPatternCacheStats();
-  resetCenterPatternCacheStats();
-
   const stonesBefore = countStones(board);
-
   startGameSessionForMove(currentTurn, stonesBefore);
-
   const dynamicForbidden = createPerMoveDynamicForbidden(options);
 
   // 初手は中央

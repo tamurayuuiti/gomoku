@@ -33,7 +33,7 @@ import {
   SEARCH_TUNING_CONFIG,
 } from './constants';
 import { TIMING_DIAGNOSTICS_CONFIG } from './diagnosticsFlags';
-import { opponentOf } from './evaluator';
+import { opponentOf, checkWinWithLineCache } from './evaluator';
 import { evaluateBoard, evaluateBoardWithCache } from './boardEvaluator';
 import {
   CRITICAL_SCORE_THRESHOLD,
@@ -113,7 +113,6 @@ const createSearchContext = (
   const lineCache = AI_FEATURES.ENABLE_LINE_CACHE
     ? createLineCache(board)
     : null;
-
   const candidateSet = AI_FEATURES.ENABLE_INCREMENTAL_CANDIDATES
     ? createCandidateSet(board, forbiddenMoves)
     : null;
@@ -176,13 +175,11 @@ const isTimeUp = (ctx: SearchContext): boolean => {
     ctx.stats.time.aborted = true;
     return true;
   }
-
   if (ctx.deadline !== Infinity && performance.now() >= ctx.deadline) {
     ctx.aborted = true;
     ctx.stats.time.aborted = true;
     return true;
   }
-
   return false;
 };
 
@@ -196,10 +193,8 @@ const isTimeUp = (ctx: SearchContext): boolean => {
 const syncStaticEvalCacheStats = (ctx: SearchContext): void => {
   const cache = ctx.staticEvalCache;
   if (!cache) return;
-
   const st = cache.stats;
   const target = ctx.stats.staticEvalCache;
-
   target.lookups = st.lookups;
   target.hits = st.hits;
   target.misses = st.misses;
@@ -212,7 +207,10 @@ const syncStaticEvalCacheStats = (ctx: SearchContext): void => {
 
 /**
  * checkWin を計測付きで呼び出す。
- * 判定ロジック自体は変更しない。
+ *
+ * LineCache が利用可能な場合は WIN_MASK テーブル参照による
+ * 高速勝利判定を使用し、盤面の再走査を回避する。
+ * LineCache がない場合は従来通り盤面走査で判定する。
  */
 const checkWinInstrumented = (
   board: BoardState,
@@ -223,13 +221,20 @@ const checkWinInstrumented = (
   ctx.stats.diagnostics.checkWinCalls++;
 
   if (!TIMING_DIAGNOSTICS_CONFIG.ENABLE_CHECKWIN_TIMING) {
+    if (ctx.lineCache) {
+      return checkWinWithLineCache(ctx.lineCache, move.row, move.col, player);
+    }
     return checkWin(board, move, player);
   }
 
   const start = performance.now();
-  const result = checkWin(board, move, player);
+  let result: boolean;
+  if (ctx.lineCache) {
+    result = checkWinWithLineCache(ctx.lineCache, move.row, move.col, player);
+  } else {
+    result = checkWin(board, move, player);
+  }
   ctx.stats.diagnostics.checkWinTimeMs += performance.now() - start;
-
   return result;
 };
 
@@ -261,7 +266,6 @@ const evaluateLeaf = (
       controller: ctx.qsearchController,
       stats: ctx.stats,
     });
-
     if (qResult.score !== null) {
       return qResult.score;
     }
@@ -270,19 +274,16 @@ const evaluateLeaf = (
   if (ctx.staticEvalCache) {
     const cached = ctx.staticEvalCache.lookup(currentHash);
     syncStaticEvalCacheStats(ctx);
-
     if (cached !== undefined) {
       return cached;
     }
   }
 
   ctx.stats.diagnostics.leafEvalCalls++;
-
   const shouldTimeLeaf = TIMING_DIAGNOSTICS_CONFIG.ENABLE_LEAF_TIMING;
   const start = shouldTimeLeaf ? performance.now() : 0;
 
   let score: number;
-
   if (ctx.lineCache) {
     ctx.stats.cache.lineCacheEvalCalls++;
     score = evaluateBoardWithCache(
@@ -365,7 +366,6 @@ const getReduction = (
   }
 
   let reduction = 1;
-
   if (
     depth >= LMR_CONFIG.DEEP_REDUCTION_DEPTH &&
     moveIndex >= LMR_CONFIG.DEEP_REDUCTION_MOVE_INDEX
@@ -374,7 +374,6 @@ const getReduction = (
   }
 
   const maxPossibleReduction = Math.max(0, depth - 1);
-
   return Math.min(
     reduction,
     LMR_CONFIG.MAX_REDUCTION,
@@ -462,7 +461,6 @@ const minimax = (
   // --- Transposition Table Lookup ---
   const alphaOrig = alpha;
   const betaOrig = beta;
-
   const ttScore = ctx.tt.lookup(currentHash, depth, alpha, beta);
   if (ttScore !== null) {
     ctx.stats.nodes.total++;
@@ -589,7 +587,6 @@ const minimax = (
             ctx.stats.pvs.failHighResearches++;
             ctx.stats.pvs.fullResearches++;
           }
-
           if (reduction > 0) {
             ctx.stats.lmr.researches++;
           }
@@ -642,7 +639,6 @@ const minimax = (
         maxScore = score;
         bestMove = currentMove;
       }
-
       if (score > alpha) alpha = score;
 
       // βカットオフ: CRITICAL 未満の手のみ killer / history / countermove へ記録
@@ -650,10 +646,8 @@ const minimax = (
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, currentMove);
           ctx.stats.ordering.killerStores++;
-
           storeHistory(ctx.historyTable, currentPlayer, depth, currentMove);
           ctx.stats.ordering.historyStores++;
-
           if (AI_FEATURES.ENABLE_COUNTERMOVE && lastMove) {
             storeCountermove(
               ctx.countermoveTable,
@@ -664,7 +658,6 @@ const minimax = (
             ctx.stats.ordering.countermoveStores++;
           }
         }
-
         bestMove = currentMove;
         break;
       }
@@ -682,8 +675,8 @@ const minimax = (
     } else if (maxScore >= betaOrig) {
       flag = 'LOWERBOUND';
     }
-
     ctx.tt.store(currentHash, ttStoreDepth, maxScore, flag, bestMove);
+
     return maxScore;
   } else {
     let minScore = Infinity;
@@ -769,7 +762,6 @@ const minimax = (
             ctx.stats.pvs.failLowResearches++;
             ctx.stats.pvs.fullResearches++;
           }
-
           if (reduction > 0) {
             ctx.stats.lmr.researches++;
           }
@@ -822,7 +814,6 @@ const minimax = (
         minScore = score;
         bestMove = currentMove;
       }
-
       if (score < beta) beta = score;
 
       // αカットオフ: CRITICAL 未満の手のみ killer / history / countermove へ記録
@@ -830,10 +821,8 @@ const minimax = (
         if (moveScore < CRITICAL_SCORE_THRESHOLD) {
           storeKiller(ctx.killerTable, depth, currentMove);
           ctx.stats.ordering.killerStores++;
-
           storeHistory(ctx.historyTable, currentPlayer, depth, currentMove);
           ctx.stats.ordering.historyStores++;
-
           if (AI_FEATURES.ENABLE_COUNTERMOVE && lastMove) {
             storeCountermove(
               ctx.countermoveTable,
@@ -844,7 +833,6 @@ const minimax = (
             ctx.stats.ordering.countermoveStores++;
           }
         }
-
         bestMove = currentMove;
         break;
       }
@@ -862,8 +850,8 @@ const minimax = (
     } else if (minScore >= betaOrig) {
       flag = 'LOWERBOUND';
     }
-
     ctx.tt.store(currentHash, ttStoreDepth, minScore, flag, bestMove);
+
     return minScore;
   }
 };
@@ -963,14 +951,13 @@ export const findBestMove = (
   // 最終的な TT flag 判定のため、original window を保持する。
   const alphaOrig = initialAlpha;
   const betaOrig = initialBeta;
-
   let alpha = initialAlpha;
   const beta = initialBeta;
 
   if (verboseLog) {
     console.log(
       `[Minimax] depth=${depth}, candidates=${candidates.length}, player=${aiPlayer}, ` +
-      `window=[${alpha}, ${beta}], ttSize=${tt.size}`
+        `window=[${alpha}, ${beta}], ttSize=${tt.size}`
     );
   }
 
@@ -1003,11 +990,9 @@ export const findBestMove = (
     if (checkWinInstrumented(board, currentMove, aiPlayer, ctx)) {
       undoSearchMove(ctx, moveUndo);
       ctx.stats.nodes.immediateWin++;
-
       if (verboseLog) {
         console.log(`[Minimax] Immediate Win at (${row}, ${col})`);
       }
-
       return { move: currentMove, score: AI_SCORES.WIN };
     }
 
@@ -1021,7 +1006,6 @@ export const findBestMove = (
 
     if (useRootPvsNull) {
       const nullBeta = alpha + 1;
-
       ctx.stats.pvs.rootNullSearches++;
       ctx.stats.pvs.nullSearches++;
 
@@ -1040,11 +1024,9 @@ export const findBestMove = (
 
       if (ctx.aborted) {
         undoSearchMove(ctx, moveUndo);
-
         if (verboseLog) {
           console.log(`[Minimax] depth=${depth} aborted during child search`);
         }
-
         return { move: null, score: -Infinity };
       }
 
@@ -1069,11 +1051,9 @@ export const findBestMove = (
 
         if (ctx.aborted) {
           undoSearchMove(ctx, moveUndo);
-
           if (verboseLog) {
             console.log(`[Minimax] depth=${depth} aborted during child search`);
           }
-
           return { move: null, score: -Infinity };
         }
       }
@@ -1093,11 +1073,9 @@ export const findBestMove = (
 
       if (ctx.aborted) {
         undoSearchMove(ctx, moveUndo);
-
         if (verboseLog) {
           console.log(`[Minimax] depth=${depth} aborted during child search`);
         }
-
         return { move: null, score: -Infinity };
       }
     }
@@ -1115,14 +1093,12 @@ export const findBestMove = (
     // ルートで fail-high。
     if (alpha >= beta) {
       ctx.tt.store(initialHash, depth, bestScore, 'LOWERBOUND', bestPos);
-
       if (verboseLog) {
         console.log(
           `[Minimax] depth=${depth} fail-high: alpha=${alpha}, beta=${beta}, ` +
-          `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
+            `best=(${bestPos.row}, ${bestPos.col}), score=${bestScore}`
         );
       }
-
       return { move: bestPos, score: bestScore };
     }
   }
@@ -1139,7 +1115,6 @@ export const findBestMove = (
   } else if (bestScore >= betaOrig) {
     flag = 'LOWERBOUND';
   }
-
   ctx.tt.store(initialHash, depth, bestScore, flag, bestPos);
 
   if (verboseLog) {
