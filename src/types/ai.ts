@@ -30,6 +30,31 @@ export type PatternType =
 export type PatternCount = number[];
 
 // ============================================================
+// 攻守分離スコア
+// ============================================================
+
+/**
+ * 盤面集約の攻守分離 Top-K で使用する分離スコア。
+ *
+ * 即時評価に該当した場合、そのスコアは攻守分類に応じて
+ * attackScore または defenseScore のどちらか一方に格納される。
+ * 通常評価の場合、attackScore と defenseScore にそれぞれ
+ * 攻撃成分・防御成分が格納される。
+ */
+export interface SeparatedScore {
+  /** 攻撃スコア（attackScore × ATTACK_WEIGHT + shapeBonus） */
+  attackScore: number;
+  /** 防御スコア（相手の脅威解消量） */
+  defenseScore: number;
+  /** 合成スコア（attackScore + defenseScore。即時評価の場合は即時評価スコア） */
+  totalScore: number;
+  /** 即時評価に該当したかどうか */
+  isImmediate: boolean;
+  /** 即時評価の攻守分類（isImmediate=true の場合のみ有効） */
+  immediateSide?: 'attack' | 'defense';
+}
+
+// ============================================================
 // Threat Model / forced move list
 // ============================================================
 
