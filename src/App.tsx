@@ -28,6 +28,7 @@ const App = () => {
     currentPlayer,
     gameStatus,
     lastMove,
+    stoneCount,
     canUndoOne,
     executeMove,
     undoOne,
@@ -44,7 +45,8 @@ const App = () => {
   // 対局中に変更しようとして確認ダイアログを表示している設定変更。
   const [pendingSettingChange, setPendingSettingChange] = useState<PendingSettingChange | null>(null);
 
-  const isBoardEmpty = board.flat().every(cell => cell === null);
+  // 盤面が空かどうかは石数カウンターで O(1) 判定する。
+  const isBoardEmpty = stoneCount === 0;
 
   // 盤面全体の禁じ手座標は表示専用（ホバー時の赤バツ）。
   // 描画後に非同期計算されるため、着手受理の判定には使用しない。
@@ -149,7 +151,6 @@ const App = () => {
   }, [resetAiTurnState, resetGameLogic]);
 
   // --- 設定変更（リセットして適用。対局中のみ確認ダイアログを挟む） ---
-
   // 対局中（石が置かれていて、かつ勝敗が決まっていない）の変更は確認を必要とする。
   // 対局前（盤面が空）や対局終了後は、そのまま即座にリセット適用する。
   const needsSettingChangeConfirm = gameStatus === 'Playing' && !isBoardEmpty;
@@ -198,7 +199,6 @@ const App = () => {
   // 確認ダイアログで確定された保留中の設定変更を適用する。
   const confirmSettingChange = useCallback(() => {
     if (!pendingSettingChange) return;
-
     if (pendingSettingChange.kind === 'forbiddenRule') {
       applyForbiddenRuleToggle();
     } else if (pendingSettingChange.kind === 'playerColor') {
@@ -206,7 +206,6 @@ const App = () => {
     } else {
       applyGameModeChange(pendingSettingChange.mode);
     }
-
     setPendingSettingChange(null);
   }, [
     pendingSettingChange,

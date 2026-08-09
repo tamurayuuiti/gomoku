@@ -4,6 +4,7 @@
 // 責務:
 //   - 盤面・手番・勝敗・直前手の管理
 //   - 着手履歴の管理と局面復元
+//   - 石数カウンターの管理（全盤走査の排除）
 //   - executeMove / undoOne / undoToPlayerTurn の安定した identity 提供
 //
 // 注意:
@@ -12,17 +13,18 @@
 
 import { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import type { Player, BoardState, GameStatus, Position } from '../types/game';
-import { checkWin, checkDraw, createEmptyBoard } from '../utils/gameLogic';
+import { BOARD_SIZE, checkWin, createEmptyBoard } from '../utils/gameLogic';
 
 /**
  * 着手前の局面を保持するスナップショット。
- * Undo 時はこの単位で盤面・手番・ゲーム状態・直前手を復元する。
+ * Undo 時はこの単位で盤面・手番・ゲーム状態・直前手・石数を復元する。
  */
 interface GameSnapshot {
   board: BoardState;
   currentPlayer: Player;
   gameStatus: GameStatus;
   lastMove: Position | null;
+  stoneCount: number;
 }
 
 export const useGameLogic = () => {
@@ -30,16 +32,17 @@ export const useGameLogic = () => {
   const [currentPlayer, setCurrentPlayer] = useState<Player>('Black');
   const [gameStatus, setGameStatus] = useState<GameStatus>('Playing');
   const [lastMove, setLastMove] = useState<Position | null>(null);
+  const [stoneCount, setStoneCount] = useState<number>(0);
   const [history, setHistory] = useState<GameSnapshot[]>([]);
 
   // latest-ref: イベントコールバック内でのみ読み出す。
   // レンダー中ではなくコミット後に更新する。
-  const stateRef = useRef({ board, currentPlayer, gameStatus, lastMove });
+  const stateRef = useRef({ board, currentPlayer, gameStatus, lastMove, stoneCount });
   const historyRef = useRef<GameSnapshot[]>([]);
 
   useLayoutEffect(() => {
-    stateRef.current = { board, currentPlayer, gameStatus, lastMove };
-  }, [board, currentPlayer, gameStatus, lastMove]);
+    stateRef.current = { board, currentPlayer, gameStatus, lastMove, stoneCount };
+  }, [board, currentPlayer, gameStatus, lastMove, stoneCount]);
 
   const applySnapshot = useCallback((snapshot: GameSnapshot) => {
     // ref の即時更新: Undo 直後の着手処理が復元済み状態から始まるようにする。
@@ -48,12 +51,13 @@ export const useGameLogic = () => {
       currentPlayer: snapshot.currentPlayer,
       gameStatus: snapshot.gameStatus,
       lastMove: snapshot.lastMove,
+      stoneCount: snapshot.stoneCount,
     };
-
     setBoard(snapshot.board);
     setCurrentPlayer(snapshot.currentPlayer);
     setGameStatus(snapshot.gameStatus);
     setLastMove(snapshot.lastMove);
+    setStoneCount(snapshot.stoneCount);
   }, []);
 
   const executeMove = useCallback((row: number, col: number) => {
@@ -62,11 +66,11 @@ export const useGameLogic = () => {
       currentPlayer: player,
       gameStatus: currentStatus,
       lastMove: currentLastMove,
+      stoneCount: currentStoneCount,
     } = stateRef.current;
 
     // ゲーム終了後の着手は受け付けない。
     if (currentStatus !== 'Playing') return;
-
     // 防御ガード: 埋まったマスへの着手（同一タスク内の二重適用など）を無視する。
     if (currentBoard[row][col] !== null) return;
 
@@ -76,7 +80,9 @@ export const useGameLogic = () => {
       currentPlayer: player,
       gameStatus: currentStatus,
       lastMove: currentLastMove,
+      stoneCount: currentStoneCount,
     };
+
     const nextHistory = [...historyRef.current, snapshot];
     historyRef.current = nextHistory;
     setHistory(nextHistory);
@@ -84,12 +90,14 @@ export const useGameLogic = () => {
     const newBoard = currentBoard.map((r, rIdx) =>
       rIdx === row ? r.map((c, cIdx) => (cIdx === col ? player : c)) : r
     );
+
     const move: Position = { row, col };
+    const nextStoneCount = currentStoneCount + 1;
 
     let nextStatus: GameStatus | null = null;
     if (checkWin(newBoard, move, player)) {
       nextStatus = player === 'Black' ? 'BlackWins' : 'WhiteWins';
-    } else if (checkDraw(newBoard)) {
+    } else if (nextStoneCount === BOARD_SIZE * BOARD_SIZE) {
       nextStatus = 'Draw';
     }
 
@@ -101,10 +109,12 @@ export const useGameLogic = () => {
       currentPlayer: nextStatus ? player : nextPlayer,
       gameStatus: nextStatus ?? 'Playing',
       lastMove: move,
+      stoneCount: nextStoneCount,
     };
 
     setBoard(newBoard);
     setLastMove(move);
+    setStoneCount(nextStoneCount);
     if (nextStatus) {
       setGameStatus(nextStatus);
     } else {
@@ -114,12 +124,10 @@ export const useGameLogic = () => {
 
   const undoOne = useCallback((): boolean => {
     if (historyRef.current.length === 0) return false;
-
     const snapshot = historyRef.current[historyRef.current.length - 1];
     const nextHistory = historyRef.current.slice(0, -1);
     historyRef.current = nextHistory;
     setHistory(nextHistory);
-
     applySnapshot(snapshot);
     return true;
   }, [applySnapshot]);
@@ -130,10 +138,8 @@ export const useGameLogic = () => {
    */
   const undoToPlayerTurn = useCallback((targetPlayer: Player): boolean => {
     const currentHistory = historyRef.current;
-
     for (let i = currentHistory.length - 1; i >= 0; i--) {
       const snapshot = currentHistory[i];
-
       if (
         snapshot.currentPlayer === targetPlayer &&
         snapshot.gameStatus === 'Playing'
@@ -141,12 +147,10 @@ export const useGameLogic = () => {
         const nextHistory = currentHistory.slice(0, i);
         historyRef.current = nextHistory;
         setHistory(nextHistory);
-
         applySnapshot(snapshot);
         return true;
       }
     }
-
     return false;
   }, [applySnapshot]);
 
@@ -162,21 +166,20 @@ export const useGameLogic = () => {
 
   const resetGameLogic = useCallback(() => {
     const emptyBoard = createEmptyBoard();
-
     historyRef.current = [];
     setHistory([]);
-
     stateRef.current = {
       board: emptyBoard,
       currentPlayer: 'Black',
       gameStatus: 'Playing',
       lastMove: null,
+      stoneCount: 0,
     };
-
     setBoard(emptyBoard);
     setCurrentPlayer('Black');
     setGameStatus('Playing');
     setLastMove(null);
+    setStoneCount(0);
   }, []);
 
   return {
@@ -184,6 +187,7 @@ export const useGameLogic = () => {
     currentPlayer,
     gameStatus,
     lastMove,
+    stoneCount,
     canUndoOne: history.length > 0,
     executeMove,
     undoOne,
