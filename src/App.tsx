@@ -12,8 +12,15 @@ import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
 import ForbiddenRuleToggle from './components/ForbiddenRuleToggle';
 import GameStatusPanel from './components/GameStatusPanel';
+import SettingChangeConfirmDialog from './components/SettingChangeConfirmDialog';
 import { RotateCcw, Undo2 } from 'lucide-react';
 import './index.css';
+
+// 対局中に変更しようとして、確認待ちになっている設定変更の内容。
+type PendingSettingChange =
+  | { kind: 'forbiddenRule' }
+  | { kind: 'playerColor'; color: Player }
+  | { kind: 'gameMode'; mode: GameMode };
 
 const App = () => {
   const {
@@ -34,6 +41,8 @@ const App = () => {
   const [playerColor, setPlayerColor] = useState<Player>('Black');
   const [useForbiddenRule, setUseForbiddenRule] = useState<boolean>(true);
   const [forbiddenWarning, setForbiddenWarning] = useState<string | null>(null);
+  // 対局中に変更しようとして確認ダイアログを表示している設定変更。
+  const [pendingSettingChange, setPendingSettingChange] = useState<PendingSettingChange | null>(null);
 
   const isBoardEmpty = board.flat().every(cell => cell === null);
 
@@ -139,21 +148,77 @@ const App = () => {
     setForbiddenWarning(null);
   }, [resetAiTurnState, resetGameLogic]);
 
-  const handleModeChange = (mode: GameMode) => {
-    if (mode !== gameMode) {
-      setGameMode(mode);
-      resetGame();
-    }
-  };
+  // --- 設定変更（リセットして適用。対局中のみ確認ダイアログを挟む） ---
 
-  const handleColorChange = (color: Player) => {
-    if (color !== playerColor) {
-      setPlayerColor(color);
-      resetGame();
-    }
-  };
+  // 対局中（石が置かれていて、かつ勝敗が決まっていない）の変更は確認を必要とする。
+  // 対局前（盤面が空）や対局終了後は、そのまま即座にリセット適用する。
+  const needsSettingChangeConfirm = gameStatus === 'Playing' && !isBoardEmpty;
 
-  const isUndoDisabled = !canUndo || isAiThinking;
+  const applyForbiddenRuleToggle = useCallback(() => {
+    setUseForbiddenRule(prev => !prev);
+    resetGame();
+  }, [resetGame]);
+
+  const requestForbiddenRuleToggle = useCallback(() => {
+    if (needsSettingChangeConfirm) {
+      setPendingSettingChange({ kind: 'forbiddenRule' });
+    } else {
+      applyForbiddenRuleToggle();
+    }
+  }, [needsSettingChangeConfirm, applyForbiddenRuleToggle]);
+
+  const applyPlayerColorChange = useCallback((color: Player) => {
+    setPlayerColor(color);
+    resetGame();
+  }, [resetGame]);
+
+  const requestPlayerColorChange = useCallback((color: Player) => {
+    if (color === playerColor) return;
+    if (needsSettingChangeConfirm) {
+      setPendingSettingChange({ kind: 'playerColor', color });
+    } else {
+      applyPlayerColorChange(color);
+    }
+  }, [playerColor, needsSettingChangeConfirm, applyPlayerColorChange]);
+
+  const applyGameModeChange = useCallback((mode: GameMode) => {
+    setGameMode(mode);
+    resetGame();
+  }, [resetGame]);
+
+  const requestGameModeChange = useCallback((mode: GameMode) => {
+    if (mode === gameMode) return;
+    if (needsSettingChangeConfirm) {
+      setPendingSettingChange({ kind: 'gameMode', mode });
+    } else {
+      applyGameModeChange(mode);
+    }
+  }, [gameMode, needsSettingChangeConfirm, applyGameModeChange]);
+
+  // 確認ダイアログで確定された保留中の設定変更を適用する。
+  const confirmSettingChange = useCallback(() => {
+    if (!pendingSettingChange) return;
+
+    if (pendingSettingChange.kind === 'forbiddenRule') {
+      applyForbiddenRuleToggle();
+    } else if (pendingSettingChange.kind === 'playerColor') {
+      applyPlayerColorChange(pendingSettingChange.color);
+    } else {
+      applyGameModeChange(pendingSettingChange.mode);
+    }
+
+    setPendingSettingChange(null);
+  }, [
+    pendingSettingChange,
+    applyForbiddenRuleToggle,
+    applyPlayerColorChange,
+    applyGameModeChange,
+  ]);
+
+  // 確認ダイアログをキャンセルし、保留中の設定変更を破棄する。
+  const cancelSettingChange = useCallback(() => {
+    setPendingSettingChange(null);
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-transparent px-4 py-10 font-sans text-ink sm:py-14">
@@ -171,20 +236,17 @@ const App = () => {
         <div className="flex flex-wrap items-center justify-center gap-3">
           <ModeSelector
             gameMode={gameMode}
-            onModeChange={handleModeChange}
+            onModeChange={requestGameModeChange}
           />
           <ForbiddenRuleToggle
             useForbiddenRule={useForbiddenRule}
-            disabled={!isBoardEmpty}
-            onToggle={() => setUseForbiddenRule(!useForbiddenRule)}
+            onToggle={requestForbiddenRuleToggle}
           />
         </div>
         <ColorSelector
           gameMode={gameMode}
-          gameStatus={gameStatus}
-          isBoardEmpty={isBoardEmpty}
           playerColor={playerColor}
-          onColorChange={handleColorChange}
+          onColorChange={requestPlayerColorChange}
         />
       </div>
 
@@ -210,9 +272,9 @@ const App = () => {
       <div className="mt-8 flex w-full max-w-[min(92vw,600px)] flex-wrap items-center justify-center gap-3">
         <button
           onClick={handleUndo}
-          disabled={isUndoDisabled}
+          disabled={isAiThinking || !canUndo}
           className={`group flex items-center gap-2 rounded-full px-5 py-3 font-bold shadow-md transition-all ${
-            isUndoDisabled
+            isAiThinking || !canUndo
               ? 'cursor-not-allowed bg-white text-board-frame/40 opacity-50 ring-1 ring-board-frame/10'
               : 'bg-white text-board-frame ring-1 ring-board-frame/20 hover:bg-board-frame/5 active:scale-95'
           }`}
@@ -231,6 +293,13 @@ const App = () => {
           対局をリセット
         </button>
       </div>
+
+      {/* 対局中の設定変更確認ダイアログ */}
+      <SettingChangeConfirmDialog
+        open={pendingSettingChange !== null}
+        onConfirm={confirmSettingChange}
+        onCancel={cancelSettingChange}
+      />
     </div>
   );
 };
