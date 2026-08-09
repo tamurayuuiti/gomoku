@@ -11,7 +11,7 @@
 //   - Worker へ渡す禁手マトリクスは postMessage 直前に同期計算する。
 //   - UI の useForbiddenRule を options.forbiddenRuleEnabled として常時伝搬する。
 
-import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
 import type {
   Player,
   BoardState,
@@ -40,18 +40,14 @@ interface UseAiPlayerProps {
   gameStatus: GameStatus;
   gameMode: GameMode;
   playerColor: Player;
-
   /** 禁じ手ルールが有効かどうか。Worker へ送る禁手マトリクスの計算に使う。 */
   useForbiddenRule: boolean;
-
   onMove: (row: number, col: number) => void;
-
   /**
    * 直前手（任意）。
    * Countermove Heuristic のルート精度を上げたい場合に渡す。
    */
   lastMove?: Position | null;
-
   /**
    * 着手までの最低演出遅延 [ms]。既定 600。
    */
@@ -76,7 +72,6 @@ export const useAiPlayer = ({
   // 直近で Worker へ送信済みのターン ID。
   // レンダー結果には使わないため ref で保持し、同一ターンの二重送信のみを防ぐ。
   const requestedTurnIdRef = useRef<string>('');
-
   const workerRef = useRef<Worker | null>(null);
 
   // 対局終了通知の二重送信防止用。
@@ -85,16 +80,12 @@ export const useAiPlayer = ({
   // latest-ref 群。
   // コミット後に更新し、非同期コールバック内でのみ読み出す。
   const onMoveRef = useRef(onMove);
-
   /** 現在応答を待っているターン。null = 応答待ちではない。 */
   const pendingRef = useRef<{ turnId: string } | null>(null);
-
-  /** 送信済みで未応答のリクエスト数。旧応答の世代管理に使う。 */
+  /** 送信済みで未応答のリクエスト数。応答の世代管理に使う。 */
   const inflightRef = useRef(0);
-
   /** 応答待ちリクエストの思考開始時刻（演出遅延の計算用）。 */
   const thinkStartRef = useRef(0);
-
   /** 保留中の演出遅延タイマ。 */
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -132,11 +123,10 @@ export const useAiPlayer = ({
         type: 'module',
       }
     );
-
     workerRef.current = worker;
 
     // Worker が再生成された場合、直前までの送信・応答待ち状態はすべて無効になる。
-    // ガードをリセットして、新しい Worker への再送信を許可する。
+    // ガードをリセットして、Worker への再送信を許可する。
     requestedTurnIdRef.current = '';
     pendingRef.current = null;
     inflightRef.current = 0;
@@ -156,19 +146,18 @@ export const useAiPlayer = ({
 
     const handleMessage = (event: MessageEvent<AiWorkerResponse>) => {
       // Worker は単一スレッドで FIFO に応答する。
-      // 未応答リクエストが複数ある場合、古い応答は破棄し、
+      // 未応答リクエストが複数ある場合、先に到着した不要な応答は破棄し、
       // 最新リクエストの応答だけを適用する。
       inflightRef.current = Math.max(0, inflightRef.current - 1);
 
       const pending = pendingRef.current;
       if (!pending) return;
 
-      // より新しいリクエストが未応答なら、この旧応答は破棄する。
+      // より新しいリクエストが未応答なら、この応答は破棄する。
       if (inflightRef.current > 0) return;
 
       const { nextMove, error } = event.data;
       const turnId = pending.turnId;
-
       pendingRef.current = null;
 
       if (error) {
@@ -178,17 +167,14 @@ export const useAiPlayer = ({
       }
 
       const elapsed = performance.now() - thinkStartRef.current;
-
       // 着手までの表示上の遅延は max(minThinkDisplayMs, 実際の思考時間) とする。
       const remainingDelay = Math.max(0, minThinkDisplayMs - elapsed);
 
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
-
         if (nextMove) {
           onMoveRef.current(nextMove.row, nextMove.col);
         }
-
         setResolvedTurnId(turnId);
       }, remainingDelay);
     };
@@ -196,12 +182,9 @@ export const useAiPlayer = ({
     const handleError = (event: ErrorEvent) => {
       // Worker 内で捕捉されなかった例外（構文エラー等）に対するフォールバック。
       console.error('[useAiPlayer] AI worker crashed:', event.message);
-
       inflightRef.current = 0;
-
       const pending = pendingRef.current;
       pendingRef.current = null;
-
       if (pending) {
         setResolvedTurnId(pending.turnId);
       }
@@ -240,7 +223,7 @@ export const useAiPlayer = ({
     thinkStartRef.current = performance.now();
 
     // Worker 用禁手マトリクスを postMessage 直前に同期計算する。
-    // 要求時点の最新盤面に対する新鮮な全走査。
+    // 要求時点の盤面に対する全走査。
     const forbiddenMoves = computeForbiddenMatrix(
       board,
       currentPlayer,
@@ -264,7 +247,6 @@ export const useAiPlayer = ({
       currentPlayer,
       options,
     };
-
     worker.postMessage(request);
   }, [
     isAiTurn,
@@ -280,7 +262,7 @@ export const useAiPlayer = ({
   // AI 手番の終了時に保留中の演出タイマを取消す
   // ------------------------------------------------------------
   // 演出遅延中にリセットやモード切替が行われた場合、
-  // 旧ターンの着手が新しい盤面に適用されてはならない。
+  // 前のターンの着手がリセット後の盤面に適用されてはならない。
   useEffect(() => {
     if (!isAiTurn && timerRef.current) {
       clearTimeout(timerRef.current);
@@ -303,7 +285,6 @@ export const useAiPlayer = ({
       if (!worker) return;
 
       let aiResult: AiGameResult = 'Unknown';
-
       if (gameStatus === 'Draw') {
         aiResult = 'Draw';
       } else if (gameStatus === 'BlackWins') {
@@ -317,7 +298,6 @@ export const useAiPlayer = ({
         control: 'finalizeGameSession',
         aiResult,
       };
-
       worker.postMessage(message);
     }
   }, [gameStatus, gameMode, playerColor]);
@@ -335,8 +315,24 @@ export const useAiPlayer = ({
     };
   }, []);
 
+  // ------------------------------------------------------------
+  // Undo / リセット時のターン管理状態初期化
+  // ------------------------------------------------------------
+  // requestedTurnIdRef と resolvedTurnId を初期化し、Undo やリセット後に
+  // AI 手番へ移った場合でも E3 effect が正しく発火できるようにする。
+  // inflightRef は Worker 応答の破棄判定に使うため初期化しない。
+  const resetAiTurnState = useCallback(() => {
+    requestedTurnIdRef.current = '';
+    pendingRef.current = null;
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setResolvedTurnId('');
+  }, []);
+
   // 「Worker に問い合わせ中」＝ AI の手番であり、かつ現在のターンがまだ解決していない場合。
   const isAiThinking = isAiTurn && turnId !== resolvedTurnId;
 
-  return { isAiThinking };
+  return { isAiThinking, resetAiTurnState };
 };

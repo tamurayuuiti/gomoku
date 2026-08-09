@@ -12,7 +12,7 @@ import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
 import ForbiddenRuleToggle from './components/ForbiddenRuleToggle';
 import GameStatusPanel from './components/GameStatusPanel';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Undo2 } from 'lucide-react';
 import './index.css';
 
 const App = () => {
@@ -21,7 +21,11 @@ const App = () => {
     currentPlayer,
     gameStatus,
     lastMove,
+    canUndoOne,
     executeMove,
+    undoOne,
+    undoToPlayerTurn,
+    canUndoToPlayerTurn,
     resetGameLogic,
   } = useGameLogic();
 
@@ -37,7 +41,7 @@ const App = () => {
   // 描画後に非同期計算されるため、着手受理の判定には使用しない。
   const forbiddenMoves = useForbiddenMoves(board, currentPlayer, gameStatus, useForbiddenRule);
 
-  const { isAiThinking } = useAiPlayer({
+  const { isAiThinking, resetAiTurnState } = useAiPlayer({
     board,
     currentPlayer,
     gameStatus,
@@ -46,6 +50,12 @@ const App = () => {
     useForbiddenRule,
     onMove: executeMove,
   });
+
+  // PvP は 1 手単位で戻す。
+  // PvE は人間の手番へ戻るまで復元し、人間の着手と相手の応手をまとめて取り消す。
+  const canUndo = gameMode === 'PvE'
+    ? canUndoToPlayerTurn(playerColor)
+    : canUndoOne;
 
   // latest-ref パターンで handleCellClick の identity を安定化し、
   // memo 化された Cell に安全に渡す（ref は useLayoutEffect で更新）。
@@ -91,7 +101,6 @@ const App = () => {
     // 禁じ手チェック（黒番のみ）: 単一マスの直接判定が権威あるゲート
     if (forbiddenRule && player === 'Black') {
       const result = checkForbiddenMove(currentBoard, { row, col }, 'Black');
-
       if (result.isForbidden) {
         setForbiddenWarning(getForbiddenReasonMessage(result.reason));
         return;
@@ -102,10 +111,33 @@ const App = () => {
     applyMove(row, col);
   }, [gameMode, playerColor]);
 
+  const handleUndo = useCallback(() => {
+    if (isAiThinking || !canUndo) return;
+
+    const undone = gameMode === 'PvE'
+      ? undoToPlayerTurn(playerColor)
+      : undoOne();
+
+    if (!undone) return;
+
+    // Undo 後の AI ターン管理状態を初期化し、次の AI 手番で正しく再思考されるようにする。
+    resetAiTurnState();
+    setForbiddenWarning(null);
+  }, [
+    isAiThinking,
+    canUndo,
+    gameMode,
+    playerColor,
+    resetAiTurnState,
+    undoOne,
+    undoToPlayerTurn,
+  ]);
+
   const resetGame = useCallback(() => {
+    resetAiTurnState();
     resetGameLogic();
     setForbiddenWarning(null);
-  }, [resetGameLogic]);
+  }, [resetAiTurnState, resetGameLogic]);
 
   const handleModeChange = (mode: GameMode) => {
     if (mode !== gameMode) {
@@ -120,6 +152,8 @@ const App = () => {
       resetGame();
     }
   };
+
+  const isUndoDisabled = !canUndo || isAiThinking;
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-transparent px-4 py-10 font-sans text-ink sm:py-14">
@@ -139,14 +173,12 @@ const App = () => {
             gameMode={gameMode}
             onModeChange={handleModeChange}
           />
-
           <ForbiddenRuleToggle
             useForbiddenRule={useForbiddenRule}
             disabled={!isBoardEmpty}
             onToggle={() => setUseForbiddenRule(!useForbiddenRule)}
           />
         </div>
-
         <ColorSelector
           gameMode={gameMode}
           gameStatus={gameStatus}
@@ -166,7 +198,6 @@ const App = () => {
           gameMode={gameMode}
           playerColor={playerColor}
         />
-
         <Board
           board={board}
           onCellClick={handleCellClick}
@@ -175,16 +206,31 @@ const App = () => {
         />
       </div>
 
-      <button
-        onClick={resetGame}
-        className="group mt-8 flex items-center gap-2 rounded-full bg-board-frame px-7 py-3 font-bold text-amber-50 shadow-md transition-all hover:bg-board-frame-dark active:scale-95"
-      >
-        <RotateCcw
-          className="h-5 w-5 transition-transform duration-300 group-hover:rotate-180"
-          strokeWidth={3}
-        />
-        対局をリセット
-      </button>
+      {/* 対局操作：待ったとリセットを同一領域に配置 */}
+      <div className="mt-8 flex w-full max-w-[min(92vw,600px)] flex-wrap items-center justify-center gap-3">
+        <button
+          onClick={handleUndo}
+          disabled={isUndoDisabled}
+          className={`group flex items-center gap-2 rounded-full px-5 py-3 font-bold shadow-md transition-all ${
+            isUndoDisabled
+              ? 'cursor-not-allowed bg-white text-board-frame/40 opacity-50 ring-1 ring-board-frame/10'
+              : 'bg-white text-board-frame ring-1 ring-board-frame/20 hover:bg-board-frame/5 active:scale-95'
+          }`}
+        >
+          <Undo2 className="h-5 w-5" strokeWidth={3} />
+          待った
+        </button>
+        <button
+          onClick={resetGame}
+          className="group flex items-center gap-2 rounded-full bg-board-frame px-7 py-3 font-bold text-amber-50 shadow-md transition-all hover:bg-board-frame-dark active:scale-95"
+        >
+          <RotateCcw
+            className="h-5 w-5 transition-transform duration-300 group-hover:rotate-180"
+            strokeWidth={3}
+          />
+          対局をリセット
+        </button>
+      </div>
     </div>
   );
 };
