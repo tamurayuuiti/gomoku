@@ -10,6 +10,7 @@
 // 注意:
 //   - 評価値・tier 優先順位・LMR / PVS 判定の意味は変更しない。
 //   - 型定義は types/ai.ts を参照する。
+
 import type { BoardState, Position, Player } from '../../types/game';
 import type {
   KillerEntry,

@@ -30,31 +30,6 @@ export type PatternType =
 export type PatternCount = number[];
 
 // ============================================================
-// 攻守分離スコア
-// ============================================================
-
-/**
- * 盤面集約の攻守分離 Top-K で使用する分離スコア。
- *
- * 即時評価に該当した場合、そのスコアは攻守分類に応じて
- * attackScore または defenseScore のどちらか一方に格納される。
- * 通常評価の場合、attackScore と defenseScore にそれぞれ
- * 攻撃成分・防御成分が格納される。
- */
-export interface SeparatedScore {
-  /** 攻撃スコア（attackScore × ATTACK_WEIGHT + shapeBonus） */
-  attackScore: number;
-  /** 防御スコア（相手の脅威解消量） */
-  defenseScore: number;
-  /** 合成スコア（attackScore + defenseScore。即時評価の場合は即時評価スコア） */
-  totalScore: number;
-  /** 即時評価に該当したかどうか */
-  isImmediate: boolean;
-  /** 即時評価の攻守分類（isImmediate=true の場合のみ有効） */
-  immediateSide?: 'attack' | 'defense';
-}
-
-// ============================================================
 // Threat Model / forced move list
 // ============================================================
 
@@ -110,46 +85,35 @@ export interface ForcedMoveList {
 export interface SearchOptions {
   /** 探索深さの上書き。未指定時は AI_CONFIG.MINIMAX_DEPTH */
   depth?: number;
-
   /**
    * 探索時間上限 [ms]。
    * 指定時は反復深化を行い、制限時間内に完了した最後の深さの結果を採用する。
    */
   timeLimitMs?: number;
-
   /**
    * 直前手。
    * Countermove Heuristic のルート精度を上げたい場合に渡す。
    */
   lastMove?: Position | null;
-
   /**
    * 禁手ルールが有効かどうか。
    * false の場合は動的禁手を明示的に無効化する。
    */
   forbiddenRuleEnabled?: boolean;
-
   /** Root VCF を明示的に有効 / 無効化する */
   vcfEnabled?: boolean;
-
   /** Root VCF 時間予算 [ms] */
   vcfTimeBudgetMs?: number;
-
   /** Root VCF ノード上限 */
   vcfNodeLimit?: number;
-
   /** 戦術 Quiescence を明示的に有効 / 無効化する */
   qsearchEnabled?: boolean;
-
   /** Quiescence 最大 ply */
   qsearchMaxPly?: number;
-
   /** Quiescence 1葉あたりノード上限 */
   qsearchNodeLimitPerLeaf?: number;
-
   /** Quiescence 総ノード上限 */
   qsearchTotalNodeLimit?: number;
-
   /** Quiescence 時間予算 [ms] */
   qsearchTimeBudgetMs?: number;
 }

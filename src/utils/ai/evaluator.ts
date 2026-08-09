@@ -388,6 +388,7 @@ const computePositionBonus = (row: number, col: number): number => {
     (row - BOARD_CENTER) ** 2 + (col - BOARD_CENTER) ** 2
   );
   const normalizedDistance = distance / MAX_CENTER_DISTANCE;
+
   if (EVALUATION_FEATURES.ENABLE_ENHANCED_POSITION_BONUS) {
     return (1 - normalizedDistance) ** 2 * EVAL_CONFIG.POSITION_BONUS_MAX;
   }
@@ -402,8 +403,7 @@ const computePositionBonus = (row: number, col: number): number => {
  * board ベースの形状ボーナス。
  *
  * 4方向 × 距離1,2 の近接自石を数え、ボーナスを加算する。
- * ENABLE_ENHANCED_SHAPE_BONUS が有効な場合、距離1（隣接）と距離2（1マス空き）で
- * 異なる重みを適用する。即時戦術スコアには影響しない。
+ * 即時戦術スコアには影響しない。
  */
 const computeShapeBonusFromBoard = (
   board: BoardState,
@@ -413,17 +413,11 @@ const computeShapeBonusFromBoard = (
 ): number => {
   if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
 
-  const enhanced = EVALUATION_FEATURES.ENABLE_ENHANCED_SHAPE_BONUS;
   let bonus = 0;
+  const perStone = EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
 
   for (const [dx, dy] of DIRECTIONS) {
     for (const dist of [1, 2]) {
-      const perStone = enhanced
-        ? dist === 1
-          ? EVAL_CONFIG.SHAPE_BONUS_PER_STONE_DIST1
-          : EVAL_CONFIG.SHAPE_BONUS_PER_STONE_DIST2
-        : EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
-
       const r1 = row + dx * dist;
       const c1 = col + dy * dist;
       if (
@@ -450,9 +444,7 @@ const computeShapeBonusFromBoard = (
     }
   }
 
-  const maxBonus = enhanced
-    ? EVAL_CONFIG.SHAPE_MAX_BONUS_ENHANCED
-    : EVAL_CONFIG.SHAPE_MAX_BONUS;
+  const maxBonus = EVAL_CONFIG.SHAPE_MAX_BONUS;
   return Math.min(bonus, maxBonus);
 };
 
@@ -461,8 +453,6 @@ const computeShapeBonusFromBoard = (
  *
  * ラインコードの index 2,3,5,6（中心から距離 1,2）に
  * 自石（値 1）があるかを数える。
- * ENABLE_ENHANCED_SHAPE_BONUS が有効な場合、距離1（隣接）と距離2（1マス空き）で
- * 異なる重みを適用する。
  */
 export const computeShapeBonusFromLines = (
   ownLineCaches: number[][][],
@@ -471,26 +461,19 @@ export const computeShapeBonusFromLines = (
 ): number => {
   if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
 
-  const enhanced = EVALUATION_FEATURES.ENABLE_ENHANCED_SHAPE_BONUS;
-  const dist1Weight = enhanced
-    ? EVAL_CONFIG.SHAPE_BONUS_PER_STONE_DIST1
-    : EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
-  const dist2Weight = enhanced
-    ? EVAL_CONFIG.SHAPE_BONUS_PER_STONE_DIST2
-    : EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
-  const maxBonus = enhanced
-    ? EVAL_CONFIG.SHAPE_MAX_BONUS_ENHANCED
-    : EVAL_CONFIG.SHAPE_MAX_BONUS;
-
+  const weight = EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+  const maxBonus = EVAL_CONFIG.SHAPE_MAX_BONUS;
   let bonus = 0;
+
   for (let d = 0; d < DIRECTIONS.length; d++) {
     const code = ownLineCaches[d][r][c];
     // index 2 = 距離-2, index 3 = 距離-1, index 5 = 距離+1, index 6 = 距離+2
-    if (extractDigit(code, 2) === 1) bonus += dist2Weight;
-    if (extractDigit(code, 3) === 1) bonus += dist1Weight;
-    if (extractDigit(code, 5) === 1) bonus += dist1Weight;
-    if (extractDigit(code, 6) === 1) bonus += dist2Weight;
+    if (extractDigit(code, 2) === 1) bonus += weight;
+    if (extractDigit(code, 3) === 1) bonus += weight;
+    if (extractDigit(code, 5) === 1) bonus += weight;
+    if (extractDigit(code, 6) === 1) bonus += weight;
   }
+
   return Math.min(bonus, maxBonus);
 };
 
@@ -546,6 +529,7 @@ const evaluatePositionRaw = (
   ) {
     return AI_SCORES.FOUR_THREE;
   }
+
   if (
     scratchOppBeforeCounts[PATTERN_INDEX.OPEN_FOUR] > 0 &&
     scratchOppAfterCounts[PATTERN_INDEX.OPEN_FOUR] <
@@ -569,6 +553,7 @@ const evaluatePositionRaw = (
   ) {
     return AI_SCORES.FOUR_THREE;
   }
+
   if (scratchAttackCounts[PATTERN_INDEX.OPEN_THREE] >= 2) return AI_SCORES.DOUBLE_THREE;
   if (
     scratchOppBeforeCounts[PATTERN_INDEX.OPEN_THREE] >= 2 &&
@@ -676,6 +661,7 @@ export const evaluatePositionWithCache = (
   ) {
     return AI_SCORES.FOUR_THREE + computePositionBonus(row, col);
   }
+
   if (
     scratchOppBeforeCounts[PATTERN_INDEX.OPEN_FOUR] > 0 &&
     scratchOppAfterCounts[PATTERN_INDEX.OPEN_FOUR] <
@@ -699,6 +685,7 @@ export const evaluatePositionWithCache = (
   ) {
     return AI_SCORES.FOUR_THREE + computePositionBonus(row, col);
   }
+
   if (scratchAttackCounts[PATTERN_INDEX.OPEN_THREE] >= 2) {
     return AI_SCORES.DOUBLE_THREE + computePositionBonus(row, col);
   }
@@ -726,5 +713,6 @@ export const evaluatePositionWithCache = (
 
   const raw = attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore;
   const shapeBonus = computeShapeBonusFromLines(ownCaches, row, col);
+
   return raw + computePositionBonus(row, col) + shapeBonus;
 };

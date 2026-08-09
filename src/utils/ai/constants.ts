@@ -91,18 +91,6 @@ export const EVAL_CONFIG = {
   TOP_K_DECAY: 0.3,
 
   /**
-   * 盤面集約の K 拡大時に使用する上位 K 手の数。
-   * ENABLE_ENHANCED_TOP_K が有効な場合のみ参照される。
-   */
-  TOP_K_ENHANCED: 5,
-
-  /**
-   * 盤面集約の K 拡大時に使用する減衰係数。
-   * ENABLE_ENHANCED_TOP_K が有効な場合のみ参照される。
-   */
-  TOP_K_DECAY_ENHANCED: 0.3,
-
-  /**
    * 形状ボーナス: 近接自石 1 個あたりのボーナス。
    * 通常評価分支でのみ使用し、即時戦術スコアには影響しない。
    */
@@ -117,21 +105,6 @@ export const EVAL_CONFIG = {
    * SINGLE（1）の 1/20 に抑え、素点が異なる候補の順位を逆転させない。
    */
   POSITION_BONUS_MAX: 0.05,
-
-  /**
-   * 形状ボーナス: 距離1（隣接）の近接自石 1 個あたりのボーナス。
-   * 隣接による接続は距離2よりも戦術的価値が高いため、大きな重みを付ける。
-   */
-  SHAPE_BONUS_PER_STONE_DIST1: 0.15,
-
-  /**
-   * 形状ボーナス: 距離2（1マス空き）の近接自石 1 個あたりのボーナス。
-   * 距離1の約半分に減衰し、緩やかな関係の価値を反映する。
-   */
-  SHAPE_BONUS_PER_STONE_DIST2: 0.08,
-
-  /** 形状ボーナスの絶対上限 */
-  SHAPE_MAX_BONUS_ENHANCED: 1.5,
 
   /**
    * 脅威密度ボーナスの係数。
@@ -157,30 +130,6 @@ export const EVAL_CONFIG = {
    * 即時評価（DOUBLE_THREE 以上）のセルは脅威密度に含めない。
    */
   THREAT_DENSITY_EXCLUDE_THRESHOLD: AI_SCORES.DOUBLE_THREE,
-
-  /**
-   * 攻守分離集約時の攻撃側重み。
-   * ENABLE_BALANCED_AGGREGATION が有効な場合のみ参照される。
-   */
-  ATTACK_AGG_WEIGHT: 1.0,
-
-  /**
-   * 攻守分離集約時の防御側重み。
-   * ENABLE_BALANCED_AGGREGATION が有効な場合のみ参照される。
-   */
-  DEFENSE_AGG_WEIGHT: 1.0,
-
-  /**
-   * 攻守分離集約時の攻撃 Top-K 減衰係数。
-   * ENABLE_BALANCED_AGGREGATION が有効な場合のみ参照される。
-   */
-  ATTACK_TOP_K_DECAY: 0.3,
-
-  /**
-   * 攻守分離集約時の防御 Top-K 減衰係数。
-   * ENABLE_BALANCED_AGGREGATION が有効な場合のみ参照される。
-   */
-  DEFENSE_TOP_K_DECAY: 0.3,
 } as const;
 
 // ============================================================
@@ -662,34 +611,9 @@ export const EVALUATION_FEATURES = {
   ENABLE_ENHANCED_POSITION_BONUS: true,
 
   /**
-   * 形状ボーナスの距離別重みを有効化。
-   * 有効時、距離1（隣接）と距離2（1マス空き）で異なる重みを適用し、
-   * 上限を EVAL_CONFIG.SHAPE_MAX_BONUS_ENHANCED に引き上げる。
-   * 無効時、距離一律の EVAL_CONFIG.SHAPE_BONUS_PER_STONE と
-   * EVAL_CONFIG.SHAPE_MAX_BONUS を維持する。
-   * ENABLE_SHAPE_BONUS が false の場合は本 flag の値に関わらず無効。
-   */
-  ENABLE_ENHANCED_SHAPE_BONUS: false,
-
-  /**
-   * 盤面集約の Top-K 拡大を有効化。
-   * 有効時、K=5・減衰係数 0.25 で盤面集約を行う。
-   * 無効時、K=3・減衰係数 0.3 の挙動を維持する。
-   */
-  ENABLE_ENHANCED_TOP_K: false,
-
-  /**
    * 脅威密度ボーナスを有効化。
    * 有効時、Top-K に漏れる中小脅威の累積価値を補助項として最終スコアに加算する。
    * 無効時、脅威密度の集計を行わず現行挙動を維持する。
    */
   ENABLE_THREAT_DENSITY: true,
-
-  /**
-   * 攻守分離 Top-K 集約を有効化。
-   * 有効時、攻撃スコアと防御スコアを分離して集約し、
-   * 攻めと守りに異なる重み・減衰を適用可能にする。
-   * 無効時、合成スコアの Top-K 集約を維持する。
-   */
-  ENABLE_BALANCED_AGGREGATION: false,
 } as const;
