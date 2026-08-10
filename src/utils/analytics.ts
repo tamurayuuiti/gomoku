@@ -25,6 +25,7 @@ export function initializeAnalytics(): void {
   // 【修正点】公式スニペットと同じ function 定義と arguments を使用
   // アロー関数 (...) を使うと Array が push され、gtag.js がキューを消化しない原因になる
   window.gtag = function () {
+    // eslint-disable-next-line prefer-rest-params
     window.dataLayer.push(arguments)
   }
 
