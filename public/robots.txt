@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://gomoku-pink.vercel.app/sitemap.xml
