@@ -331,7 +331,7 @@ export const SEARCH_TUNING_CONFIG: {
   // PVS null-mode policy が有効な場合のみ使用（experimental / 既定 OFF）。
   PVS_NULL_MODE: 'quiet_only',
 
-  TIME_PREDICTION_SAFETY: 1.6,
+  TIME_PREDICTION_SAFETY: 1.3,
   TIME_PREDICTION_MIN_DEPTH: 3,
 
   // Conditional root PVS が有効な場合のみ使用（experimental / 既定 OFF）。
