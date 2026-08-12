@@ -23,6 +23,7 @@ import {
   AI_CONFIG,
   EVAL_CONFIG,
   EVALUATION_FEATURES,
+  PERF_FEATURES,
 } from './constants';
 import {
   createEmptyPatternCount,
@@ -32,7 +33,10 @@ import {
   PATTERN_INDEX,
   PATTERN_TABLE,
   POSITION_WEIGHT,
+  CENTER_WEIGHT,
   calcTotalOppScore,
+  calcTotalOppScoreFromPacked,
+  computeShapeBonusFromLinesLut,
 } from './evaluator';
 import { cellCode } from './lineCache';
 
@@ -75,24 +79,10 @@ const buildLineCache = (
 };
 
 /**
- * キャッシュ済みラインコードから (r, c) への着手価値を算出する。
- *
- * ロジックは evaluator.ts の evaluatePosition と同一で、
- * 違いは事前計算済みキャッシュからラインコードを取得し、
- * 中心セルへの仮想着手を整数加算で表現する点のみ。
- *
- * LineCache の中心セル（index 4）は空マス（値 0）であるため、
- * 自石を置く場合は POSITION_WEIGHT[4] を加算、
- * 相手石を置く場合は 2 * POSITION_WEIGHT[4] を加算する。
+ * キャッシュ済みラインコードから (r, c) への着手価値を算出する（Legacy 版）。
  *
  * パターン集計バッファは呼び出し元で確保・再利用し、
  * 本関数の先頭で fill(0) して使う。
- *
- * @param ownLineCaches 4 方向分の playerColor 視点ラインキャッシュ
- * @param oppLineCaches 4 方向分の相手視点ラインキャッシュ
- * @param attackCounts 攻撃パターン集計バッファ
- * @param oppBeforeCounts 相手 before パターン集計バッファ
- * @param oppAfterCounts 相手 after パターン集計バッファ
  */
 const scoreFromLineCache = (
   r: number,
@@ -107,16 +97,14 @@ const scoreFromLineCache = (
   oppBeforeCounts.fill(0);
   oppAfterCounts.fill(0);
 
-  const centerWeight = POSITION_WEIGHT[4];
-
   for (let d = 0; d < DIRECTIONS.length; d++) {
     // 中心セルは空マス前提のため、中心値を加算してテーブル参照する。
     const ownCode = ownLineCaches[d][r][c];
-    attackCounts[PATTERN_TABLE[ownCode + centerWeight]]++;
+    attackCounts[PATTERN_TABLE[ownCode + CENTER_WEIGHT]]++;
 
     const oppCode = oppLineCaches[d][r][c];
-    oppBeforeCounts[PATTERN_TABLE[oppCode + centerWeight]]++;
-    oppAfterCounts[PATTERN_TABLE[oppCode + 2 * centerWeight]]++;
+    oppBeforeCounts[PATTERN_TABLE[oppCode + CENTER_WEIGHT]]++;
+    oppAfterCounts[PATTERN_TABLE[oppCode + 2 * CENTER_WEIGHT]]++;
   }
 
   // --- 即時評価（evaluatePosition と同一の優先順位） ---
@@ -178,6 +166,93 @@ const scoreFromLineCache = (
 
   // 形状ボーナスは通常評価分支にのみ加算する。
   const shapeBonus = computeShapeBonusFromLines(ownLineCaches, r, c);
+
+  return attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore + shapeBonus;
+};
+
+/**
+ * キャッシュ済みラインコードから (r, c) への着手価値を算出する（Packed Integer 版）。
+ *
+ * 配列ベースのバッファを使用せず、24-bit 整数 3 個でパターン集計を行う。
+ * 即時評価の優先順位・通常評価の加算順は Legacy 版と完全一致する。
+ */
+const scoreFromLineCachePacked = (
+  r: number,
+  c: number,
+  ownLineCaches: number[][][],
+  oppLineCaches: number[][][]
+): number => {
+  let attackPacked = 0;
+  let oppBeforePacked = 0;
+  let oppAfterPacked = 0;
+
+  for (let d = 0; d < DIRECTIONS.length; d++) {
+    const ownCode = ownLineCaches[d][r][c];
+    attackPacked += 1 << (PATTERN_TABLE[ownCode + CENTER_WEIGHT] * 3);
+
+    const oppCode = oppLineCaches[d][r][c];
+    oppBeforePacked += 1 << (PATTERN_TABLE[oppCode + CENTER_WEIGHT] * 3);
+    oppAfterPacked += 1 << (PATTERN_TABLE[oppCode + 2 * CENTER_WEIGHT] * 3);
+  }
+
+  // --- 即時評価（evaluatePosition と同一の優先順位） ---
+  if ((attackPacked & 0x7) > 0) return AI_SCORES.WIN;
+  if (
+    ((oppBeforePacked & 0x7) > 0) &&
+    ((oppAfterPacked & 0x7) === 0)
+  )
+    return AI_SCORES.DEFEND_WIN;
+  if (((attackPacked >> 3) & 0x7) > 0) return AI_SCORES.OPEN_FOUR;
+  if (((attackPacked >> 6) & 0x7) >= 2) return AI_SCORES.DOUBLE_FOUR;
+  if (
+    ((attackPacked >> 6) & 0x7) >= 1 &&
+    ((attackPacked >> 9) & 0x7) >= 1
+  )
+    return AI_SCORES.FOUR_THREE;
+
+  if (
+    ((oppBeforePacked >> 3) & 0x7) > 0 &&
+    ((oppAfterPacked >> 3) & 0x7) < ((oppBeforePacked >> 3) & 0x7)
+  )
+    return AI_SCORES.OPEN_FOUR;
+  if (
+    ((oppBeforePacked >> 6) & 0x7) >= 2 &&
+    ((oppAfterPacked >> 6) & 0x7) < 2
+  )
+    return AI_SCORES.DOUBLE_FOUR;
+  if (
+    ((oppBeforePacked >> 6) & 0x7) >= 1 &&
+    ((oppBeforePacked >> 9) & 0x7) >= 1 &&
+    !(
+      ((oppAfterPacked >> 6) & 0x7) >= 1 &&
+      ((oppAfterPacked >> 9) & 0x7) >= 1
+    )
+  )
+    return AI_SCORES.FOUR_THREE;
+
+  if (((attackPacked >> 9) & 0x7) >= 2) return AI_SCORES.DOUBLE_THREE;
+  if (
+    ((oppBeforePacked >> 9) & 0x7) >= 2 &&
+    ((oppAfterPacked >> 9) & 0x7) < 2
+  )
+    return AI_SCORES.DOUBLE_THREE;
+
+  // --- 通常評価（加算順は Legacy 版と完全一致） ---
+  let attackScore = 0;
+  attackScore += ((attackPacked >> 6) & 0x7) * AI_SCORES.CLOSED_FOUR;
+  attackScore += ((attackPacked >> 9) & 0x7) * AI_SCORES.OPEN_THREE;
+  attackScore += ((attackPacked >> 12) & 0x7) * AI_SCORES.CLOSED_THREE;
+  attackScore += ((attackPacked >> 15) & 0x7) * AI_SCORES.OPEN_TWO;
+  attackScore += ((attackPacked >> 18) & 0x7) * AI_SCORES.CLOSED_TWO;
+  attackScore += ((attackPacked >> 21) & 0x7) * AI_SCORES.SINGLE;
+
+  const defenseScore = Math.max(
+    0,
+    calcTotalOppScoreFromPacked(oppBeforePacked) -
+      calcTotalOppScoreFromPacked(oppAfterPacked)
+  );
+
+  const shapeBonus = computeShapeBonusFromLinesLut(ownLineCaches, r, c);
 
   return attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore + shapeBonus;
 };
@@ -273,7 +348,7 @@ export const evaluateBoard = (
   let threatDensityAi = 0;
   let threatDensityOpp = 0;
 
-  // パターン集計バッファはループ外で 1 回だけ確保し、再利用する。
+  // パターン集計バッファはループ外で 1 回だけ確保し、再利用する（Legacy 版用）。
   const attackCounts = createEmptyPatternCount();
   const oppBeforeCounts = createEmptyPatternCount();
   const oppAfterCounts = createEmptyPatternCount();
@@ -283,15 +358,32 @@ export const evaluateBoard = (
       if (board[r][c] !== null || forbiddenMoves[r][c]) continue;
       if (!hasStoneNearby(board, r, c)) continue;
 
-      // 通常の合成スコア集約
-      const aiScore = scoreFromLineCache(
-        r, c, aiLineCaches, oppLineCaches,
-        attackCounts, oppBeforeCounts, oppAfterCounts
-      );
-      const oppScore = scoreFromLineCache(
-        r, c, oppLineCaches, aiLineCaches,
-        attackCounts, oppBeforeCounts, oppAfterCounts
-      );
+      let aiScore: number;
+      let oppScore: number;
+
+      if (PERF_FEATURES.ENABLE_PACKED_EVALUATION) {
+        aiScore = scoreFromLineCachePacked(r, c, aiLineCaches, oppLineCaches);
+        oppScore = scoreFromLineCachePacked(r, c, oppLineCaches, aiLineCaches);
+      } else {
+        aiScore = scoreFromLineCache(
+          r,
+          c,
+          aiLineCaches,
+          oppLineCaches,
+          attackCounts,
+          oppBeforeCounts,
+          oppAfterCounts
+        );
+        oppScore = scoreFromLineCache(
+          r,
+          c,
+          oppLineCaches,
+          aiLineCaches,
+          attackCounts,
+          oppBeforeCounts,
+          oppAfterCounts
+        );
+      }
 
       insertTop3(aiTopK, aiScore);
       insertTop3(oppTopK, oppScore);
@@ -315,12 +407,15 @@ export const evaluateBoard = (
   }
 
   if (aiTopK.count === 0 && oppTopK.count === 0) return 0;
-  let finalScore = computeTopKScore(aiTopK, decay) - computeTopKScore(oppTopK, decay);
+
+  let finalScore =
+    computeTopKScore(aiTopK, decay) - computeTopKScore(oppTopK, decay);
 
   // 脅威密度ボーナスの加算
   if (threatDensity) {
     const densityBonus =
-      (threatDensityAi - threatDensityOpp) * EVAL_CONFIG.THREAT_DENSITY_COEFFICIENT;
+      (threatDensityAi - threatDensityOpp) *
+      EVAL_CONFIG.THREAT_DENSITY_COEFFICIENT;
     const clampedBonus = Math.max(
       -EVAL_CONFIG.THREAT_DENSITY_MAX,
       Math.min(EVAL_CONFIG.THREAT_DENSITY_MAX, densityBonus)
@@ -361,21 +456,38 @@ export const evaluateBoardWithCache = (
   let threatDensityAi = 0;
   let threatDensityOpp = 0;
 
-  // パターン集計バッファはループ外で 1 回だけ確保し、再利用する。
+  // パターン集計バッファはループ外で 1 回だけ確保し、再利用する（Legacy 版用）。
   const attackCounts = createEmptyPatternCount();
   const oppBeforeCounts = createEmptyPatternCount();
   const oppAfterCounts = createEmptyPatternCount();
 
   const scoreCell = (r: number, c: number): void => {
-    // 通常の合成スコア集約
-    const aiScore = scoreFromLineCache(
-      r, c, aiLineCaches, oppLineCaches,
-      attackCounts, oppBeforeCounts, oppAfterCounts
-    );
-    const oppScore = scoreFromLineCache(
-      r, c, oppLineCaches, aiLineCaches,
-      attackCounts, oppBeforeCounts, oppAfterCounts
-    );
+    let aiScore: number;
+    let oppScore: number;
+
+    if (PERF_FEATURES.ENABLE_PACKED_EVALUATION) {
+      aiScore = scoreFromLineCachePacked(r, c, aiLineCaches, oppLineCaches);
+      oppScore = scoreFromLineCachePacked(r, c, oppLineCaches, aiLineCaches);
+    } else {
+      aiScore = scoreFromLineCache(
+        r,
+        c,
+        aiLineCaches,
+        oppLineCaches,
+        attackCounts,
+        oppBeforeCounts,
+        oppAfterCounts
+      );
+      oppScore = scoreFromLineCache(
+        r,
+        c,
+        oppLineCaches,
+        aiLineCaches,
+        attackCounts,
+        oppBeforeCounts,
+        oppAfterCounts
+      );
+    }
 
     insertTop3(aiTopK, aiScore);
     insertTop3(oppTopK, oppScore);
@@ -415,12 +527,15 @@ export const evaluateBoardWithCache = (
   }
 
   if (aiTopK.count === 0 && oppTopK.count === 0) return 0;
-  let finalScore = computeTopKScore(aiTopK, decay) - computeTopKScore(oppTopK, decay);
+
+  let finalScore =
+    computeTopKScore(aiTopK, decay) - computeTopKScore(oppTopK, decay);
 
   // 脅威密度ボーナスの加算
   if (threatDensity) {
     const densityBonus =
-      (threatDensityAi - threatDensityOpp) * EVAL_CONFIG.THREAT_DENSITY_COEFFICIENT;
+      (threatDensityAi - threatDensityOpp) *
+      EVAL_CONFIG.THREAT_DENSITY_COEFFICIENT;
     const clampedBonus = Math.max(
       -EVAL_CONFIG.THREAT_DENSITY_MAX,
       Math.min(EVAL_CONFIG.THREAT_DENSITY_MAX, densityBonus)

@@ -19,6 +19,7 @@ import {
   AI_CONFIG,
   EVAL_CONFIG,
   EVALUATION_FEATURES,
+  PERF_FEATURES,
 } from './constants';
 
 // ============================================================
@@ -98,6 +99,21 @@ export const calcTotalOppScore = (counts: PatternCount): number => {
   return score;
 };
 
+/**
+ * Packed Integer 版の相手脅威スコア合計。
+ * SINGLE を除外する現行挙動を維持する。
+ * 加算順は calcTotalOppScore と完全一致させる。
+ */
+export const calcTotalOppScoreFromPacked = (packed: number): number => {
+  let score = 0;
+  score += ((packed >> 6) & 0x7) * AI_SCORES.CLOSED_FOUR;
+  score += ((packed >> 9) & 0x7) * AI_SCORES.OPEN_THREE;
+  score += ((packed >> 12) & 0x7) * AI_SCORES.CLOSED_THREE;
+  score += ((packed >> 15) & 0x7) * AI_SCORES.OPEN_TWO;
+  score += ((packed >> 18) & 0x7) * AI_SCORES.CLOSED_TWO;
+  return score;
+};
+
 // ============================================================
 // ライン整数エンコード
 // ============================================================
@@ -115,7 +131,7 @@ export const POSITION_WEIGHT: readonly number[] = [
 export const LINE_CODE_SPACE = 19683;
 
 /** 中心セル（index 4）の 3 進重み */
-const CENTER_WEIGHT = POSITION_WEIGHT[4];
+export const CENTER_WEIGHT = POSITION_WEIGHT[4];
 
 /**
  * ラインコードの指定位置のセル値（0/1/2）を取り出す。
@@ -395,6 +411,25 @@ const computePositionBonus = (row: number, col: number): number => {
   return (1 - normalizedDistance) * POSITION_BONUS_EPSILON;
 };
 
+/**
+ * 位置ボーナスの事前計算テーブル。
+ * ENABLE_ENHANCED_POSITION_BONUS の値に基づきモジュールロード時に 1 回だけ生成する。
+ * 同一式・同一入力のため各エントリは computePositionBonus と bit-identical。
+ */
+export const POSITION_BONUS_TABLE = new Float64Array(BOARD_SIZE * BOARD_SIZE);
+for (let r = 0; r < BOARD_SIZE; r++) {
+  for (let c = 0; c < BOARD_SIZE; c++) {
+    const distance = Math.sqrt(
+      (r - BOARD_CENTER) ** 2 + (c - BOARD_CENTER) ** 2
+    );
+    const normalizedDistance = distance / MAX_CENTER_DISTANCE;
+    POSITION_BONUS_TABLE[r * BOARD_SIZE + c] =
+      EVALUATION_FEATURES.ENABLE_ENHANCED_POSITION_BONUS
+        ? (1 - normalizedDistance) ** 2 * EVAL_CONFIG.POSITION_BONUS_MAX
+        : (1 - normalizedDistance) * POSITION_BONUS_EPSILON;
+  }
+}
+
 // ============================================================
 // 形状ボーナス
 // ============================================================
@@ -475,6 +510,102 @@ export const computeShapeBonusFromLines = (
   }
 
   return Math.min(bonus, maxBonus);
+};
+
+// ============================================================
+// 形状ボーナス LUT
+// ============================================================
+
+/**
+ * ラインコード → 形状ボーナス対象自石数（0〜4）。
+ * index 2, 3, 5, 6 に自石（値 1）が何個あるかを事前計算する。
+ */
+export const SHAPE_BONUS_COUNT_TABLE = new Uint8Array(LINE_CODE_SPACE);
+for (let code = 0; code < LINE_CODE_SPACE; code++) {
+  let count = 0;
+  if (extractDigit(code, 2) === 1) count++;
+  if (extractDigit(code, 3) === 1) count++;
+  if (extractDigit(code, 5) === 1) count++;
+  if (extractDigit(code, 6) === 1) count++;
+  SHAPE_BONUS_COUNT_TABLE[code] = count;
+}
+
+/**
+ * 形状ボーナス累積加算テーブル（index 0〜16）。
+ * 同一値 SHAPE_BONUS_PER_STONE の逐次加算で構築する。
+ * 乗算（count * weight）は IEEE 754 丸め差の原因となるため使用しない。
+ */
+export const SHAPE_BONUS_ACC_TABLE = new Float64Array(17);
+{
+  let acc = 0;
+  for (let i = 1; i <= 16; i++) {
+    acc += EVAL_CONFIG.SHAPE_BONUS_PER_STONE;
+    SHAPE_BONUS_ACC_TABLE[i] = acc;
+  }
+}
+
+/**
+ * LineCache ベースの形状ボーナス（LUT 版）。
+ *
+ * SHAPE_BONUS_COUNT_TABLE で 4 方向の自石数を合計し、
+ * SHAPE_BONUS_ACC_TABLE で累積加算値を参照する。
+ * 旧実装と bit-identical な結果を保証する。
+ */
+export const computeShapeBonusFromLinesLut = (
+  ownLineCaches: number[][][],
+  r: number,
+  c: number
+): number => {
+  if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
+  let count = 0;
+  for (let d = 0; d < DIRECTIONS.length; d++) {
+    count += SHAPE_BONUS_COUNT_TABLE[ownLineCaches[d][r][c]];
+  }
+  return Math.min(SHAPE_BONUS_ACC_TABLE[count], EVAL_CONFIG.SHAPE_MAX_BONUS);
+};
+
+/**
+ * board ベースの形状ボーナス（LUT 版）。
+ *
+ * 近接自石の直接集計でカウントを求め、
+ * SHAPE_BONUS_ACC_TABLE で累積加算値を参照する。
+ * 旧実装と bit-identical な結果を保証する。
+ */
+const computeShapeBonusFromBoardLut = (
+  board: BoardState,
+  row: number,
+  col: number,
+  playerColor: Player
+): number => {
+  if (!EVALUATION_FEATURES.ENABLE_SHAPE_BONUS) return 0;
+  let count = 0;
+  for (const [dx, dy] of DIRECTIONS) {
+    for (const dist of [1, 2]) {
+      const r1 = row + dx * dist;
+      const c1 = col + dy * dist;
+      if (
+        r1 >= 0 &&
+        r1 < BOARD_SIZE &&
+        c1 >= 0 &&
+        c1 < BOARD_SIZE &&
+        board[r1][c1] === playerColor
+      ) {
+        count++;
+      }
+      const r2 = row - dx * dist;
+      const c2 = col - dy * dist;
+      if (
+        r2 >= 0 &&
+        r2 < BOARD_SIZE &&
+        c2 >= 0 &&
+        c2 < BOARD_SIZE &&
+        board[r2][c2] === playerColor
+      ) {
+        count++;
+      }
+    }
+  }
+  return Math.min(SHAPE_BONUS_ACC_TABLE[count], EVAL_CONFIG.SHAPE_MAX_BONUS);
 };
 
 // ============================================================
@@ -583,19 +714,124 @@ const evaluatePositionRaw = (
 };
 
 /**
+ * Packed Integer 版の位置評価（位置補正なしの素点）。
+ *
+ * 配列ベースの scratch バッファを使用せず、
+ * 24-bit 整数 3 個でパターン集計を行う。
+ * 即時評価の優先順位・通常評価の加算順は配列版と完全一致する。
+ */
+const evaluatePositionRawPacked = (
+  board: BoardState,
+  row: number,
+  col: number,
+  playerColor: Player
+): number => {
+  const opponentColor = opponentOf(playerColor);
+  let attackPacked = 0;
+  let oppBeforePacked = 0;
+  let oppAfterPacked = 0;
+  for (const [dx, dy] of DIRECTIONS) {
+    const attackCode = getLineCode(board, row, col, dx, dy, playerColor, 1);
+    attackPacked += 1 << (PATTERN_TABLE[attackCode] * 3);
+    const beforeCode = getLineCode(board, row, col, dx, dy, opponentColor, 1);
+    oppBeforePacked += 1 << (PATTERN_TABLE[beforeCode] * 3);
+    const afterCode = getLineCode(board, row, col, dx, dy, opponentColor, 2);
+    oppAfterPacked += 1 << (PATTERN_TABLE[afterCode] * 3);
+  }
+
+  // --- 即時評価（配列版と同一の優先順位） ---
+  // WIN: index 0, shift 0
+  if ((attackPacked & 0x7) > 0) return AI_SCORES.WIN;
+  if (
+    ((oppBeforePacked & 0x7) > 0) &&
+    ((oppAfterPacked & 0x7) === 0)
+  ) {
+    return AI_SCORES.DEFEND_WIN;
+  }
+  // OPEN_FOUR: index 1, shift 3
+  if (((attackPacked >> 3) & 0x7) > 0) return AI_SCORES.OPEN_FOUR;
+  // CLOSED_FOUR: index 2, shift 6
+  if (((attackPacked >> 6) & 0x7) >= 2) return AI_SCORES.DOUBLE_FOUR;
+  // OPEN_THREE: index 3, shift 9
+  if (
+    ((attackPacked >> 6) & 0x7) >= 1 &&
+    ((attackPacked >> 9) & 0x7) >= 1
+  ) {
+    return AI_SCORES.FOUR_THREE;
+  }
+  if (
+    ((oppBeforePacked >> 3) & 0x7) > 0 &&
+    ((oppAfterPacked >> 3) & 0x7) < ((oppBeforePacked >> 3) & 0x7)
+  ) {
+    return AI_SCORES.OPEN_FOUR;
+  }
+  if (
+    ((oppBeforePacked >> 6) & 0x7) >= 2 &&
+    ((oppAfterPacked >> 6) & 0x7) < 2
+  ) {
+    return AI_SCORES.DOUBLE_FOUR;
+  }
+  if (
+    ((oppBeforePacked >> 6) & 0x7) >= 1 &&
+    ((oppBeforePacked >> 9) & 0x7) >= 1 &&
+    !(
+      ((oppAfterPacked >> 6) & 0x7) >= 1 &&
+      ((oppAfterPacked >> 9) & 0x7) >= 1
+    )
+  ) {
+    return AI_SCORES.FOUR_THREE;
+  }
+  if (((attackPacked >> 9) & 0x7) >= 2) return AI_SCORES.DOUBLE_THREE;
+  if (
+    ((oppBeforePacked >> 9) & 0x7) >= 2 &&
+    ((oppAfterPacked >> 9) & 0x7) < 2
+  ) {
+    return AI_SCORES.DOUBLE_THREE;
+  }
+
+  // --- 通常評価（加算順は配列版と完全一致） ---
+  let attackScore = 0;
+  attackScore += ((attackPacked >> 6) & 0x7) * AI_SCORES.CLOSED_FOUR;
+  attackScore += ((attackPacked >> 9) & 0x7) * AI_SCORES.OPEN_THREE;
+  attackScore += ((attackPacked >> 12) & 0x7) * AI_SCORES.CLOSED_THREE;
+  attackScore += ((attackPacked >> 15) & 0x7) * AI_SCORES.OPEN_TWO;
+  attackScore += ((attackPacked >> 18) & 0x7) * AI_SCORES.CLOSED_TWO;
+  attackScore += ((attackPacked >> 21) & 0x7) * AI_SCORES.SINGLE;
+
+  const defenseScore = Math.max(
+    0,
+    calcTotalOppScoreFromPacked(oppBeforePacked) -
+      calcTotalOppScoreFromPacked(oppAfterPacked)
+  );
+
+  const shapeBonus = computeShapeBonusFromBoardLut(board, row, col, playerColor);
+
+  return attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore + shapeBonus;
+};
+
+/**
  * 指定位置への着手価値を playerColor の視点で返す。
  *
  * 本体は evaluatePositionRaw に委譲し、
  * 同点候補の tie-breaker として中央近接ボーナスのみを加算する。
  */
-export const evaluatePosition = (
-  board: BoardState,
-  row: number,
-  col: number,
-  playerColor: Player
-): number =>
-  evaluatePositionRaw(board, row, col, playerColor) +
-  computePositionBonus(row, col);
+export const evaluatePosition = PERF_FEATURES.ENABLE_PACKED_EVALUATION
+  ? (
+      board: BoardState,
+      row: number,
+      col: number,
+      playerColor: Player
+    ): number =>
+      evaluatePositionRawPacked(board, row, col, playerColor) +
+      POSITION_BONUS_TABLE[row * BOARD_SIZE + col]
+  : (
+      board: BoardState,
+      row: number,
+      col: number,
+      playerColor: Player
+    ): number =>
+      evaluatePositionRaw(board, row, col, playerColor) +
+      computePositionBonus(row, col);
 
 // ============================================================
 // LineCache 利用版
@@ -612,7 +848,7 @@ export const evaluatePosition = (
  * 自石を置く場合は CENTER_WEIGHT を加算、
  * 相手石を置く場合は 2 * CENTER_WEIGHT を加算する。
  */
-export const evaluatePositionWithCache = (
+const evaluatePositionWithCacheLegacy = (
   lineCache: LineCacheState,
   row: number,
   col: number,
@@ -716,3 +952,119 @@ export const evaluatePositionWithCache = (
 
   return raw + computePositionBonus(row, col) + shapeBonus;
 };
+
+/**
+ * Packed Integer + LUT 版の LineCache 利用位置評価。
+ *
+ * 配列ベースの scratch バッファを使用せず、
+ * 24-bit 整数 3 個でパターン集計を行う。
+ * 即時評価の優先順位・通常評価の加算順は配列版と完全一致する。
+ * 位置ボーナスは POSITION_BONUS_TABLE、形状ボーナスは LUT で参照する。
+ */
+const evaluatePositionWithCachePacked = (
+  lineCache: LineCacheState,
+  row: number,
+  col: number,
+  playerColor: Player
+): number => {
+  const opponentColor = opponentOf(playerColor);
+  const ownCaches = lineCache.caches[playerColor];
+  const oppCaches = lineCache.caches[opponentColor];
+  let attackPacked = 0;
+  let oppBeforePacked = 0;
+  let oppAfterPacked = 0;
+  for (let d = 0; d < DIRECTIONS.length; d++) {
+    // 自石を置いた場合: 中心セル 0 → 1
+    const ownCode = ownCaches[d][row][col];
+    attackPacked += 1 << (PATTERN_TABLE[ownCode + CENTER_WEIGHT] * 3);
+    // 相手が置いた場合の before: 中心セル 0 → 1（相手視点の自石）
+    const oppCode = oppCaches[d][row][col];
+    oppBeforePacked += 1 << (PATTERN_TABLE[oppCode + CENTER_WEIGHT] * 3);
+    // 相手が置いた場合の after: 中心セル 0 → 2（相手視点の相手石）
+    oppAfterPacked += 1 << (PATTERN_TABLE[oppCode + 2 * CENTER_WEIGHT] * 3);
+  }
+
+  const posBonus = POSITION_BONUS_TABLE[row * BOARD_SIZE + col];
+
+  // --- 即時評価（配列版と同一の優先順位） ---
+  if ((attackPacked & 0x7) > 0) {
+    return AI_SCORES.WIN + posBonus;
+  }
+  if (
+    ((oppBeforePacked & 0x7) > 0) &&
+    ((oppAfterPacked & 0x7) === 0)
+  ) {
+    return AI_SCORES.DEFEND_WIN + posBonus;
+  }
+  if (((attackPacked >> 3) & 0x7) > 0) {
+    return AI_SCORES.OPEN_FOUR + posBonus;
+  }
+  if (((attackPacked >> 6) & 0x7) >= 2) {
+    return AI_SCORES.DOUBLE_FOUR + posBonus;
+  }
+  if (
+    ((attackPacked >> 6) & 0x7) >= 1 &&
+    ((attackPacked >> 9) & 0x7) >= 1
+  ) {
+    return AI_SCORES.FOUR_THREE + posBonus;
+  }
+  if (
+    ((oppBeforePacked >> 3) & 0x7) > 0 &&
+    ((oppAfterPacked >> 3) & 0x7) < ((oppBeforePacked >> 3) & 0x7)
+  ) {
+    return AI_SCORES.OPEN_FOUR + posBonus;
+  }
+  if (
+    ((oppBeforePacked >> 6) & 0x7) >= 2 &&
+    ((oppAfterPacked >> 6) & 0x7) < 2
+  ) {
+    return AI_SCORES.DOUBLE_FOUR + posBonus;
+  }
+  if (
+    ((oppBeforePacked >> 6) & 0x7) >= 1 &&
+    ((oppBeforePacked >> 9) & 0x7) >= 1 &&
+    !(
+      ((oppAfterPacked >> 6) & 0x7) >= 1 &&
+      ((oppAfterPacked >> 9) & 0x7) >= 1
+    )
+  ) {
+    return AI_SCORES.FOUR_THREE + posBonus;
+  }
+  if (((attackPacked >> 9) & 0x7) >= 2) {
+    return AI_SCORES.DOUBLE_THREE + posBonus;
+  }
+  if (
+    ((oppBeforePacked >> 9) & 0x7) >= 2 &&
+    ((oppAfterPacked >> 9) & 0x7) < 2
+  ) {
+    return AI_SCORES.DOUBLE_THREE + posBonus;
+  }
+
+  // --- 通常評価（加算順は配列版と完全一致） ---
+  let attackScore = 0;
+  attackScore += ((attackPacked >> 6) & 0x7) * AI_SCORES.CLOSED_FOUR;
+  attackScore += ((attackPacked >> 9) & 0x7) * AI_SCORES.OPEN_THREE;
+  attackScore += ((attackPacked >> 12) & 0x7) * AI_SCORES.CLOSED_THREE;
+  attackScore += ((attackPacked >> 15) & 0x7) * AI_SCORES.OPEN_TWO;
+  attackScore += ((attackPacked >> 18) & 0x7) * AI_SCORES.CLOSED_TWO;
+  attackScore += ((attackPacked >> 21) & 0x7) * AI_SCORES.SINGLE;
+
+  const defenseScore = Math.max(
+    0,
+    calcTotalOppScoreFromPacked(oppBeforePacked) -
+      calcTotalOppScoreFromPacked(oppAfterPacked)
+  );
+
+  const raw = attackScore * AI_CONFIG.ATTACK_WEIGHT + defenseScore;
+  const shapeBonus = computeShapeBonusFromLinesLut(ownCaches, row, col);
+
+  return raw + posBonus + shapeBonus;
+};
+
+/**
+ * LineCache 利用版の位置評価（公開 API）。
+ * Flag に応じて Packed Integer 版または配列版を選択する。
+ */
+export const evaluatePositionWithCache = PERF_FEATURES.ENABLE_PACKED_EVALUATION
+  ? evaluatePositionWithCachePacked
+  : evaluatePositionWithCacheLegacy;

@@ -617,3 +617,22 @@ export const EVALUATION_FEATURES = {
    */
   ENABLE_THREAT_DENSITY: true,
 } as const;
+
+// ============================================================
+// パフォーマンス最適化 Feature Flags
+// ============================================================
+
+/**
+ * 挙動不変の純粋効率化フラグ群。
+ * AI の強さ・探索挙動・評価関数の意味に影響しない。
+ * 全フラグ OFF で従来挙動に完全復帰する。
+ */
+export const PERF_FEATURES = {
+  /**
+   * Packed Integer パターン集計 + LUT 統合最適化。
+   * OFF: 旧来の配列ベース実装（fill(0) + 配列インデックス + extractDigit + Math.sqrt）
+   * ON:  Packed Integer（24-bit）+ SHAPE_BONUS_COUNT_TABLE + SHAPE_BONUS_ACC_TABLE + POSITION_BONUS_TABLE
+   * 挙動不変: 同一入力に対して bit-identical な出力を保証する。
+   */
+  ENABLE_PACKED_EVALUATION: true,
+} as const;

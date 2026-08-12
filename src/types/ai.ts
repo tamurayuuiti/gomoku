@@ -489,6 +489,11 @@ export interface SearchDiagnosticsStats {
   leafEvalCalls: number;
   /** 葉評価時間合計 [ms] */
   leafEvalTimeMs: number;
+  /**
+   * Packed Integer 評価が有効かどうか。
+   * 診断専用であり、探索ロジックの分岐条件として使用してはならない。
+   */
+  packedEvalEnabled: boolean;
 }
 
 /** Static Eval Cache 統計 */

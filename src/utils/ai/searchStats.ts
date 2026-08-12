@@ -14,6 +14,7 @@ import type { Player, Position } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
 import { DIAGNOSTICS_CONFIG } from './diagnosticsFlags';
+import { PERF_FEATURES } from './constants';
 import { BOARD_SIZE } from '../gameLogic';
 
 // ============================================================
@@ -138,6 +139,8 @@ export const createSearchStats = (
     checkWinTimeMs: 0,
     leafEvalCalls: 0,
     leafEvalTimeMs: 0,
+    /** Packed Integer 評価が有効かどうか（Flag 状態の診断用） */
+    packedEvalEnabled: PERF_FEATURES.ENABLE_PACKED_EVALUATION,
   },
   staticEvalCache: {
     lookups: 0,
@@ -497,6 +500,7 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `chkMs=${Math.round(stats.diagnostics.checkWinTimeMs)} ` +
     `leafEval=${stats.diagnostics.leafEvalCalls} ` +
     `leafMs=${Math.round(stats.diagnostics.leafEvalTimeMs)} ` +
+    `packedEval=${stats.diagnostics.packedEvalEnabled ? 1 : 0} ` +
     `timeSkip=${stats.time.predictedSkips} ` +
     `aspFailRate=${aspFailRate}% ` +
     `chkAvgUs=${chkAvgUs} ` +
