@@ -32,7 +32,7 @@ export const createSearchStats = (
   timeLimitMs: number | null,
   lastMove: Position | null
 ): SearchStats => ({
-  schemaVersion: 9,
+  schemaVersion: 10,
   turn,
   searchMode,
   selectedMove: null,
@@ -47,6 +47,10 @@ export const createSearchStats = (
     lastIterationMs: 0,
     predictedSkips: 0,
     remainingAtSkipMs: 0,
+    adaptivePredictionUsed: false,
+    adaptiveEstimateMs: 0,
+    adaptiveRatioSamples: 0,
+    adaptiveMedianRatio: 0,
   },
   nodes: {
     total: 0,
@@ -300,6 +304,12 @@ export const mergeTTStats = (
  */
 export const finalizeSearchStats = (stats: SearchStats): void => {
   stats.time.elapsedMs = Math.round(stats.time.elapsedMs);
+  stats.time.adaptiveEstimateMs = Number.isFinite(stats.time.adaptiveEstimateMs)
+    ? Math.round(stats.time.adaptiveEstimateMs)
+    : 0;
+  stats.time.adaptiveMedianRatio = Number.isFinite(stats.time.adaptiveMedianRatio)
+    ? Math.round(stats.time.adaptiveMedianRatio * 100) / 100
+    : 0;
 
   stats.tt.hitRate =
     stats.tt.lookups > 0 ? stats.tt.hits / stats.tt.lookups : 0;
@@ -502,6 +512,10 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `leafMs=${Math.round(stats.diagnostics.leafEvalTimeMs)} ` +
     `packedEval=${stats.diagnostics.packedEvalEnabled ? 1 : 0} ` +
     `timeSkip=${stats.time.predictedSkips} ` +
+    `adpUsed=${stats.time.adaptivePredictionUsed ? 1 : 0} ` +
+    `adpEst=${stats.time.adaptiveEstimateMs}ms ` +
+    `adpSamples=${stats.time.adaptiveRatioSamples} ` +
+    `adpRatio=${stats.time.adaptiveMedianRatio.toFixed(2)} ` +
     `aspFailRate=${aspFailRate}% ` +
     `chkAvgUs=${chkAvgUs} ` +
     `leafAvgUs=${leafAvgUs} ` +
@@ -851,6 +865,12 @@ export interface GameSessionStats {
   qsearchForbiddenCacheMisses: number;
   /** qsearch state audit 失敗回数 */
   qsearchAuditFails: number;
+  /** adaptive 時間予測が使用された手数 */
+  adaptivePredictionUsedCount: number;
+  /** adaptive 時間予測の推定比率合計（平均計算用） */
+  adaptiveMedianRatioSum: number;
+  /** adaptive 時間予測の推定比率平均 */
+  adaptiveMedianRatioAvg: number;
 }
 
 // ============================================================
@@ -862,7 +882,7 @@ let activeGameSession: GameSessionStats | null = null;
 const createGameSessionStats = (
   aiPlayer: Player | null
 ): GameSessionStats => ({
-  schemaVersion: 9,
+  schemaVersion: 10,
   result: null,
   aiPlayer,
   startedAtMs: performance.now(),
@@ -995,6 +1015,9 @@ const createGameSessionStats = (
   qsearchForbiddenCacheHits: 0,
   qsearchForbiddenCacheMisses: 0,
   qsearchAuditFails: 0,
+  adaptivePredictionUsedCount: 0,
+  adaptiveMedianRatioSum: 0,
+  adaptiveMedianRatioAvg: 0,
 });
 
 // ============================================================
@@ -1121,6 +1144,11 @@ export const recordMoveToSession = (
 
   s.timePredictedSkips += stats.time.predictedSkips;
 
+  if (stats.time.adaptivePredictionUsed) {
+    s.adaptivePredictionUsedCount += 1;
+    s.adaptiveMedianRatioSum += stats.time.adaptiveMedianRatio;
+  }
+
   s.threatModelCalls += stats.threat.modelCalls;
   s.threatModelTimeMs += stats.threat.modelTimeMs;
   s.forcedGenerated += stats.threat.forcedGenerated;
@@ -1239,12 +1267,19 @@ const finalizeGameSessionDerivedStats = (s: GameSessionStats): void => {
     s.staticEvalCacheLookups > 0
       ? s.staticEvalCacheHits / s.staticEvalCacheLookups
       : 0;
+  s.adaptiveMedianRatioAvg =
+    s.adaptivePredictionUsedCount > 0
+      ? s.adaptiveMedianRatioSum / s.adaptivePredictionUsedCount
+      : 0;
 
   if (!Number.isFinite(s.ttHitRate)) {
     s.ttHitRate = 0;
   }
   if (!Number.isFinite(s.staticEvalCacheHitRate)) {
     s.staticEvalCacheHitRate = 0;
+  }
+  if (!Number.isFinite(s.adaptiveMedianRatioAvg)) {
+    s.adaptiveMedianRatioAvg = 0;
   }
 };
 
@@ -1343,6 +1378,8 @@ const logGameSessionSummary = (s: GameSessionStats): void => {
     `secEvict=${s.staticEvalCacheEvictions} ` +
     `secMax=${s.staticEvalCacheMaxSize} ` +
     `timeSkip=${s.timePredictedSkips} ` +
+    `adpUsedMoves=${s.adaptivePredictionUsedCount} ` +
+    `adpRatioAvg=${s.adaptiveMedianRatioAvg.toFixed(2)} ` +
     `abortRate=${abortRate}% ` +
     `aspFailRate=${aspFailRate}% ` +
     `chkAvgUs=${chkAvgUs} ` +

@@ -503,6 +503,7 @@ const finalizeVcfReturn = (
 
   finalizeSearchStatsAndLog(stats, null);
   recordMoveToSession(stats, stonesBefore + 1, true);
+
   if (immediateWin) {
     finalizeGameSession('Win');
   }
@@ -760,6 +761,10 @@ const runIterativeDeepeningSearch = ({
   let completedDepth = 0;
   let prevScore: number | null = null;
 
+  // Adaptive Time Prediction 用の状態
+  const depthElapsedTimes: number[] = [];
+  const ratioBuffer = new Float64Array(16);
+
   // Aspiration 調整用状態
   const baseAspirationWindow = SEARCH_TUNING_FEATURES.ENABLE_ASPIRATION_WINDOW_TUNING
     ? SEARCH_TUNING_CONFIG.ASPIRATION_WINDOW_OVERRIDE
@@ -780,8 +785,8 @@ const runIterativeDeepeningSearch = ({
       AI_FEATURES.ENABLE_ASPIRATION_WINDOW &&
       d >= 2 &&
       prevScore !== null;
-    const useAspiration = shouldUseAspiration(d, prevScore);
 
+    const useAspiration = shouldUseAspiration(d, prevScore);
     if (aspirationCandidate && !useAspiration) {
       stats.aspiration.disabledNearWin++;
     }
@@ -795,7 +800,6 @@ const runIterativeDeepeningSearch = ({
     }
 
     let depthAspirationFailed = false;
-
     if (useAspiration) {
       let window = adaptiveAspirationWindow;
       if (
@@ -846,12 +850,14 @@ const runIterativeDeepeningSearch = ({
         stats.aspiration.failHigh++;
         stats.aspiration.fullResearches++;
         depthAspirationFailed = true;
+
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-high (score=${result.score}, window=[${alpha}, ${beta}]), ` +
               `re-searching with full window`
           );
         }
+
         result = findBestMove(
           board,
           forbiddenMoves,
@@ -871,12 +877,14 @@ const runIterativeDeepeningSearch = ({
         stats.aspiration.failLow++;
         stats.aspiration.fullResearches++;
         depthAspirationFailed = true;
+
         if (shouldLogVerboseSearch()) {
           console.log(
             `[Search] depth=${d} aspiration fail-low (score=${result.score}, window=[${alpha}, ${beta}]), ` +
               `re-searching with full window`
           );
         }
+
         result = findBestMove(
           board,
           forbiddenMoves,
@@ -905,6 +913,14 @@ const runIterativeDeepeningSearch = ({
     const iterElapsed = performance.now() - iterStart;
     stats.time.lastIterationMs = iterElapsed;
 
+    // Adaptive Time Prediction 用の時間記録
+    if (
+      SEARCH_TUNING_FEATURES.ENABLE_TIME_PREDICTION &&
+      SEARCH_TUNING_FEATURES.ENABLE_ADAPTIVE_TIME_PREDICTION
+    ) {
+      depthElapsedTimes.push(iterElapsed);
+    }
+
     /**
      * adaptive aspiration の簡易収縮。
      * fail しなかった場合は、広げた window を base へ戻していく。
@@ -930,7 +946,66 @@ const runIterativeDeepeningSearch = ({
       d >= SEARCH_TUNING_CONFIG.TIME_PREDICTION_MIN_DEPTH
     ) {
       const remaining = deadline - performance.now();
-      const estimate = iterElapsed * SEARCH_TUNING_CONFIG.TIME_PREDICTION_SAFETY;
+      let estimate: number;
+
+      if (
+        SEARCH_TUNING_FEATURES.ENABLE_ADAPTIVE_TIME_PREDICTION &&
+        depthElapsedTimes.length >= SEARCH_TUNING_CONFIG.TIME_PREDICTION_RATIO_MIN_SAMPLES + 1
+      ) {
+        // 比率ベース推定
+        let ratioCount = 0;
+        for (let i = 1; i < depthElapsedTimes.length; i++) {
+          let ratio = depthElapsedTimes[i] / depthElapsedTimes[i - 1];
+          if (ratio < SEARCH_TUNING_CONFIG.TIME_PREDICTION_RATIO_FLOOR) {
+            ratio = SEARCH_TUNING_CONFIG.TIME_PREDICTION_RATIO_FLOOR;
+          } else if (ratio > SEARCH_TUNING_CONFIG.TIME_PREDICTION_RATIO_CAP) {
+            ratio = SEARCH_TUNING_CONFIG.TIME_PREDICTION_RATIO_CAP;
+          }
+          ratioBuffer[ratioCount++] = ratio;
+        }
+
+        // --- 直近比率の保存（ソート前に取得。トレンド追従用） ---
+        const lastRatio = ratioBuffer[ratioCount - 1];
+        const secondLastRatio = ratioCount >= 2
+          ? ratioBuffer[ratioCount - 2]
+          : lastRatio;
+        const recentAvg = (lastRatio + secondLastRatio) / 2;
+
+        // --- 挿入ソート（要素数は最大 11 程度） ---
+        for (let i = 1; i < ratioCount; i++) {
+          const key = ratioBuffer[i];
+          let j = i - 1;
+          while (j >= 0 && ratioBuffer[j] > key) {
+            ratioBuffer[j + 1] = ratioBuffer[j];
+            j--;
+          }
+          ratioBuffer[j + 1] = key;
+        }
+
+        // --- パーセンタイルベースの代表値 ---
+        const percentile = SEARCH_TUNING_CONFIG.TIME_PREDICTION_PERCENTILE;
+        const idx = Math.min(
+          Math.floor(ratioCount * percentile),
+          ratioCount - 1
+        );
+        const percentileRatio = ratioBuffer[idx];
+
+        // --- 直近比率とパーセンタイルのうち保守的な方を採用 ---
+        const effectiveRatio = Math.max(percentileRatio, recentAvg);
+
+        estimate =
+          depthElapsedTimes[depthElapsedTimes.length - 1] * effectiveRatio +
+          SEARCH_TUNING_CONFIG.TIME_PREDICTION_FIXED_MARGIN_MS;
+
+        stats.time.adaptivePredictionUsed = true;
+        stats.time.adaptiveEstimateMs = estimate;
+        stats.time.adaptiveRatioSamples = ratioCount;
+        stats.time.adaptiveMedianRatio = effectiveRatio;
+      } else {
+        // 現行方式: 固定倍率
+        estimate = iterElapsed * SEARCH_TUNING_CONFIG.TIME_PREDICTION_SAFETY;
+      }
+
       if (remaining < estimate) {
         stats.time.predictedSkips++;
         stats.time.remainingAtSkipMs = remaining;

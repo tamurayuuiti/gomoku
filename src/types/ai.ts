@@ -178,7 +178,6 @@ export interface OrderedCandidate extends ScoredPosition {
 
 /** 深さ 1 レベルの killer スロット（最新 / 次点） */
 export type KillerEntry = [Position | null, Position | null];
-
 /** killer table 本体。インデックスが深さに対応する */
 export type KillerTable = KillerEntry[];
 
@@ -309,6 +308,14 @@ export interface SearchTimeStats {
   predictedSkips: number;
   /** 時間予測で打ち切ったときの残り時間 [ms] */
   remainingAtSkipMs: number;
+  /** adaptive 時間予測が使用されたか */
+  adaptivePredictionUsed: boolean;
+  /** adaptive 予測が算出した推定時間（診断用） [ms] */
+  adaptiveEstimateMs: number;
+  /** 比率計算に使用したサンプル数 */
+  adaptiveRatioSamples: number;
+  /** 採用された推定比率（診断用） */
+  adaptiveMedianRatio: number;
 }
 
 /** ノード関連の統計 */
