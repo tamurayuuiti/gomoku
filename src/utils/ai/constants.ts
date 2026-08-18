@@ -296,7 +296,7 @@ export const SEARCH_TUNING_CONFIG: {
   /** adaptive 予測の推定時間に加算する固定安全マージン [ms] */
   TIME_PREDICTION_FIXED_MARGIN_MS: number;
   /** adaptive 予測で採用する比率のパーセンタイル（0.0〜1.0） */
-　TIME_PREDICTION_PERCENTILE: number;
+  TIME_PREDICTION_PERCENTILE: number;
   /** used only when ENABLE_CONDITIONAL_ROOT_PVS = true */
   ROOT_PVS_MIN_DEPTH: number;
 } = {
