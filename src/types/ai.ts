@@ -6,7 +6,7 @@
 //   - 単一ファイル内でのみ使う型は定義元に残す。
 //   - ファクトリ関数・定数・スコア値はロジックのため定義元に残す。
 
-import type { Position, Player } from './game';
+import type { Position, Player, AiLevel } from './game';
 
 // ============================================================
 // パターン評価
@@ -116,6 +116,8 @@ export interface SearchOptions {
   qsearchTotalNodeLimit?: number;
   /** Quiescence 時間予算 [ms] */
   qsearchTimeBudgetMs?: number;
+  /** AI レベル（診断用）*/
+  aiLevel?: AiLevel | null;
 }
 
 // ============================================================
@@ -726,6 +728,8 @@ export interface SearchStats {
   turn: Player | null;
   /** 思考モード */
   searchMode: SearchMode;
+  /** AI レベル（診断用。探索挙動には影響しない） */
+  aiLevel: AiLevel | null;
   /** 最終的に選んだ手 */
   selectedMove: Position | null;
   /** 最終スコア */

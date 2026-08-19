@@ -12,7 +12,7 @@
 //   - 探索本体は minimax.ts 以下に委譲する。
 //   - 公開 API calculateNextMove のシグネチャは変更しない。
 
-import type { BoardState, Position, Player } from '../../types/game';
+import type { BoardState, Position, Player, AiLevel } from '../../types/game';
 import type { SearchOptions, SearchStats } from '../../types/ai';
 import {
   BOARD_SIZE,
@@ -107,7 +107,8 @@ const shouldUseAspiration = (
  */
 const startGameSessionForMove = (
   aiPlayer: Player,
-  stonesBefore: number
+  stonesBefore: number,
+  aiLevel: AiLevel | null
 ): void => {
   if (isGameSessionActive()) {
     const active = getActiveGameSession();
@@ -120,7 +121,7 @@ const startGameSessionForMove = (
       finalizeGameSession('Reset');
     }
   }
-  ensureGameSession(aiPlayer);
+  ensureGameSession(aiPlayer, aiLevel);
 };
 
 /**
@@ -150,6 +151,7 @@ interface ResolvedSearchParameters {
   maxDepth: number;
   timeLimitMs: number | undefined;
   lastMove: Position | null;
+  aiLevel: AiLevel | null;
 }
 
 /**
@@ -205,11 +207,13 @@ const resolveSearchParameters = (
         : undefined);
 
   const lastMove = options?.lastMove ?? null;
+  const aiLevel = options?.aiLevel ?? null;
 
   return {
     maxDepth,
     timeLimitMs,
     lastMove,
+    aiLevel,
   };
 };
 
@@ -519,6 +523,7 @@ interface CenterOpeningParams {
   currentTurn: Player;
   dynamicForbidden: DynamicForbiddenController;
   startTime: number;
+  aiLevel: AiLevel | null;
 }
 
 /**
@@ -528,11 +533,12 @@ const handleCenterOpening = ({
   currentTurn,
   dynamicForbidden,
   startTime,
+  aiLevel,
 }: CenterOpeningParams): Position => {
   const center = Math.floor(BOARD_SIZE / 2);
   const centerMove: Position = { row: center, col: center };
 
-  const stats = createSearchStats(currentTurn, 'center', 0, null, null);
+  const stats = createSearchStats(currentTurn, 'center', 0, null, null, aiLevel);
   stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
   stats.selectedMove = centerMove;
   stats.selectedScore = 0;
@@ -555,6 +561,7 @@ interface FixedDepthSearchRequest {
   dynamicForbidden: DynamicForbiddenController;
   maxDepth: number;
   lastMove: Position | null;
+  aiLevel: AiLevel | null;
 }
 
 /**
@@ -570,13 +577,15 @@ const runFixedDepthSearch = ({
   dynamicForbidden,
   maxDepth,
   lastMove,
+  aiLevel,
 }: FixedDepthSearchRequest): Position | null => {
   const stats = createSearchStats(
     currentTurn,
     'fixed',
     maxDepth,
     null,
-    lastMove
+    lastMove,
+    aiLevel
   );
   stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
@@ -680,6 +689,7 @@ interface IterativeDeepeningSearchRequest {
   maxDepth: number;
   timeLimitMs: number;
   lastMove: Position | null;
+  aiLevel: AiLevel | null;
 }
 
 /**
@@ -696,13 +706,15 @@ const runIterativeDeepeningSearch = ({
   maxDepth,
   timeLimitMs,
   lastMove,
+  aiLevel,
 }: IterativeDeepeningSearchRequest): Position | null => {
   const stats = createSearchStats(
     currentTurn,
     'iterative',
     maxDepth,
     timeLimitMs,
-    lastMove
+    lastMove,
+    aiLevel
   );
   stats.forbidden.forbiddenRuleEnabled = dynamicForbidden.ruleEnabled;
 
@@ -1064,7 +1076,9 @@ export const calculateNextMove = (
   const startTime = performance.now();
   const stonesBefore = countStones(board);
 
-  startGameSessionForMove(currentTurn, stonesBefore);
+  const { maxDepth, timeLimitMs, lastMove, aiLevel } = resolveSearchParameters(options);
+
+  startGameSessionForMove(currentTurn, stonesBefore, aiLevel);
   const dynamicForbidden = createPerMoveDynamicForbidden(options);
 
   // 初手は中央
@@ -1073,10 +1087,9 @@ export const calculateNextMove = (
       currentTurn,
       dynamicForbidden,
       startTime,
+      aiLevel,
     });
   }
-
-  const { maxDepth, timeLimitMs, lastMove } = resolveSearchParameters(options);
 
   // timeLimitMs 未指定: 従来通りの固定深さ探索
   if (timeLimitMs === undefined) {
@@ -1090,6 +1103,7 @@ export const calculateNextMove = (
       dynamicForbidden,
       maxDepth,
       lastMove,
+      aiLevel,
     });
   }
 
@@ -1105,5 +1119,6 @@ export const calculateNextMove = (
     maxDepth,
     timeLimitMs,
     lastMove,
+    aiLevel,
   });
 };

@@ -1,15 +1,17 @@
 // src/App.tsx
 // アプリ全体の構成と主要な状態管理を担当するコンテナコンポーネント
 
-import type { Player, GameMode } from './types/game';
+import type { Player, GameMode, AiLevel } from './types/game';
 import { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { getForbiddenReasonMessage, checkForbiddenMove } from './utils/gameLogic';
+import { AI_LEVEL_TABLE, DEFAULT_AI_LEVEL } from './utils/ai/constants';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import { useGameLogic } from './hooks/useGameLogic';
 import { useAiPlayer } from './hooks/useAiPlayer';
 import Board from './components/Board';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
+import AiLevelSelector from './components/AiLevelSelector';
 import ForbiddenRuleToggle from './components/ForbiddenRuleToggle';
 import GameStatusPanel from './components/GameStatusPanel';
 import SettingChangeConfirmDialog from './components/SettingChangeConfirmDialog';
@@ -20,7 +22,8 @@ import './index.css';
 type PendingSettingChange =
   | { kind: 'forbiddenRule' }
   | { kind: 'playerColor'; color: Player }
-  | { kind: 'gameMode'; mode: GameMode };
+  | { kind: 'gameMode'; mode: GameMode }
+  | { kind: 'aiLevel'; level: AiLevel };
 
 const App = () => {
   const {
@@ -41,7 +44,9 @@ const App = () => {
   const [gameMode, setGameMode] = useState<GameMode>('PvE');
   const [playerColor, setPlayerColor] = useState<Player>('Black');
   const [useForbiddenRule, setUseForbiddenRule] = useState<boolean>(true);
+  const [aiLevel, setAiLevel] = useState<AiLevel>(DEFAULT_AI_LEVEL);
   const [forbiddenWarning, setForbiddenWarning] = useState<string | null>(null);
+
   // 対局中に変更しようとして確認ダイアログを表示している設定変更。
   const [pendingSettingChange, setPendingSettingChange] = useState<PendingSettingChange | null>(null);
 
@@ -58,8 +63,10 @@ const App = () => {
     gameStatus,
     gameMode,
     playerColor,
+    aiLevel,
     useForbiddenRule,
     onMove: executeMove,
+    minThinkDisplayMs: AI_LEVEL_TABLE[aiLevel].minThinkDisplayMs,
   });
 
   // PvP は 1 手単位で戻す。
@@ -79,7 +86,6 @@ const App = () => {
     useForbiddenRule,
     executeMove,
   });
-
   useLayoutEffect(() => {
     clickCtxRef.current = {
       board,
@@ -151,6 +157,7 @@ const App = () => {
   }, [resetAiTurnState, resetGameLogic]);
 
   // --- 設定変更（リセットして適用。対局中のみ確認ダイアログを挟む） ---
+
   // 対局中（石が置かれていて、かつ勝敗が決まっていない）の変更は確認を必要とする。
   // 対局前（盤面が空）や対局終了後は、そのまま即座にリセット適用する。
   const needsSettingChangeConfirm = gameStatus === 'Playing' && !isBoardEmpty;
@@ -196,6 +203,20 @@ const App = () => {
     }
   }, [gameMode, needsSettingChangeConfirm, applyGameModeChange]);
 
+  const applyAiLevelChange = useCallback((level: AiLevel) => {
+    setAiLevel(level);
+    resetGame();
+  }, [resetGame]);
+
+  const requestAiLevelChange = useCallback((level: AiLevel) => {
+    if (level === aiLevel) return;
+    if (needsSettingChangeConfirm) {
+      setPendingSettingChange({ kind: 'aiLevel', level });
+    } else {
+      applyAiLevelChange(level);
+    }
+  }, [aiLevel, needsSettingChangeConfirm, applyAiLevelChange]);
+
   // 確認ダイアログで確定された保留中の設定変更を適用する。
   const confirmSettingChange = useCallback(() => {
     if (!pendingSettingChange) return;
@@ -203,6 +224,8 @@ const App = () => {
       applyForbiddenRuleToggle();
     } else if (pendingSettingChange.kind === 'playerColor') {
       applyPlayerColorChange(pendingSettingChange.color);
+    } else if (pendingSettingChange.kind === 'aiLevel') {
+      applyAiLevelChange(pendingSettingChange.level);
     } else {
       applyGameModeChange(pendingSettingChange.mode);
     }
@@ -211,6 +234,7 @@ const App = () => {
     pendingSettingChange,
     applyForbiddenRuleToggle,
     applyPlayerColorChange,
+    applyAiLevelChange,
     applyGameModeChange,
   ]);
 
@@ -230,7 +254,7 @@ const App = () => {
         </p>
       </header>
 
-      {/* 操作パネル：モード・禁じ手・色選択をひとつのツールバーとしてグルーピング */}
+      {/* 操作パネル：モード・禁じ手・AI レベル・色選択をひとつのツールバーとしてグルーピング */}
       <div className="mb-8 flex w-full max-w-[min(92vw,600px)] flex-col items-center gap-3">
         <div className="flex flex-wrap items-center justify-center gap-3">
           <ModeSelector
@@ -242,6 +266,13 @@ const App = () => {
             onToggle={requestForbiddenRuleToggle}
           />
         </div>
+        {/* AI レベル選択は PvE モードのみ表示する */}
+        {gameMode === 'PvE' && (
+          <AiLevelSelector
+            aiLevel={aiLevel}
+            onLevelChange={requestAiLevelChange}
+          />
+        )}
         <ColorSelector
           gameMode={gameMode}
           playerColor={playerColor}

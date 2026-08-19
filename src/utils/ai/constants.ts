@@ -7,6 +7,8 @@
 //   - 診断・デバッグ専用設定は diagnosticsFlags.ts に移動済み。
 //   - constants.ts からは診断設定を参照・再 export しない。
 
+import type { AiLevel } from '../../types/game';
+
 // ============================================================
 // 評価スコア
 // ============================================================
@@ -66,6 +68,39 @@ export const AI_CONFIG = {
    */
   MAX_CANDIDATES: 15,
 } as const;
+
+// ============================================================
+// AI レベル設定
+// ============================================================
+
+/**
+ * AI レベル選択 UI の表示順に並べたレベル一覧。
+ */
+export const AI_LEVELS: readonly AiLevel[] = [1, 2, 3, 4];
+
+/**
+ * 1 レベルあたりの探索パラメータ。
+ */
+export interface AiLevelParams {
+  /** UI 表示名 */
+  label: string;
+  /** 最大探索深度 */
+  depth: number;
+  /** 思考時間上限 [ms] */
+  timeLimitMs: number;
+  /** 着手までの最低演出遅延 [ms] */
+  minThinkDisplayMs: number;
+}
+
+export const AI_LEVEL_TABLE: Record<AiLevel, AiLevelParams> = {
+  1: { label: '初級', depth: 3,  timeLimitMs: 250,  minThinkDisplayMs: 300 },
+  2: { label: '中級', depth: 6,  timeLimitMs: 600,  minThinkDisplayMs: 450 },
+  3: { label: '上級', depth: 9,  timeLimitMs: 1000, minThinkDisplayMs: 550 },
+  4: { label: '最強', depth: 12, timeLimitMs: 1500, minThinkDisplayMs: 650 },
+};
+
+/** 既定の AI レベル（初回ロード時のデフォルト） */
+export const DEFAULT_AI_LEVEL: AiLevel = 3;
 
 // ============================================================
 // 評価設定

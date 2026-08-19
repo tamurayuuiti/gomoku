@@ -10,6 +10,7 @@
 //   - AI 探索ロジック自体には関与しない。
 //   - Worker へ渡す禁手マトリクスは postMessage 直前に同期計算する。
 //   - UI の useForbiddenRule を options.forbiddenRuleEnabled として常時伝搬する。
+//   - AI レベルに応じた depth / timeLimitMs を SearchOptions へ設定する。
 
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
 import type {
@@ -18,6 +19,7 @@ import type {
   GameStatus,
   GameMode,
   Position,
+  AiLevel,
 } from '../types/game';
 import type {
   AiWorkerRequest,
@@ -27,12 +29,13 @@ import type {
 } from '../workers/aiWorker.types';
 import type { SearchOptions } from '../types/ai';
 import { computeForbiddenMatrix } from '../utils/gameLogic';
+import { AI_LEVEL_TABLE } from '../utils/ai/constants';
 
 /**
  * 着手までの最低演出遅延 [ms] の既定値。
  * AI レベル別に minThinkDisplayMs prop から上書きできる。
  */
-const DEFAULT_MIN_THINK_DISPLAY_MS = 600;
+const DEFAULT_MIN_THINK_DISPLAY_MS = 500;
 
 interface UseAiPlayerProps {
   board: BoardState;
@@ -40,6 +43,8 @@ interface UseAiPlayerProps {
   gameStatus: GameStatus;
   gameMode: GameMode;
   playerColor: Player;
+  /** AI の強さレベル。depth / timeLimitMs を決定する。 */
+  aiLevel: AiLevel;
   /** 禁じ手ルールが有効かどうか。Worker へ送る禁手マトリクスの計算に使う。 */
   useForbiddenRule: boolean;
   onMove: (row: number, col: number) => void;
@@ -60,6 +65,7 @@ export const useAiPlayer = ({
   gameStatus,
   gameMode,
   playerColor,
+  aiLevel,
   useForbiddenRule,
   onMove,
   lastMove,
@@ -231,8 +237,13 @@ export const useAiPlayer = ({
       useForbiddenRule
     );
 
+    // AI レベルに応じた探索深度・思考時間・診断用レベルを SearchOptions へ設定する。
+    const levelParams = AI_LEVEL_TABLE[aiLevel];
     const options: SearchOptions = {
       forbiddenRuleEnabled: useForbiddenRule,
+      depth: levelParams.depth,
+      timeLimitMs: levelParams.timeLimitMs,
+      aiLevel,
     };
 
     // lastMove が指定されている場合のみ options.lastMove を付与する。
@@ -256,6 +267,7 @@ export const useAiPlayer = ({
     gameStatus,
     useForbiddenRule,
     lastMoveKey,
+    aiLevel,
   ]);
 
   // ------------------------------------------------------------

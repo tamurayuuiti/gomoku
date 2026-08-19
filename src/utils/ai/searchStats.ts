@@ -10,7 +10,7 @@
 //   1. 1手ごとの統計: 生成 / マージ / 派生指標の確定 / ログ出力
 //   2. 対局セッション: 型定義 / 状態 / ライフサイクル / 積算 / 派生指標 / ログ出力
 
-import type { Player, Position } from '../../types/game';
+import type { Player, Position, AiLevel } from '../../types/game';
 import type { SearchStats } from '../../types/ai';
 import type { TTExtendedStats } from './transpositionTable';
 import { DIAGNOSTICS_CONFIG } from './diagnosticsFlags';
@@ -30,11 +30,13 @@ export const createSearchStats = (
   searchMode: 'center' | 'fixed' | 'iterative',
   maxDepth: number,
   timeLimitMs: number | null,
-  lastMove: Position | null
+  lastMove: Position | null,
+  aiLevel: AiLevel | null = null
 ): SearchStats => ({
-  schemaVersion: 10,
+  schemaVersion: 11,
   turn,
   searchMode,
+  aiLevel,
   selectedMove: null,
   selectedScore: null,
   lastMove,
@@ -401,6 +403,9 @@ const formatScore = (score: number | null): string =>
 const formatLimit = (limitMs: number | null): string =>
   limitMs === null ? 'none' : `${Math.round(limitMs)}ms`;
 
+const formatLevel = (level: AiLevel | null | undefined): string =>
+  level === null || level === undefined ? 'none' : String(level);
+
 /**
  * 安全な割合計算。
  */
@@ -480,6 +485,7 @@ export const logSearchSummary = (stats: SearchStats): void => {
     `[AI:Summary] v=${stats.schemaVersion} ` +
     `mode=${stats.searchMode} ` +
     `turn=${stats.turn ?? 'none'} ` +
+    `level=${formatLevel(stats.aiLevel)} ` +
     `move=${formatMove(stats.selectedMove)} ` +
     `depth=${stats.completedDepth}/${stats.maxDepth} ` +
     `time=${Math.round(stats.time.elapsedMs)}ms ` +
@@ -605,6 +611,8 @@ export interface GameSessionStats {
   result: GameSessionResult | null;
   /** AI プレイヤー色 */
   aiPlayer: Player | null;
+  /** AI レベル（診断用。1 対局内では不変） */
+  aiLevel: AiLevel | null;
   /** セッション開始時刻（performance.now 基準） */
   startedAtMs: number;
   /** セッション終了時刻（performance.now 基準） */
@@ -880,11 +888,13 @@ export interface GameSessionStats {
 let activeGameSession: GameSessionStats | null = null;
 
 const createGameSessionStats = (
-  aiPlayer: Player | null
+  aiPlayer: Player | null,
+  aiLevel: AiLevel | null
 ): GameSessionStats => ({
-  schemaVersion: 10,
+  schemaVersion: 11,
   result: null,
   aiPlayer,
+  aiLevel,
   startedAtMs: performance.now(),
   finishedAtMs: 0,
   durationMs: 0,
@@ -1033,11 +1043,18 @@ export const getActiveGameSession = (): GameSessionStats | null =>
 /**
  * 対局セッションを確保する。
  * 既にアクティブなセッションがあれば何もしない。
+ *
+ * aiLevel はセッション開始時のレベルを記録する。
+ * 1 対局内ではレベル不変（変更時はリセットされる）のため、
+ * 初期設定以降の更新は recordMoveToSession 側で補完する。
  */
-export const ensureGameSession = (aiPlayer: Player | null): void => {
+export const ensureGameSession = (
+  aiPlayer: Player | null,
+  aiLevel: AiLevel | null = null
+): void => {
   if (!DIAGNOSTICS_CONFIG.ENABLE_STATS) return;
   if (!activeGameSession) {
-    activeGameSession = createGameSessionStats(aiPlayer);
+    activeGameSession = createGameSessionStats(aiPlayer, aiLevel);
   }
 };
 
@@ -1055,6 +1072,10 @@ export const recordCandidateGenTime = (ms: number): void => {
 
 /**
  * 1手分の SearchStats を対局セッションへ積算する。
+ *
+ * stats.aiLevel が設定されている場合、セッションの aiLevel を更新する。
+ * これにより、セッション開始時にレベル未設定だった場合でも
+ * 最初の AI 着手時点で正しいレベルが記録される。
  */
 export const recordMoveToSession = (
   stats: SearchStats,
@@ -1063,6 +1084,11 @@ export const recordMoveToSession = (
 ): void => {
   if (!activeGameSession) return;
   const s = activeGameSession;
+
+  // aiLevel の伝搬（未設定 → 設定済みの場合のみ上書き）
+  if (stats.aiLevel !== undefined && stats.aiLevel !== null) {
+    s.aiLevel = stats.aiLevel;
+  }
 
   if (movePlayed) {
     s.aiMoves += 1;
@@ -1334,6 +1360,7 @@ const logGameSessionSummary = (s: GameSessionStats): void => {
     `[AI:GameSummary] v=${s.schemaVersion} ` +
     `result=${s.result} ` +
     `ai=${s.aiPlayer ?? 'none'} ` +
+    `level=${formatLevel(s.aiLevel)} ` +
     `totalMoves=${s.totalMoves} ` +
     `aiMoves=${s.aiMoves} ` +
     `depthAvg=${s.avgDepth.toFixed(1)} ` +
