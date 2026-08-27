@@ -2,7 +2,7 @@
 // アプリ全体の構成と主要な状態管理を担当するコンテナコンポーネント
 
 import type { Player, GameMode, AiLevel } from './types/game';
-import { useState, useCallback, useRef, useLayoutEffect } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
 import { getForbiddenReasonMessage, checkForbiddenMove } from './utils/gameLogic';
 import { AI_LEVEL_TABLE, DEFAULT_AI_LEVEL } from './utils/ai/constants';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
@@ -15,6 +15,7 @@ import AiLevelSelector from './components/AiLevelSelector';
 import ForbiddenRuleToggle from './components/ForbiddenRuleToggle';
 import GameStatusPanel from './components/GameStatusPanel';
 import SettingChangeConfirmDialog from './components/SettingChangeConfirmDialog';
+import GameResultDialog from './components/GameResultDialog';
 import { RotateCcw, Undo2 } from 'lucide-react';
 import './index.css';
 
@@ -24,6 +25,10 @@ type PendingSettingChange =
   | { kind: 'playerColor'; color: Player }
   | { kind: 'gameMode'; mode: GameMode }
   | { kind: 'aiLevel'; level: AiLevel };
+
+// 対局終了から結果ダイアログ表示までの遅延 [ms]。
+const RESULT_DIALOG_DELAY_HUMAN_MS = 150;
+const RESULT_DIALOG_DELAY_AI_MS = 250;
 
 const App = () => {
   const {
@@ -46,9 +51,23 @@ const App = () => {
   const [useForbiddenRule, setUseForbiddenRule] = useState<boolean>(true);
   const [aiLevel, setAiLevel] = useState<AiLevel>(DEFAULT_AI_LEVEL);
   const [forbiddenWarning, setForbiddenWarning] = useState<string | null>(null);
-
   // 対局中に変更しようとして確認ダイアログを表示している設定変更。
   const [pendingSettingChange, setPendingSettingChange] = useState<PendingSettingChange | null>(null);
+  
+  // 結果ダイアログの表示制御状態。
+  const [resultDialogVisible, setResultDialogVisible] = useState(false);
+  const [resultDismissed, setResultDismissed] = useState(false);
+
+  // gameStatus の変化を検知して、Playing に戻った際にフラグをリセットする。
+  // Effect 内での同期的な setState を避けるため、レンダー中に state を同期させる（React 推奨パターン）。
+  const [prevGameStatus, setPrevGameStatus] = useState(gameStatus);
+  if (gameStatus !== prevGameStatus) {
+    setPrevGameStatus(gameStatus);
+    if (gameStatus === 'Playing') {
+      setResultDialogVisible(false);
+      setResultDismissed(false);
+    }
+  }
 
   // 盤面が空かどうかは石数カウンターで O(1) 判定する。
   const isBoardEmpty = stoneCount === 0;
@@ -68,6 +87,33 @@ const App = () => {
     onMove: executeMove,
     minThinkDisplayMs: AI_LEVEL_TABLE[aiLevel].minThinkDisplayMs,
   });
+
+  // 結果ダイアログの表示タイマー管理。
+  // Playing 以外の状態になったら遅延後に自動表示する。
+  useEffect(() => {
+    if (gameStatus === 'Playing') return;
+
+    // 最後の手が人間かどうかを判定
+    // PvP の場合は両方人間なので常に HUMAN_MS を適用
+    const isLastMoveByHuman = gameMode === 'PvP' || currentPlayer === playerColor;
+    const delay = isLastMoveByHuman
+      ? RESULT_DIALOG_DELAY_HUMAN_MS
+      : RESULT_DIALOG_DELAY_AI_MS;
+
+    const timer = setTimeout(() => {
+      setResultDialogVisible(true);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [gameStatus, gameMode, currentPlayer, playerColor]);
+
+  // 結果ダイアログは、表示タイマー発火済み・未 dismiss・終局状態のときのみ開く。
+  const isResultDialogOpen =
+    resultDialogVisible && !resultDismissed && gameStatus !== 'Playing';
+
+  // 結果ダイアログを閉じる。同一終局状態での再表示を防ぐため dismissed を記録する。
+  const handleResultDismiss = useCallback(() => {
+    setResultDismissed(true);
+  }, []);
 
   // PvP は 1 手単位で戻す。
   // PvE は人間の手番へ戻るまで復元し、人間の着手と相手の応手をまとめて取り消す。
@@ -106,15 +152,12 @@ const App = () => {
       useForbiddenRule: forbiddenRule,
       executeMove: applyMove,
     } = clickCtxRef.current;
-
     if (status !== 'Playing') return;
     if (currentBoard[row][col] !== null) return;
-
     // AI思考中または対戦相手の手番時はクリックを無効化
     if (aiThinking || (gameMode === 'PvE' && player !== playerColor)) {
       return;
     }
-
     // 禁じ手チェック（黒番のみ）: 単一マスの直接判定が権威あるゲート
     if (forbiddenRule && player === 'Black') {
       const result = checkForbiddenMove(currentBoard, { row, col }, 'Black');
@@ -123,20 +166,16 @@ const App = () => {
         return;
       }
     }
-
     setForbiddenWarning(null);
     applyMove(row, col);
   }, [gameMode, playerColor]);
 
   const handleUndo = useCallback(() => {
     if (isAiThinking || !canUndo) return;
-
     const undone = gameMode === 'PvE'
       ? undoToPlayerTurn(playerColor)
       : undoOne();
-
     if (!undone) return;
-
     // Undo 後の AI ターン管理状態を初期化し、次の AI 手番で正しく再思考されるようにする。
     resetAiTurnState();
     setForbiddenWarning(null);
@@ -157,7 +196,6 @@ const App = () => {
   }, [resetAiTurnState, resetGameLogic]);
 
   // --- 設定変更（リセットして適用。対局中のみ確認ダイアログを挟む） ---
-
   // 対局中（石が置かれていて、かつ勝敗が決まっていない）の変更は確認を必要とする。
   // 対局前（盤面が空）や対局終了後は、そのまま即座にリセット適用する。
   const needsSettingChangeConfirm = gameStatus === 'Playing' && !isBoardEmpty;
@@ -329,6 +367,18 @@ const App = () => {
         open={pendingSettingChange !== null}
         onConfirm={confirmSettingChange}
         onCancel={cancelSettingChange}
+      />
+
+      {/* 対局終了時の結果ダイアログ */}
+      <GameResultDialog
+        open={isResultDialogOpen}
+        gameStatus={gameStatus}
+        gameMode={gameMode}
+        playerColor={playerColor}
+        stoneCount={stoneCount}
+        aiLevel={aiLevel}
+        onRematch={resetGame}
+        onDismiss={handleResultDismiss}
       />
     </div>
   );
