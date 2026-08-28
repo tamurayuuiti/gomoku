@@ -24,9 +24,9 @@ const GameStatusPanel: React.FC<GameStatusPanelProps> = ({
   playerColor,
 }) => {
   return (
-    <div className="relative z-10 mb-5 flex min-h-11 items-center justify-center rounded-full border border-board-frame/15 bg-white px-8 py-2 text-base font-bold text-ink shadow-[0_6px_16px_-4px_rgba(44,38,32,0.25)] sm:text-lg">
+    <div className="relative z-10 mb-5 flex min-h-11 items-center justify-center rounded-full border border-board-frame/15 bg-white px-8 py-2 text-base font-bold text-ink shadow-[0_6px_16px_-4px_rgba(44,38,32,0.25)] sm:text-lg dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100">
       {forbiddenWarning ? (
-        <span className="flex items-center gap-2 text-rose-600 animate-in zoom-in duration-200">
+        <span className="flex items-center gap-2 text-rose-600 animate-in zoom-in duration-200 dark:text-rose-400">
           <AlertCircle className="h-5 w-5 shrink-0" />
           {forbiddenWarning}
         </span>

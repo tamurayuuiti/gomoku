@@ -73,14 +73,14 @@ const GameResultDialog: React.FC<GameResultDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 dark:bg-black/60"
       role="dialog"
       aria-modal="true"
       aria-labelledby="game-result-dialog-title"
       onClick={onDismiss}
     >
       <div
-        className="w-full max-w-sm rounded-lg bg-white p-6 shadow-[0_25px_60px_-15px_rgba(44,38,32,0.45)] animate-in zoom-in-95 duration-150"
+        className="w-full max-w-sm rounded-lg bg-white p-6 shadow-[0_25px_60px_-15px_rgba(44,38,32,0.45)] animate-in zoom-in-95 duration-150 dark:bg-zinc-800"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex flex-col items-center text-center">
@@ -101,24 +101,24 @@ const GameResultDialog: React.FC<GameResultDialogProps> = ({
           )}
           <h2
             id="game-result-dialog-title"
-            className="mt-4 text-2xl font-black text-ink"
+            className="mt-4 text-2xl font-black text-ink dark:text-zinc-100"
           >
             {title}
           </h2>
-          <p className="mt-2 text-sm text-ink/60">{subText}</p>
+          <p className="mt-2 text-sm text-ink/60 dark:text-zinc-400">{subText}</p>
         </div>
         <div className="mt-6 flex flex-col gap-3">
           <button
             onClick={onRematch}
             autoFocus
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-board-frame px-5 py-3 font-bold text-amber-50 shadow-md transition-all hover:bg-board-frame-dark active:scale-95"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-board-frame px-5 py-3 font-bold text-amber-50 shadow-md transition-all hover:bg-board-frame-dark active:scale-95 dark:bg-amber-800 dark:text-amber-100"
           >
             <RotateCcw className="h-5 w-5" strokeWidth={3} />
             もう一度対局する
           </button>
           <button
             onClick={onDismiss}
-            className="flex w-full items-center justify-center rounded-full bg-white px-5 py-3 font-bold text-board-frame ring-1 ring-board-frame/20 transition-all hover:bg-board-frame/5 active:scale-95"
+            className="flex w-full items-center justify-center rounded-full bg-white px-5 py-3 font-bold text-board-frame ring-1 ring-board-frame/20 transition-all hover:bg-board-frame/5 active:scale-95 dark:bg-zinc-700 dark:text-zinc-200 dark:ring-zinc-600"
           >
             盤面を確認する
           </button>

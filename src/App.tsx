@@ -8,6 +8,7 @@ import { AI_LEVEL_TABLE, DEFAULT_AI_LEVEL } from './utils/ai/constants';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import { useGameLogic } from './hooks/useGameLogic';
 import { useAiPlayer } from './hooks/useAiPlayer';
+import { useTheme } from './hooks/useTheme';
 import Board from './components/Board';
 import ModeSelector from './components/ModeSelector';
 import ColorSelector from './components/ColorSelector';
@@ -16,6 +17,7 @@ import ForbiddenRuleToggle from './components/ForbiddenRuleToggle';
 import GameStatusPanel from './components/GameStatusPanel';
 import SettingChangeConfirmDialog from './components/SettingChangeConfirmDialog';
 import GameResultDialog from './components/GameResultDialog';
+import ThemeToggle from './components/ThemeToggle';
 import { RotateCcw, Undo2 } from 'lucide-react';
 import './index.css';
 
@@ -45,15 +47,19 @@ const App = () => {
     resetGameLogic,
   } = useGameLogic();
 
+  // テーマ管理（三態: light / dark / system）
+  const { preference, resolvedTheme, cyclePreference } = useTheme();
+
   // --- UI固有の状態 ---
   const [gameMode, setGameMode] = useState<GameMode>('PvE');
   const [playerColor, setPlayerColor] = useState<Player>('Black');
   const [useForbiddenRule, setUseForbiddenRule] = useState<boolean>(true);
   const [aiLevel, setAiLevel] = useState<AiLevel>(DEFAULT_AI_LEVEL);
   const [forbiddenWarning, setForbiddenWarning] = useState<string | null>(null);
+
   // 対局中に変更しようとして確認ダイアログを表示している設定変更。
   const [pendingSettingChange, setPendingSettingChange] = useState<PendingSettingChange | null>(null);
-  
+
   // 結果ダイアログの表示制御状態。
   const [resultDialogVisible, setResultDialogVisible] = useState(false);
   const [resultDismissed, setResultDismissed] = useState(false);
@@ -100,7 +106,7 @@ const App = () => {
       ? RESULT_DIALOG_DELAY_HUMAN_MS
       : RESULT_DIALOG_DELAY_AI_MS;
 
-    const timer = setTimeout(() => {
+      const timer = setTimeout(() => {
       setResultDialogVisible(true);
     }, delay);
     return () => clearTimeout(timer);
@@ -132,6 +138,7 @@ const App = () => {
     useForbiddenRule,
     executeMove,
   });
+
   useLayoutEffect(() => {
     clickCtxRef.current = {
       board,
@@ -152,12 +159,15 @@ const App = () => {
       useForbiddenRule: forbiddenRule,
       executeMove: applyMove,
     } = clickCtxRef.current;
+
     if (status !== 'Playing') return;
     if (currentBoard[row][col] !== null) return;
+
     // AI思考中または対戦相手の手番時はクリックを無効化
     if (aiThinking || (gameMode === 'PvE' && player !== playerColor)) {
       return;
     }
+
     // 禁じ手チェック（黒番のみ）: 単一マスの直接判定が権威あるゲート
     if (forbiddenRule && player === 'Black') {
       const result = checkForbiddenMove(currentBoard, { row, col }, 'Black');
@@ -166,6 +176,7 @@ const App = () => {
         return;
       }
     }
+
     setForbiddenWarning(null);
     applyMove(row, col);
   }, [gameMode, playerColor]);
@@ -284,10 +295,10 @@ const App = () => {
   return (
     <div className="flex min-h-screen flex-col items-center bg-transparent px-4 py-10 font-sans text-ink sm:py-14">
       <header className="mb-8 text-center">
-        <h1 className="text-4xl font-black uppercase tracking-tighter text-board-frame sm:text-5xl">
+        <h1 className="text-4xl font-black uppercase tracking-tighter text-board-frame dark:text-amber-200 sm:text-5xl">
           Gomoku
         </h1>
-        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:text-zinc-500">
           五目並べ
         </p>
       </header>
@@ -303,7 +314,13 @@ const App = () => {
             useForbiddenRule={useForbiddenRule}
             onToggle={requestForbiddenRuleToggle}
           />
+          <ThemeToggle
+            preference={preference}
+            resolvedTheme={resolvedTheme}
+            onCycle={cyclePreference}
+          />
         </div>
+
         {/* AI レベル選択は PvE モードのみ表示する */}
         {gameMode === 'PvE' && (
           <AiLevelSelector
@@ -311,6 +328,7 @@ const App = () => {
             onLevelChange={requestAiLevelChange}
           />
         )}
+
         <ColorSelector
           gameMode={gameMode}
           playerColor={playerColor}
@@ -343,8 +361,8 @@ const App = () => {
           disabled={isAiThinking || !canUndo}
           className={`group flex items-center gap-2 rounded-full px-5 py-3 font-bold shadow-md transition-all ${
             isAiThinking || !canUndo
-              ? 'cursor-not-allowed bg-white text-board-frame/40 opacity-50 ring-1 ring-board-frame/10'
-              : 'bg-white text-board-frame ring-1 ring-board-frame/20 hover:bg-board-frame/5 active:scale-95'
+              ? 'cursor-not-allowed bg-white text-board-frame/40 opacity-50 ring-1 ring-board-frame/10 dark:bg-zinc-800 dark:text-zinc-500 dark:ring-zinc-700'
+              : 'bg-white text-board-frame ring-1 ring-board-frame/20 hover:bg-board-frame/5 active:scale-95 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-zinc-600'
           }`}
         >
           <Undo2 className="h-5 w-5" strokeWidth={3} />
@@ -352,7 +370,7 @@ const App = () => {
         </button>
         <button
           onClick={resetGame}
-          className="group flex items-center gap-2 rounded-full bg-board-frame px-7 py-3 font-bold text-amber-50 shadow-md transition-all hover:bg-board-frame-dark active:scale-95"
+          className="group flex items-center gap-2 rounded-full bg-board-frame px-7 py-3 font-bold text-amber-50 shadow-md transition-all hover:bg-board-frame-dark active:scale-95 dark:bg-amber-800 dark:text-amber-100"
         >
           <RotateCcw
             className="h-5 w-5 transition-transform duration-300 group-hover:rotate-180"

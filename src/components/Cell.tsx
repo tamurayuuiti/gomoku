@@ -1,7 +1,6 @@
 // src/components/Cell.tsx
 // 盤面の各マスを表すコンポーネント
 //
-// 第9弾: React.memo で包んだ。
 // value / isLastMove / isForbidden のプリミティブ props と、App 側で
 // identity を安定化した onCellClick のみが変化したときだけ再レンダリングされ、
 // 着手1手あたりの再レンダリング範囲が全 225 セルから数セルへ縮小する。
@@ -37,31 +36,31 @@ const Cell = memo(({ value, onCellClick, isLastMove, isHoshi, row, col, boardSiz
     >
       {/* マスホバー時の視覚フィードバック（石が置かれていない場合のみ） */}
       {!value && (
-        <div className="pointer-events-none absolute inset-[8%] rounded-full bg-amber-950/0 transition-colors duration-150 group-hover:bg-amber-950/10" />
+        <div className="pointer-events-none absolute inset-[8%] rounded-full bg-amber-950/0 transition-colors duration-150 group-hover:bg-amber-950/10 dark:group-hover:bg-amber-200/10" />
       )}
 
       {/* 十字線の描画（端は半分だけ伸ばして盤の枠に揃える） */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div
-          className={`absolute h-px bg-amber-950/70
+          className={`absolute h-px bg-amber-950/70 dark:bg-amber-200/50
             ${isLeft ? 'left-1/2 right-0' : isRight ? 'left-0 right-1/2' : 'left-0 right-0'}`}
         />
         <div
-          className={`absolute w-px bg-amber-950/70
+          className={`absolute w-px bg-amber-950/70 dark:bg-amber-200/50
             ${isTop ? 'top-1/2 bottom-0' : isBottom ? 'top-0 bottom-1/2' : 'top-0 bottom-0'}`}
         />
       </div>
 
       {/* 星（目印） */}
       {isHoshi && !value && (
-        <div className="z-0 h-1.5 w-1.5 rounded-full bg-amber-950/40" />
+        <div className="z-0 h-1.5 w-1.5 rounded-full bg-amber-950/40 dark:bg-amber-200/40" />
       )}
 
       {/* 禁じ手の視覚的エフェクト（ホバー時に赤いバツ印を表示） */}
       {isForbidden && !value && (
         <div className="absolute z-20 flex h-1/2 w-1/2 items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
           <div className="flex h-full w-full items-center justify-center rounded-full bg-rose-500/20 backdrop-blur-xs">
-            <X strokeWidth={3} className="h-3/4 w-3/4 text-rose-600" />
+            <X strokeWidth={3} className="h-3/4 w-3/4 text-rose-600 dark:text-rose-400" />
           </div>
         </div>
       )}
@@ -71,9 +70,9 @@ const Cell = memo(({ value, onCellClick, isLastMove, isHoshi, row, col, boardSiz
         <div
           className={`z-10 flex h-[86%] w-[86%] items-center justify-center rounded-full shadow-[0_2px_4px_rgba(0,0,0,0.35)] transition-transform duration-200
             ${value === 'Black'
-              ? 'bg-zinc-900 bg-linear-to-br from-zinc-700 to-black'
+              ? 'bg-zinc-900 bg-linear-to-br from-zinc-700 to-black dark:ring-1 dark:ring-zinc-500/50'
               : 'border border-gray-300 bg-white bg-linear-to-br from-white to-slate-200'
-          }`}
+            }`}
         >
           {/* 最後の一手の印 */}
           {isLastMove && (

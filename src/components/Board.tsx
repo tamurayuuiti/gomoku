@@ -20,7 +20,7 @@ const Board = ({ board, onCellClick, lastMove, forbiddenMoves }: BoardProps) => 
   };
 
   return (
-    <div className="w-full max-w-[min(92vw,600px)] rounded-md bg-board-frame p-0.75 shadow-[0_25px_60px_-15px_rgba(44,38,32,0.45)]">
+    <div className="w-full max-w-[min(92vw,600px)] rounded-md bg-board-frame p-0.75 shadow-[0_25px_60px_-15px_rgba(44,38,32,0.45)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7)]">
       <div className="rounded-[3px] bg-board-frame-dark p-2 sm:p-3">
         <div className="gomoku-board rounded-sm p-2 shadow-[inset_0_2px_6px_rgba(0,0,0,0.25)] sm:p-3">
           <div

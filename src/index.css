@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* 木目調ボードと盤面まわりの配色トークン */
   --color-board-face: #dfa85a;
@@ -8,6 +10,16 @@
   --color-board-frame-dark: #3d2611;
   --color-page-bg: #f3ede2;
   --color-ink: #2c2620;
+}
+
+/* ダークモード用トークン上書き */
+.dark {
+  --color-board-face: #8b6f47;
+  --color-board-face-dark: #6d5535;
+  --color-board-frame: #2e1f10;
+  --color-board-frame-dark: #1f1509;
+  --color-page-bg: #1a1714;
+  --color-ink: #e0d8cc;
 }
 
 @layer base {
