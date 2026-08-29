@@ -1,32 +1,36 @@
 // src/components/ForbiddenRuleToggle.tsx
-// 禁じ手ルールのON/OFFを切り替えるトグルボタンコンポーネント
-
-import React from 'react';
+// 禁じ手ルールのON/OFFを切り替えるトグルスイッチコンポーネント。
+// スイッチ行自体がラベルを兼ねるため、親コンポーネントは別途ラベルを付与しない。
 
 interface ForbiddenRuleToggleProps {
   useForbiddenRule: boolean;
   onToggle: () => void;
 }
 
-const ForbiddenRuleToggle: React.FC<ForbiddenRuleToggleProps> = ({
-  useForbiddenRule,
-  onToggle,
-}) => {
+const ForbiddenRuleToggle = ({ useForbiddenRule, onToggle }: ForbiddenRuleToggleProps) => {
   return (
     <button
       onClick={onToggle}
-      className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold shadow-sm ring-1 transition-all ${
-        useForbiddenRule
-          ? 'bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300 dark:ring-rose-800'
-          : 'bg-white text-slate-500 ring-board-frame/10 hover:text-slate-700 dark:bg-zinc-800 dark:text-zinc-400 dark:ring-zinc-700'
-      }`}
+      role="switch"
+      aria-checked={useForbiddenRule}
+      aria-label={`禁じ手ルール: ${useForbiddenRule ? 'ON' : 'OFF'}`}
+      className="flex w-full items-center justify-between py-2"
     >
-      <span
-        className={`h-2 w-2 rounded-full transition-colors ${
-          useForbiddenRule ? 'bg-rose-500' : 'bg-slate-400 dark:bg-zinc-500'
+      <span className="text-sm font-medium text-ink dark:text-zinc-200">
+        禁じ手ルール
+      </span>
+      {/* スイッチ本体: ON 時は rose 系、OFF 時はグレー系で状態を示す */}
+      <div
+        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+          useForbiddenRule ? 'bg-rose-500' : 'bg-slate-300 dark:bg-zinc-600'
         }`}
-      />
-      禁じ手ルール: {useForbiddenRule ? 'ON' : 'OFF'}
+      >
+        <div
+          className={`absolute top-0.5 left-0 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+            useForbiddenRule ? 'translate-x-5.5' : 'translate-x-0.5'
+          }`}
+        />
+      </div>
     </button>
   );
 };

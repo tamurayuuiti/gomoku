@@ -10,11 +10,8 @@ import { useGameLogic } from './hooks/useGameLogic';
 import { useAiPlayer } from './hooks/useAiPlayer';
 import { useTheme } from './hooks/useTheme';
 import Board from './components/Board';
-import ModeSelector from './components/ModeSelector';
-import ColorSelector from './components/ColorSelector';
-import AiLevelSelector from './components/AiLevelSelector';
-import ForbiddenRuleToggle from './components/ForbiddenRuleToggle';
-import GameStatusPanel from './components/GameStatusPanel';
+import SettingsPanel from './components/SettingsPanel';
+import GameHeader from './components/GameHeader';
 import SettingChangeConfirmDialog from './components/SettingChangeConfirmDialog';
 import GameResultDialog from './components/GameResultDialog';
 import ThemeToggle from './components/ThemeToggle';
@@ -106,9 +103,10 @@ const App = () => {
       ? RESULT_DIALOG_DELAY_HUMAN_MS
       : RESULT_DIALOG_DELAY_AI_MS;
 
-      const timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       setResultDialogVisible(true);
     }, delay);
+
     return () => clearTimeout(timer);
   }, [gameStatus, gameMode, currentPlayer, playerColor]);
 
@@ -138,7 +136,6 @@ const App = () => {
     useForbiddenRule,
     executeMove,
   });
-
   useLayoutEffect(() => {
     clickCtxRef.current = {
       board,
@@ -183,10 +180,12 @@ const App = () => {
 
   const handleUndo = useCallback(() => {
     if (isAiThinking || !canUndo) return;
+
     const undone = gameMode === 'PvE'
       ? undoToPlayerTurn(playerColor)
       : undoOne();
     if (!undone) return;
+
     // Undo 後の AI ターン管理状態を初期化し、次の AI 手番で正しく再思考されるようにする。
     resetAiTurnState();
     setForbiddenWarning(null);
@@ -209,7 +208,8 @@ const App = () => {
   // --- 設定変更（リセットして適用。対局中のみ確認ダイアログを挟む） ---
   // 対局中（石が置かれていて、かつ勝敗が決まっていない）の変更は確認を必要とする。
   // 対局前（盤面が空）や対局終了後は、そのまま即座にリセット適用する。
-  const needsSettingChangeConfirm = gameStatus === 'Playing' && !isBoardEmpty;
+  // 設定変更の確認判定とリセットボタンの danger 表示判定で共用する。
+  const isGameInProgress = gameStatus === 'Playing' && !isBoardEmpty;
 
   const applyForbiddenRuleToggle = useCallback(() => {
     setUseForbiddenRule(prev => !prev);
@@ -217,12 +217,12 @@ const App = () => {
   }, [resetGame]);
 
   const requestForbiddenRuleToggle = useCallback(() => {
-    if (needsSettingChangeConfirm) {
+    if (isGameInProgress) {
       setPendingSettingChange({ kind: 'forbiddenRule' });
     } else {
       applyForbiddenRuleToggle();
     }
-  }, [needsSettingChangeConfirm, applyForbiddenRuleToggle]);
+  }, [isGameInProgress, applyForbiddenRuleToggle]);
 
   const applyPlayerColorChange = useCallback((color: Player) => {
     setPlayerColor(color);
@@ -231,12 +231,12 @@ const App = () => {
 
   const requestPlayerColorChange = useCallback((color: Player) => {
     if (color === playerColor) return;
-    if (needsSettingChangeConfirm) {
+    if (isGameInProgress) {
       setPendingSettingChange({ kind: 'playerColor', color });
     } else {
       applyPlayerColorChange(color);
     }
-  }, [playerColor, needsSettingChangeConfirm, applyPlayerColorChange]);
+  }, [playerColor, isGameInProgress, applyPlayerColorChange]);
 
   const applyGameModeChange = useCallback((mode: GameMode) => {
     setGameMode(mode);
@@ -245,12 +245,12 @@ const App = () => {
 
   const requestGameModeChange = useCallback((mode: GameMode) => {
     if (mode === gameMode) return;
-    if (needsSettingChangeConfirm) {
+    if (isGameInProgress) {
       setPendingSettingChange({ kind: 'gameMode', mode });
     } else {
       applyGameModeChange(mode);
     }
-  }, [gameMode, needsSettingChangeConfirm, applyGameModeChange]);
+  }, [gameMode, isGameInProgress, applyGameModeChange]);
 
   const applyAiLevelChange = useCallback((level: AiLevel) => {
     setAiLevel(level);
@@ -259,16 +259,17 @@ const App = () => {
 
   const requestAiLevelChange = useCallback((level: AiLevel) => {
     if (level === aiLevel) return;
-    if (needsSettingChangeConfirm) {
+    if (isGameInProgress) {
       setPendingSettingChange({ kind: 'aiLevel', level });
     } else {
       applyAiLevelChange(level);
     }
-  }, [aiLevel, needsSettingChangeConfirm, applyAiLevelChange]);
+  }, [aiLevel, isGameInProgress, applyAiLevelChange]);
 
   // 確認ダイアログで確定された保留中の設定変更を適用する。
   const confirmSettingChange = useCallback(() => {
     if (!pendingSettingChange) return;
+
     if (pendingSettingChange.kind === 'forbiddenRule') {
       applyForbiddenRuleToggle();
     } else if (pendingSettingChange.kind === 'playerColor') {
@@ -294,57 +295,47 @@ const App = () => {
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-transparent px-4 py-10 font-sans text-ink sm:py-14">
-      <header className="mb-8 text-center">
-        <h1 className="text-4xl font-black uppercase tracking-tighter text-board-frame dark:text-amber-200 sm:text-5xl">
-          Gomoku
-        </h1>
-        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:text-zinc-500">
-          五目並べ
-        </p>
+      {/* メインヘッダー: アプリタイトルとテーマ切替を統合する */}
+      <header className="mb-6 flex w-full max-w-[min(92vw,600px)] items-center justify-between">
+        <div>
+          <h1 className="text-4xl font-black uppercase tracking-tighter text-board-frame dark:text-amber-200 sm:text-5xl">
+            Gomoku
+          </h1>
+          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:text-zinc-500">
+            五目並べ
+          </p>
+        </div>
+        <ThemeToggle
+          preference={preference}
+          resolvedTheme={resolvedTheme}
+          onCycle={cyclePreference}
+        />
       </header>
 
-      {/* 操作パネル：モード・禁じ手・AI レベル・色選択をひとつのツールバーとしてグルーピング */}
-      <div className="mb-8 flex w-full max-w-[min(92vw,600px)] flex-col items-center gap-3">
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <ModeSelector
-            gameMode={gameMode}
-            onModeChange={requestGameModeChange}
-          />
-          <ForbiddenRuleToggle
-            useForbiddenRule={useForbiddenRule}
-            onToggle={requestForbiddenRuleToggle}
-          />
-          <ThemeToggle
-            preference={preference}
-            resolvedTheme={resolvedTheme}
-            onCycle={cyclePreference}
-          />
-        </div>
-
-        {/* AI レベル選択は PvE モードのみ表示する */}
-        {gameMode === 'PvE' && (
-          <AiLevelSelector
-            aiLevel={aiLevel}
-            onLevelChange={requestAiLevelChange}
-          />
-        )}
-
-        <ColorSelector
+      {/* 設定カード: モード・禁じ手・AIレベル・先後を 1 枚のカードに統合する */}
+      <div className="mb-6 w-full max-w-[min(92vw,600px)]">
+        <SettingsPanel
           gameMode={gameMode}
+          useForbiddenRule={useForbiddenRule}
+          aiLevel={aiLevel}
           playerColor={playerColor}
-          onColorChange={requestPlayerColorChange}
+          onModeChange={requestGameModeChange}
+          onForbiddenRuleToggle={requestForbiddenRuleToggle}
+          onAiLevelChange={requestAiLevelChange}
+          onPlayerColorChange={requestPlayerColorChange}
         />
       </div>
 
-      {/* 対局エリア：ステータスプレートと盤面を一体化して視線を誘導 */}
+      {/* 対局エリア: ゲームヘッダーと盤面を一体化して視線を誘導 */}
       <div className="flex w-full max-w-[min(92vw,600px)] flex-col items-center">
-        <GameStatusPanel
+        <GameHeader
           forbiddenWarning={forbiddenWarning}
           isAiThinking={isAiThinking}
           gameStatus={gameStatus}
           currentPlayer={currentPlayer}
           gameMode={gameMode}
           playerColor={playerColor}
+          stoneCount={stoneCount}
         />
         <Board
           board={board}
@@ -354,23 +345,22 @@ const App = () => {
         />
       </div>
 
-      {/* 対局操作：待ったとリセットを同一領域に配置 */}
-      <div className="mt-8 flex w-full max-w-[min(92vw,600px)] flex-wrap items-center justify-center gap-3">
+      {/* 対局操作: 待ったとリセットを盤面同幅の 2 列グリッドで並べる */}
+      <div className="mt-4 grid w-full max-w-[min(92vw,600px)] grid-cols-2 gap-3">
         <button
           onClick={handleUndo}
           disabled={isAiThinking || !canUndo}
-          className={`group flex items-center gap-2 rounded-full px-5 py-3 font-bold shadow-md transition-all ${
-            isAiThinking || !canUndo
-              ? 'cursor-not-allowed bg-white text-board-frame/40 opacity-50 ring-1 ring-board-frame/10 dark:bg-zinc-800 dark:text-zinc-500 dark:ring-zinc-700'
-              : 'bg-white text-board-frame ring-1 ring-board-frame/20 hover:bg-board-frame/5 active:scale-95 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-zinc-600'
-          }`}
+          className="btn-secondary flex items-center justify-center gap-2 px-3 py-3 text-sm font-bold transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:text-base"
         >
           <Undo2 className="h-5 w-5" strokeWidth={3} />
           待った
         </button>
+        {/* リセットは対局中のみ danger 色で強調する（設定変更確認と同一の判定） */}
         <button
           onClick={resetGame}
-          className="group flex items-center gap-2 rounded-full bg-board-frame px-7 py-3 font-bold text-amber-50 shadow-md transition-all hover:bg-board-frame-dark active:scale-95 dark:bg-amber-800 dark:text-amber-100"
+          className={`group flex items-center justify-center gap-2 px-3 py-3 text-sm font-bold transition-all active:scale-95 sm:px-4 sm:text-base ${
+            isGameInProgress ? 'btn-danger' : 'btn-primary'
+          }`}
         >
           <RotateCcw
             className="h-5 w-5 transition-transform duration-300 group-hover:rotate-180"
