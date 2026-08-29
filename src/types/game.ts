@@ -46,3 +46,16 @@ export interface ForbiddenResult {
   isForbidden: boolean;
   reason: ForbiddenReason;
 }
+
+// ============================================================
+// 設定変更
+// ============================================================
+
+/**
+ * 対局中に変更しようとして、確認待ちになっている設定変更の内容。
+ */
+export type PendingSettingChange =
+  | { kind: 'forbiddenRule' }
+  | { kind: 'playerColor'; color: Player }
+  | { kind: 'gameMode'; mode: GameMode }
+  | { kind: 'aiLevel'; level: AiLevel };

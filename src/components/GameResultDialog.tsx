@@ -80,7 +80,7 @@ const GameResultDialog: React.FC<GameResultDialogProps> = ({
       onClick={onDismiss}
     >
       <div
-        className="w-full max-w-sm rounded-lg bg-white p-6 shadow-[0_25px_60px_-15px_rgba(44,38,32,0.45)] animate-in zoom-in-95 duration-150 dark:bg-zinc-800"
+        className="w-full max-w-sm rounded-lg bg-white p-6 shadow-board animate-in zoom-in-95 duration-150 dark:bg-zinc-800"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex flex-col items-center text-center">

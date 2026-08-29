@@ -1,7 +1,7 @@
 // src/App.tsx
 // アプリ全体の構成と主要な状態管理を担当するコンテナコンポーネント
 
-import type { Player, GameMode, AiLevel } from './types/game';
+import type { Player, GameMode, AiLevel, PendingSettingChange } from './types/game';
 import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
 import { getForbiddenReasonMessage, checkForbiddenMove } from './utils/gameLogic';
 import { AI_LEVEL_TABLE } from './utils/ai/constants';
@@ -18,13 +18,6 @@ import GameResultDialog from './components/GameResultDialog';
 import ThemeToggle from './components/ThemeToggle';
 import { RotateCcw, Undo2 } from 'lucide-react';
 import './index.css';
-
-// 対局中に変更しようとして、確認待ちになっている設定変更の内容。
-type PendingSettingChange =
-  | { kind: 'forbiddenRule' }
-  | { kind: 'playerColor'; color: Player }
-  | { kind: 'gameMode'; mode: GameMode }
-  | { kind: 'aiLevel'; level: AiLevel };
 
 // 対局終了から結果ダイアログ表示までの遅延 [ms]。
 const RESULT_DIALOG_DELAY_HUMAN_MS = 150;
@@ -75,9 +68,6 @@ const App = () => {
       setResultDismissed(false);
     }
   }
-
-  // 盤面が空かどうかは石数カウンターで O(1) 判定する。
-  const isBoardEmpty = stoneCount === 0;
 
   // 盤面全体の禁じ手座標は表示専用（ホバー時の赤バツ）。
   // 描画後に非同期計算されるため、着手受理の判定には使用しない。
@@ -220,10 +210,13 @@ const App = () => {
 
   // --- 設定変更（リセットして適用。対局中のみ確認ダイアログを挟む） ---
 
-  // 対局中（石が置かれていて、かつ勝敗が決まっていない）の変更は確認を必要とする。
-  // 対局前（盤面が空）や対局終了後は、そのまま即座にリセット適用する。
-  // 設定変更の確認判定とリセットボタンの danger 表示判定で共用する。
-  const isGameInProgress = gameStatus === 'Playing' && !isBoardEmpty;
+  // 対局中かつ人間が着手済みであれば、設定変更に確認ダイアログを挟む。
+  // PvE後手のAI初手（自動着手）は人間の着手に含まず、確認なしでのリセットを許可する。
+  const hasHumanMoved =
+    gameMode === 'PvE' && playerColor === 'White'
+      ? stoneCount >= 2
+      : stoneCount >= 1;
+  const isGameInProgress = gameStatus === 'Playing' && hasHumanMoved;
 
   const applyForbiddenRuleToggle = useCallback(() => {
     setUseForbiddenRule(prev => !prev);
@@ -388,6 +381,7 @@ const App = () => {
       {/* 対局中の設定変更確認ダイアログ */}
       <SettingChangeConfirmDialog
         open={pendingSettingChange !== null}
+        pendingChange={pendingSettingChange}
         onConfirm={confirmSettingChange}
         onCancel={cancelSettingChange}
       />
