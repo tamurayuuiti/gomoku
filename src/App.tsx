@@ -4,7 +4,8 @@
 import type { Player, GameMode, AiLevel } from './types/game';
 import { useState, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
 import { getForbiddenReasonMessage, checkForbiddenMove } from './utils/gameLogic';
-import { AI_LEVEL_TABLE, DEFAULT_AI_LEVEL } from './utils/ai/constants';
+import { AI_LEVEL_TABLE } from './utils/ai/constants';
+import { loadSettings, saveSettings } from './utils/settingsStorage';
 import { useForbiddenMoves } from './hooks/useForbiddenMoves';
 import { useGameLogic } from './hooks/useGameLogic';
 import { useAiPlayer } from './hooks/useAiPlayer';
@@ -48,10 +49,13 @@ const App = () => {
   const { preference, resolvedTheme, cyclePreference } = useTheme();
 
   // --- UI固有の状態 ---
-  const [gameMode, setGameMode] = useState<GameMode>('PvE');
-  const [playerColor, setPlayerColor] = useState<Player>('Black');
-  const [useForbiddenRule, setUseForbiddenRule] = useState<boolean>(true);
-  const [aiLevel, setAiLevel] = useState<AiLevel>(DEFAULT_AI_LEVEL);
+  // 永続化設定の初期読み込み（初回レンダリング時のみ実行）。
+  // 個別のゲーム設定状態はここから初期値を供給する。
+  const [initialSettings] = useState(loadSettings);
+  const [gameMode, setGameMode] = useState<GameMode>(initialSettings.gameMode);
+  const [playerColor, setPlayerColor] = useState<Player>(initialSettings.playerColor);
+  const [useForbiddenRule, setUseForbiddenRule] = useState<boolean>(initialSettings.useForbiddenRule);
+  const [aiLevel, setAiLevel] = useState<AiLevel>(initialSettings.aiLevel);
   const [forbiddenWarning, setForbiddenWarning] = useState<string | null>(null);
 
   // 対局中に変更しようとして確認ダイアログを表示している設定変更。
@@ -110,6 +114,13 @@ const App = () => {
     return () => clearTimeout(timer);
   }, [gameStatus, gameMode, currentPlayer, playerColor]);
 
+  // ゲーム設定の変更を永続化する。
+  // 4 値のいずれかが変化した時点で即時書き込む（設定変更は低频操作のためデバウンス不要）。
+  // 書き込み失敗時は saveSettings 内部で吸収され、ゲーム進行に影響しない。
+  useEffect(() => {
+    saveSettings({ gameMode, playerColor, useForbiddenRule, aiLevel });
+  }, [gameMode, playerColor, useForbiddenRule, aiLevel]);
+
   // 結果ダイアログは、表示タイマー発火済み・未 dismiss・終局状態のときのみ開く。
   const isResultDialogOpen =
     resultDialogVisible && !resultDismissed && gameStatus !== 'Playing';
@@ -136,6 +147,7 @@ const App = () => {
     useForbiddenRule,
     executeMove,
   });
+
   useLayoutEffect(() => {
     clickCtxRef.current = {
       board,
@@ -184,6 +196,7 @@ const App = () => {
     const undone = gameMode === 'PvE'
       ? undoToPlayerTurn(playerColor)
       : undoOne();
+
     if (!undone) return;
 
     // Undo 後の AI ターン管理状態を初期化し、次の AI 手番で正しく再思考されるようにする。
@@ -206,6 +219,7 @@ const App = () => {
   }, [resetAiTurnState, resetGameLogic]);
 
   // --- 設定変更（リセットして適用。対局中のみ確認ダイアログを挟む） ---
+
   // 対局中（石が置かれていて、かつ勝敗が決まっていない）の変更は確認を必要とする。
   // 対局前（盤面が空）や対局終了後は、そのまま即座にリセット適用する。
   // 設定変更の確認判定とリセットボタンの danger 表示判定で共用する。
@@ -279,6 +293,7 @@ const App = () => {
     } else {
       applyGameModeChange(pendingSettingChange.mode);
     }
+
     setPendingSettingChange(null);
   }, [
     pendingSettingChange,

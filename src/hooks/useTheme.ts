@@ -11,6 +11,7 @@
 //   - cyclePreference コールバックの提供（useCallback で identity 安定化）
 
 import { useState, useEffect, useCallback } from 'react';
+import { readItem, writeItem } from '../utils/storage';
 
 // ============================================================
 // 型定義
@@ -30,31 +31,22 @@ const STORAGE_KEY = 'gomoku-theme';
 
 /**
  * localStorage から保存されたテーマ設定を読み取る。
- * プライベートブラウジング等で localStorage が利用不可の場合は
- * try-catch で安全にフォールバックする。
+ * 値の検証のみを行い、例外吸収は readItem に委譲する。
  */
 const readStoredPreference = (): ThemePreference | null => {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'light' || stored === 'dark' || stored === 'system') {
-      return stored;
-    }
-    return null;
-  } catch {
-    return null;
+  const stored = readItem(STORAGE_KEY);
+  if (stored === 'light' || stored === 'dark' || stored === 'system') {
+    return stored;
   }
+  return null;
 };
 
 /**
  * テーマ設定を localStorage へ書き込む。
- * 書き込み失敗時は静かに無視する。
+ * 例外吸収は writeItem に委譲する。
  */
 const writeStoredPreference = (preference: ThemePreference): void => {
-  try {
-    localStorage.setItem(STORAGE_KEY, preference);
-  } catch {
-    // localStorage 利用不可の場合は何もしない
-  }
+  writeItem(STORAGE_KEY, preference);
 };
 
 /**
@@ -110,10 +102,12 @@ export const useTheme = (): {
     ) {
       return;
     }
+
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (event: MediaQueryListEvent) => {
       setSystemTheme(event.matches ? 'dark' : 'light');
     };
+
     mql.addEventListener('change', handler);
     return () => mql.removeEventListener('change', handler);
   }, []);

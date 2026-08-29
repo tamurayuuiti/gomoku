@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { GameMode, AiLevel, Player } from '../types/game';
 import { AI_LEVEL_TABLE } from '../utils/ai/constants';
+import { readItem, writeItem } from '../utils/storage';
 import ModeSelector from './ModeSelector';
 import ForbiddenRuleToggle from './ForbiddenRuleToggle';
 import AiLevelSelector from './AiLevelSelector';
@@ -17,30 +18,21 @@ const STORAGE_KEY = 'gomoku-settings-open';
 
 /**
  * localStorage から保存された開閉状態を読み取る。
- * プライベートブラウジング等で localStorage が利用不可の場合は
- * try-catch で安全にフォールバックする。
+ * 値の検証のみを行い、例外吸収は readItem に委譲する。
  */
 const readStoredOpenState = (): boolean | null => {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'true') return true;
-    if (stored === 'false') return false;
-    return null;
-  } catch {
-    return null;
-  }
+  const stored = readItem(STORAGE_KEY);
+  if (stored === 'true') return true;
+  if (stored === 'false') return false;
+  return null;
 };
 
 /**
  * 開閉状態を localStorage へ書き込む。
- * 書き込み失敗時は静かに無視する。
+ * 例外吸収は writeItem に委譲する。
  */
 const writeStoredOpenState = (open: boolean): void => {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(open));
-  } catch {
-    // localStorage 利用不可の場合は何もしない
-  }
+  writeItem(STORAGE_KEY, String(open));
 };
 
 interface SettingsPanelProps {
