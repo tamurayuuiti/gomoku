@@ -12,14 +12,14 @@
 //   - 探索本体は minimax.ts 以下に委譲する。
 //   - 公開 API calculateNextMove のシグネチャは変更しない。
 
-import type { BoardState, Position, Player, AiLevel } from '../../types/game';
-import type { SearchOptions, SearchStats } from '../../types/ai';
+import type { BoardState, Position, Player, AiLevel } from '@/types/game';
+import type { SearchOptions, SearchStats } from '@/types/ai';
 import {
   BOARD_SIZE,
   checkWin,
   checkForbiddenMove,
   countStones,
-} from '../gameLogic';
+} from '@/utils/gameLogic';
 import {
   AI_CONFIG,
   AI_SCORES,

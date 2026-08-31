@@ -11,7 +11,7 @@
 //   - 候補手生成は candidateGenerator.ts、葉評価は boardEvaluator.ts に委譲する。
 //   - 評価値・探索挙動・API は変更しない。
 
-import type { BoardState, Position, Player } from '../../types/game';
+import type { BoardState, Position, Player } from '@/types/game';
 import type {
   KillerTable,
   HistoryTable,
@@ -21,8 +21,8 @@ import type {
   LineCacheState,
   CandidateSetState,
   SearchStats,
-} from '../../types/ai';
-import { checkWin } from '../gameLogic';
+} from '@/types/ai';
+import { checkWin } from '@/utils/gameLogic';
 import {
   AI_CONFIG,
   AI_SCORES,

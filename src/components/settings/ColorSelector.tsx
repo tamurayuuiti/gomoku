@@ -3,7 +3,7 @@
 // セクションラベルは親コンポーネントが付与する。
 // 選択状態は石の色そのもので意味を表すため、石色ベースのスタイルを維持する。
 
-import type { Player, GameMode } from '../types/game';
+import type { Player, GameMode } from '@/types/game';
 
 interface ColorSelectorProps {
   gameMode: GameMode;

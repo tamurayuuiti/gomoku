@@ -7,7 +7,7 @@
 //   - 診断・デバッグ専用設定は diagnosticsFlags.ts に移動済み。
 //   - constants.ts からは診断設定を参照・再 export しない。
 
-import type { AiLevel } from '../../types/game';
+import type { AiLevel } from '@/types/game';
 
 // ============================================================
 // 評価スコア

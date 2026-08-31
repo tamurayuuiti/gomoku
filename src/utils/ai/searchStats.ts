@@ -10,12 +10,12 @@
 //   1. 1手ごとの統計: 生成 / マージ / 派生指標の確定 / ログ出力
 //   2. 対局セッション: 型定義 / 状態 / ライフサイクル / 積算 / 派生指標 / ログ出力
 
-import type { Player, Position, AiLevel } from '../../types/game';
-import type { SearchStats } from '../../types/ai';
+import type { Player, Position, AiLevel } from '@/types/game';
+import type { SearchStats } from '@/types/ai';
+import { BOARD_SIZE } from '@/utils/gameLogic';
 import type { TTExtendedStats } from './transpositionTable';
 import { DIAGNOSTICS_CONFIG } from './diagnosticsFlags';
 import { PERF_FEATURES } from './constants';
-import { BOARD_SIZE } from '../gameLogic';
 
 // ============================================================
 // 1手ごとの統計: 生成

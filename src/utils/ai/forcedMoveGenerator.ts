@@ -10,7 +10,8 @@
 // 注意:
 //   - 既存評価値・候補手 tier・LMR / PVS の意味は変更しない。
 //   - forbiddenRuleEnabled === false の場合、Black 禁手判定を一切行わない。
-import type { BoardState, Player, Position } from '../../types/game';
+
+import type { BoardState, Player, Position } from '@/types/game';
 import type {
   CandidateSetState,
   ForcedCategory,
@@ -18,8 +19,8 @@ import type {
   ForcedMoveList,
   LineCacheState,
   SearchStats,
-} from '../../types/ai';
-import { BOARD_SIZE } from '../gameLogic';
+} from '@/types/ai';
+import { BOARD_SIZE } from '@/utils/gameLogic';
 import {
   THREAT_FORBIDDEN_CONFIG,
   THREAT_FORBIDDEN_FEATURES,

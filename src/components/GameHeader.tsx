@@ -11,7 +11,7 @@
 //     中ゾーンは警告と思考中のみを扱い、左ゾーンの結果表示を上書きしない。
 
 import { AlertCircle } from 'lucide-react';
-import type { GameStatus, Player, GameMode } from '../types/game';
+import type { GameStatus, Player, GameMode } from '@/types/game';
 
 interface GameHeaderProps {
   forbiddenWarning: string | null;

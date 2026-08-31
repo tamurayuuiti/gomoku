@@ -2,7 +2,7 @@
 // ゲームモードを選択するためのコンポーネント。
 // セクションラベルは親コンポーネントが付与し、選択状態は共通ボタンクラスで表現する。
 
-import type { GameMode } from '../types/game';
+import type { GameMode } from '@/types/game';
 
 interface ModeSelectorProps {
   gameMode: GameMode;

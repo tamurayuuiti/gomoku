@@ -10,13 +10,13 @@
 //   - hash は XOR で元に戻せるが、呼び出し側で扱いやすいよう
 //     applySearchMove は nextHash を返し、undo 情報に hashBefore を保持する。
 
-import type { BoardState, Player, Position } from '../../types/game';
+import type { BoardState, Player, Position } from '@/types/game';
 import type {
   CandidateSetState,
   CandidateSetUndo,
   LineCacheState,
   SearchStats,
-} from '../../types/ai';
+} from '@/types/ai';
 import { updateHash } from './zobrist';
 import { updateLineCache, undoLineCache } from './lineCache';
 import { applyCandidateSet, undoCandidateSet } from './candidateGenerator';

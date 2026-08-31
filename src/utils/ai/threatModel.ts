@@ -11,9 +11,9 @@
 //   - forced move list の分類に必要な戦術情報だけを提供する。
 //   - forbiddenRuleEnabled === false の場合、Black 禁手判定を一切行わない。
 
-import type { BoardState, Player, Position } from '../../types/game';
-import type { LineCacheState, PatternCount } from '../../types/ai';
-import { checkWin, checkForbiddenMove, DIRECTIONS } from '../gameLogic';
+import type { BoardState, Player, Position } from '@/types/game';
+import type { LineCacheState, PatternCount } from '@/types/ai';
+import { checkWin, checkForbiddenMove, DIRECTIONS } from '@/utils/gameLogic';
 import {
   createEmptyPatternCount,
   getLineCode,

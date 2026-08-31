@@ -11,7 +11,7 @@
 //   - 診断設定は探索の意思決定に使わない。
 //   - constants.ts からは再 export しない。
 
-import type { AiLogLevel } from '../../types/ai';
+import type { AiLogLevel } from '@/types/ai';
 
 // ============================================================
 // ログ・統計

@@ -11,7 +11,7 @@
 //   - cyclePreference コールバックの提供（useCallback で identity 安定化）
 
 import { useState, useEffect, useCallback } from 'react';
-import { readItem, writeItem } from '../utils/storage';
+import { readItem, writeItem } from '@/utils/storage';
 
 // ============================================================
 // 型定義

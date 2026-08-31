@@ -20,16 +20,16 @@ import type {
   GameMode,
   Position,
   AiLevel,
-} from '../types/game';
+} from '@/types/game';
+import type { SearchOptions } from '@/types/ai';
+import { computeForbiddenMatrix } from '@/utils/gameLogic';
+import { AI_LEVEL_TABLE } from '@/utils/ai/constants';
 import type {
   AiWorkerRequest,
   AiWorkerResponse,
   AiWorkerControlMessage,
   AiGameResult,
-} from '../workers/aiWorker.types';
-import type { SearchOptions } from '../types/ai';
-import { computeForbiddenMatrix } from '../utils/gameLogic';
-import { AI_LEVEL_TABLE } from '../utils/ai/constants';
+} from '@/workers/aiWorker.types';
 
 /**
  * 着手までの最低演出遅延 [ms] の既定値。
@@ -336,7 +336,7 @@ export const useAiPlayer = ({
   // ------------------------------------------------------------
   // Undo / リセット時のターン管理状態初期化
   // ------------------------------------------------------------
-  
+
   // requestedTurnIdRef と resolvedTurnId を初期化し、Undo やリセット後に
   // AI 手番へ移った場合でも E3 effect が正しく発火できるようにする。
   // inflightRef は Worker 応答の破棄判定に使うため初期化しない。

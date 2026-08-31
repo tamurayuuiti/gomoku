@@ -14,9 +14,9 @@
 //     bigint キーを上位/下位 32bit に分割して格納し、
 //     hash の下位ビットをテーブルインデックスとして O(1) アクセスを実現する。
 
-import type { Position } from '../../types/game';
-import type { TTFlag } from '../../types/ai';
-import { BOARD_SIZE } from '../gameLogic';
+import type { Position } from '@/types/game';
+import type { TTFlag } from '@/types/ai';
+import { BOARD_SIZE } from '@/utils/gameLogic';
 import { TT_TABLE_SIZE } from './constants';
 
 // ============================================================

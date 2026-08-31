@@ -8,7 +8,7 @@
 //   - dark:   Moon（ダーク固定）
 
 import { Sun, Moon, Monitor } from 'lucide-react';
-import type { ThemePreference, ResolvedTheme } from '../hooks/useTheme';
+import type { ThemePreference, ResolvedTheme } from '@/hooks/useTheme';
 
 interface ThemeToggleProps {
   /** 現在のテーマ設定（永続化対象） */

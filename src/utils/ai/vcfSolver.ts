@@ -12,14 +12,15 @@
 //   - VCF の失敗は負けや最善を意味しない。
 //   - VCF の中断は不明を意味し、通常探索へ委譲する。
 //   - board / lineCache は apply / undo で必ず復元する。
-import type { BoardState, Player, Position } from '../../types/game';
-import type { SearchOptions, SearchStats } from '../../types/ai';
+
+import type { BoardState, Player, Position } from '@/types/game';
+import type { SearchOptions, SearchStats } from '@/types/ai';
 import {
   BOARD_SIZE,
   checkForbiddenMove,
   DIRECTIONS,
   countStones,
-} from '../gameLogic';
+} from '@/utils/gameLogic';
 import {
   AI_FEATURES,
   VCF_FEATURES,

@@ -11,14 +11,15 @@
 //   - 証明できない場合は静的評価へフォールバックする。
 //   - 任意手では LOSS を証明しない。
 //   - board / lineCache は apply / undo で必ず復元する。
-import type { BoardState, Player, Position } from '../../types/game';
-import type { SearchOptions, SearchStats, LineCacheState } from '../../types/ai';
+
+import type { BoardState, Player, Position } from '@/types/game';
+import type { SearchOptions, SearchStats, LineCacheState } from '@/types/ai';
 import {
   BOARD_SIZE,
   checkForbiddenMove,
   DIRECTIONS,
   countStones,
-} from '../gameLogic';
+} from '@/utils/gameLogic';
 import {
   AI_SCORES,
   QSEARCH_FEATURES,

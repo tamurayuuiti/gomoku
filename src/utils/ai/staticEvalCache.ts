@@ -12,8 +12,8 @@
 //   - 内部構造は固定サイズ Typed Array による直接マッピング方式ハッシュテーブル。
 //     異なるキーの衝突時は無条件で上書きする（depth による優先度がないため）。
 
-import type { Player } from '../../types/game';
-import { BOARD_SIZE } from '../gameLogic';
+import type { Player } from '@/types/game';
+import { BOARD_SIZE } from '@/utils/gameLogic';
 import { SEARCH_TUNING_CONFIG, SEC_TABLE_SIZE } from './constants';
 
 // ============================================================

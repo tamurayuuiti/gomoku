@@ -2,8 +2,8 @@
 // AI の強さレベルを選択するためのコンポーネント。
 // セクションラベルは親コンポーネントが付与し、選択状態は共通ボタンクラスで表現する。
 
-import type { AiLevel } from '../types/game';
-import { AI_LEVELS, AI_LEVEL_TABLE } from '../utils/ai/constants';
+import type { AiLevel } from '@/types/game';
+import { AI_LEVELS, AI_LEVEL_TABLE } from '@/utils/ai/constants';
 
 interface AiLevelSelectorProps {
   aiLevel: AiLevel;

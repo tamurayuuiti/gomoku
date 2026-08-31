@@ -1,9 +1,9 @@
 // src/components/Board.tsx
 // 盤面全体を表すコンポーネント
 
+import type { BoardState, Position } from '@/types/game';
+import { BOARD_SIZE } from '@/utils/gameLogic';
 import Cell from './Cell';
-import type { BoardState, Position } from '../types/game';
-import { BOARD_SIZE } from '../utils/gameLogic';
 
 interface BoardProps {
   board: BoardState;

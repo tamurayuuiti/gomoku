@@ -15,8 +15,8 @@
 //   - 将来の責務分離では、派生値（useMemo / useDeferredValue 等）への再設計を検討する。
 
 import { useEffect, useState } from 'react';
-import type { Player, BoardState, GameStatus } from '../types/game';
-import { BOARD_SIZE, computeForbiddenMatrix } from '../utils/gameLogic';
+import type { Player, BoardState, GameStatus } from '@/types/game';
+import { BOARD_SIZE, computeForbiddenMatrix } from '@/utils/gameLogic';
 
 /** 全面 false のマトリクスを生成する（軽量パス / 初期値） */
 const createAllFalseMatrix = (): boolean[][] =>

@@ -9,8 +9,8 @@
 //   - React / DOM API は Worker で使用しない。
 //   - 探索ロジック自体には関与しない。
 
-import { calculateNextMove } from '../utils/ai/search';
-import { finalizeGameSession } from '../utils/ai/searchStats';
+import { calculateNextMove } from '@/utils/ai/search';
+import { finalizeGameSession } from '@/utils/ai/searchStats';
 import type {
   AiWorkerIncomingMessage,
   AiWorkerRequest,

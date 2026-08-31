@@ -10,8 +10,8 @@
 //   - localStorage の例外吸収は storage.ts に委譲する。
 //   - 値検証は as によるキャストではなく、明示的なリテラル比較・型ガードで行う。
 
-import type { GameMode, Player, AiLevel } from '../types/game';
-import { DEFAULT_AI_LEVEL } from './ai/constants';
+import type { GameMode, Player, AiLevel } from '@/types/game';
+import { DEFAULT_AI_LEVEL } from '@/utils/ai/constants';
 import { readItem, writeItem } from './storage';
 
 // ============================================================

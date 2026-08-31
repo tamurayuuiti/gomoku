@@ -10,8 +10,8 @@
 //   - シード固定で再現性を担保する。
 //   - Transposition Table のキーとして使う。
 
-import type { BoardState, Player } from '../../types/game';
-import { BOARD_SIZE } from '../gameLogic';
+import type { BoardState, Player } from '@/types/game';
+import { BOARD_SIZE } from '@/utils/gameLogic';
 
 // ============================================================
 // 擬似乱数生成器

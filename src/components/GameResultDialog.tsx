@@ -4,8 +4,8 @@
 
 import React, { useEffect } from 'react';
 import { RotateCcw } from 'lucide-react';
-import type { GameStatus, GameMode, Player, AiLevel } from '../types/game';
-import { AI_LEVEL_TABLE } from '../utils/ai/constants';
+import type { GameStatus, GameMode, Player, AiLevel } from '@/types/game';
+import { AI_LEVEL_TABLE } from '@/utils/ai/constants';
 
 interface GameResultDialogProps {
   /** ダイアログを表示するかどうか */

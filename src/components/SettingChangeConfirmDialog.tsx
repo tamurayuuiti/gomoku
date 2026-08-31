@@ -4,8 +4,8 @@
 
 import React, { useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import type { PendingSettingChange } from '../types/game';
-import { AI_LEVEL_TABLE } from '../utils/ai/constants';
+import type { PendingSettingChange } from '@/types/game';
+import { AI_LEVEL_TABLE } from '@/utils/ai/constants';
 
 interface SettingChangeConfirmDialogProps {
   /** ダイアログを表示するかどうか */

@@ -15,7 +15,7 @@ import type {
   ForbiddenReason,
   ForbiddenResult,
   GameStatus,
-} from '../types/game';
+} from '@/types/game';
 
 // ============================================================
 // 盤面基本

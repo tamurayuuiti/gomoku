@@ -13,9 +13,9 @@
 //   - ラインコードは 9 桁の 3 進整数（0〜19682）で、
 //       POSITION_WEIGHT[i] = 3^i の重みでエンコードされる。
 
-import type { BoardState, Player, Cell } from '../../types/game';
-import type { LineCacheState, LineCacheUndo } from '../../types/ai';
-import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
+import type { BoardState, Player, Cell } from '@/types/game';
+import type { LineCacheState, LineCacheUndo } from '@/types/ai';
+import { BOARD_SIZE, DIRECTIONS } from '@/utils/gameLogic';
 import { POSITION_WEIGHT } from './evaluator';
 
 // ============================================================

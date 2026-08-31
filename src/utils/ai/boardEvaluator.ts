@@ -11,13 +11,13 @@
 //   - ライン走査は 3 進整数エンコードされたラインコードを事前計算し、
 //     パターン判定をテーブル参照で軽量化する。
 
-import type { BoardState, Player } from '../../types/game';
+import type { BoardState, Player } from '@/types/game';
 import type {
   PatternCount,
   LineCacheState,
   CandidateSetState,
-} from '../../types/ai';
-import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
+} from '@/types/ai';
+import { BOARD_SIZE, DIRECTIONS } from '@/utils/gameLogic';
 import {
   AI_SCORES,
   AI_CONFIG,

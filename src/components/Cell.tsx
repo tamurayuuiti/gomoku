@@ -7,7 +7,7 @@
 
 import { memo } from 'react';
 import { X } from 'lucide-react';
-import type { Player } from '../types/game';
+import type { Player } from '@/types/game';
 
 interface CellProps {
   value: Player | null;

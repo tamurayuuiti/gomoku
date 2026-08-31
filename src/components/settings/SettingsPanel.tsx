@@ -5,9 +5,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
-import type { GameMode, AiLevel, Player } from '../types/game';
-import { AI_LEVEL_TABLE } from '../utils/ai/constants';
-import { readItem, writeItem } from '../utils/storage';
+import type { GameMode, AiLevel, Player } from '@/types/game';
+import { readItem, writeItem } from '@/utils/storage';
+import { AI_LEVEL_TABLE } from '@/utils/ai/constants';
 import ModeSelector from './ModeSelector';
 import ForbiddenRuleToggle from './ForbiddenRuleToggle';
 import AiLevelSelector from './AiLevelSelector';

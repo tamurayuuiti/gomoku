@@ -12,8 +12,8 @@
 //   - latest-ref はコミット後に更新し、イベントコールバック内でのみ読み出す。
 
 import { useState, useCallback, useRef, useLayoutEffect } from 'react';
-import type { Player, BoardState, GameStatus, Position } from '../types/game';
-import { BOARD_SIZE, checkWin, createEmptyBoard } from '../utils/gameLogic';
+import type { Player, BoardState, GameStatus, Position } from '@/types/game';
+import { BOARD_SIZE, checkWin, createEmptyBoard } from '@/utils/gameLogic';
 
 /**
  * 着手前の局面を保持するスナップショット。

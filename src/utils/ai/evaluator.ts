@@ -11,9 +11,9 @@
 //   - 全盤評価（evaluateBoard）は boardEvaluator.ts に委譲する。
 //   - 評価スコア体系・即時評価の優先順位は変更しない。
 
-import type { BoardState, Player } from '../../types/game';
-import type { PatternType, PatternCount, LineCacheState } from '../../types/ai';
-import { BOARD_SIZE, DIRECTIONS } from '../gameLogic';
+import type { BoardState, Player } from '@/types/game';
+import type { PatternType, PatternCount, LineCacheState } from '@/types/ai';
+import { BOARD_SIZE, DIRECTIONS } from '@/utils/gameLogic';
 import {
   AI_SCORES,
   AI_CONFIG,

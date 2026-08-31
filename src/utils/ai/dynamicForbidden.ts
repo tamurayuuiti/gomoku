@@ -11,9 +11,9 @@
 //   - 静的 forbiddenMoves が false の場合のみ、動的禁手で追加除外する。
 //   - forbiddenRuleEnabled === false の場合は禁手判定を一切行わない。
 
-import type { BoardState, Player, Position } from '../../types/game';
-import type { SearchStats } from '../../types/ai';
-import { BOARD_SIZE, checkForbiddenMove } from '../gameLogic';
+import type { BoardState, Player, Position } from '@/types/game';
+import type { SearchStats } from '@/types/ai';
+import { BOARD_SIZE, checkForbiddenMove } from '@/utils/gameLogic';
 import {
   THREAT_FORBIDDEN_CONFIG,
   THREAT_FORBIDDEN_FEATURES,
