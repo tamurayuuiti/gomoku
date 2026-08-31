@@ -1,4 +1,4 @@
-// src/components/ForbiddenRuleToggle.tsx
+// src/components/settings/ForbiddenRuleToggle.tsx
 // 禁じ手ルールのON/OFFを切り替えるトグルスイッチコンポーネント。
 // スイッチ行自体がラベルを兼ねるため、親コンポーネントは別途ラベルを付与しない。
 

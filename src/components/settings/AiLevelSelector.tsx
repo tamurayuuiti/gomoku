@@ -1,4 +1,4 @@
-// src/components/AiLevelSelector.tsx
+// src/components/settings/AiLevelSelector.tsx
 // AI の強さレベルを選択するためのコンポーネント。
 // セクションラベルは親コンポーネントが付与し、選択状態は共通ボタンクラスで表現する。
 

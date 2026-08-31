@@ -1,4 +1,4 @@
-// src/components/ColorSelector.tsx
+// src/components/settings/ColorSelector.tsx
 // プレイヤーが先手・後手を選択するためのコンポーネント。
 // セクションラベルは親コンポーネントが付与する。
 // 選択状態は石の色そのもので意味を表すため、石色ベースのスタイルを維持する。

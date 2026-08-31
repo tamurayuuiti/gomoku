@@ -1,4 +1,4 @@
-// src/components/ModeSelector.tsx
+// src/components/settings/ModeSelector.tsx
 // ゲームモードを選択するためのコンポーネント。
 // セクションラベルは親コンポーネントが付与し、選択状態は共通ボタンクラスで表現する。
 
