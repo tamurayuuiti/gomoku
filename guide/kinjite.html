@@ -143,18 +143,27 @@ footer a{color:#8a5a1e}
  .quiz{padding:16px 14px 10px}
 }
 </style>
-<!--
-  ガイドページのアクセス計測(任意):
-  アプリ本体と同じ GA4 測定 ID(環境変数 VITE_GA_MEASUREMENT_ID の値)に置き換えて、
-  コメントを解除するとこのページ単体の閲覧数を計測できます。
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-XXXXXXXXXX');
+<script type="module">
+  // アプリ本体(src/utils/analytics.ts)と GA4 初期化ロジックを共有する。
+  // VITE_GA_MEASUREMENT_ID 未設定時は initializeAnalytics が何もしない(silent no-op)。
+  import { initializeAnalytics } from '../src/utils/analytics';
+
+  initializeAnalytics();
+
+  // ガイド → アプリへの CTA クリック計測(guide_cta_click)。
+  // 同一ドメインへの遷移は GA4 標準のアウトバウンドクリック計測に含まれないため、明示的に送信する。
+  document.addEventListener('click', (e) => {
+    const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
+    if (!a || !window.gtag) return;
+    const href = a.getAttribute('href') || '';
+    if (href.includes('gomoku-pink.vercel.app/') && !href.includes('/guide/')) {
+      window.gtag('event', 'guide_cta_click', {
+        link_url: href,
+        link_text: (a.textContent || '').trim().slice(0, 50),
+      });
+    }
+  });
 </script>
--->
 </head>
 <body>
 
