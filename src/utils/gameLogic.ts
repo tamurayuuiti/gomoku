@@ -137,6 +137,9 @@ const countFoursInLine = (
 
 /**
  * 「活三」が形成されているか判定する。
+ * 追加の1手で達四にできる場合のみ活三とみなす。
+ * 達四は着手を含む形に限定するため、着手が既に達四を形成しているラインは
+ * 「四」として扱われ、活三には計上されない。
  *
  * ライン配列を直接変更し、判定後に元に戻す in-place 方式で動作する。
  * 配列コピーを伴わないため、短命オブジェクトの生成が発生しない。
@@ -148,7 +151,7 @@ const countOpenThreesInLine = (
   for (let i = 0; i < line.length; i++) {
     if (line[i] === null) {
       line[i] = player;
-      const found = isTatsuShi(line, player);
+      const found = isTatsuShi(line, player, i);
       line[i] = null;
       if (found) {
         return 1;
@@ -184,10 +187,15 @@ const hasExactFive = (
 
 /**
  * 達四（両端が開いた四）を形成する三のパターンを判定する。
+ * placedIndex は仮置きした石のラインインデックスであり、
+ * 達四の4連はその石を含むものだけに限定する。
+ * これにより、仮置きによらず既に完成している達四（=その方向の形が四である場合）を
+ * 活三の証拠として誤って採用することを防ぐ。
  */
 const isTatsuShi = (
   line: (Player | null | undefined)[],
-  player: Player
+  player: Player,
+  placedIndex: number
 ): boolean => {
   for (let i = 0; i <= line.length - 6; i++) {
     if (
@@ -196,7 +204,9 @@ const isTatsuShi = (
       line[i + 2] === player &&
       line[i + 3] === player &&
       line[i + 4] === player &&
-      line[i + 5] === null
+      line[i + 5] === null &&
+      i + 1 <= placedIndex &&
+      placedIndex <= i + 4
     ) {
       return true;
     }
