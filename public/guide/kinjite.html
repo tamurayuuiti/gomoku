@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五目並べの禁じ手 図解ガイド | 三三・四四・長連の判定と練習問題6選【連珠ルール】</title>
+<meta name="description" content="五目並べ(連珠)の禁じ手「三三・四四・長連」を盤面図でわかりやすく解説。「三」「四」の判定基準、四三はセーフ・五連は優先・白は禁じ手なしなど間違えやすい例外、6問の練習問題付き。禁じ手ポイントが盤面に表示される無料ブラウザ五目並べでの確かめ方も紹介します。">
+<link rel="canonical" href="https://gomoku-pink.vercel.app/guide/kinjite.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="五目並べの禁じ手 図解ガイド | 三三・四四・長連の判定と練習問題6選【連珠ルール】">
+<meta property="og:description" content="五目並べ(連珠)の禁じ手「三三・四四・長連」を盤面図でわかりやすく解説。「三」「四」の判定基準、四三はセーフ・五連は優先・白は禁じ手なしなど間違えやすい例外、6問の練習問題付き。禁じ手ポイントが盤面に表示される無料ブラウザ五目並べでの確かめ方も紹介します。">
+<meta property="og:url" content="https://gomoku-pink.vercel.app/guide/kinjite.html">
+<meta property="og:image" content="https://gomoku-pink.vercel.app/ogp.png">
+<meta property="og:site_name" content="五目並べ - 無料で遊べるAI対戦">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="https://gomoku-pink.vercel.app/favicon.svg">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "五目並べの禁じ手 図解ガイド | 三三・四四・長連の判定と練習問題6選【連珠ルール】", "description": "五目並べ(連珠)の禁じ手「三三・四四・長連」を盤面図でわかりやすく解説。「三」「四」の判定基準、四三はセーフ・五連は優先・白は禁じ手なしなど間違えやすい例外、6問の練習問題付き。禁じ手ポイントが盤面に表示される無料ブラウザ五目並べでの確かめ方も紹介します。", "inLanguage": "ja", "image": "https://gomoku-pink.vercel.app/ogp.png", "author": {"@type": "Organization", "name": "Gomoku(五目並べ 無料AI対戦)", "url": "https://gomoku-pink.vercel.app/"}, "publisher": {"@type": "Organization", "name": "Gomoku", "url": "https://gomoku-pink.vercel.app/"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://gomoku-pink.vercel.app/guide/kinjite.html"}, "datePublished": "2026-09-20", "dateModified": "2026-09-20", "about": [{"@type": "Thing", "name": "五目並べ"}, {"@type": "Thing", "name": "連珠"}, {"@type": "Thing", "name": "禁じ手"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "五目並べの禁じ手は黒だけですか?", "acceptedAnswer": {"@type": "Answer", "text": "はい。連珠ルールでは三三・四四・長連の禁じ手は黒(先手)だけに課されます。白には禁じ手が一切なく、白が6個以上並べる長連は勝ちになります。"}}, {"@type": "Question", "name": "四三が禁じ手ではないのはなぜですか?", "acceptedAnswer": {"@type": "Answer", "text": "禁じ手なのは「三が2つ(三三)」「四が2つ(四四)」だからです。四1つ+三1つの組み合わせ(四三)は合法で、相手が一手では受けきれないため、連珠では最も重要な勝ちの手筋になります。"}}, {"@type": "Question", "name": "三三と五連が同時にできるときはどうなりますか?", "acceptedAnswer": {"@type": "Answer", "text": "五連が優先され、その手で勝ちです。ちょうど5つの連続を作る手は、ほかの方向で三三や四四の形が同時にできても禁じ手になりません。"}}, {"@type": "Question", "name": "公式の連珠でうっかり禁じ手を打つとどうなりますか?", "acceptedAnswer": {"@type": "Answer", "text": "公式ルールでは禁じ手を打った時点で黒の負けです(打たされても負け)。本記事で紹介しているブラウザ五目並べは着手前に禁じ手を阻止する方式なので、うっかり負けの心配はありません。"}}, {"@type": "Question", "name": "自由五目(禁じ手なし)でも三三・四四は禁じ手ですか?", "acceptedAnswer": {"@type": "Answer", "text": "いいえ。禁じ手なしの自由五目では三三も四四も完全に合法で、強力な攻め手です。禁じ手は連珠(競技ルール)だけで存在する制限です。"}}, {"@type": "Question", "name": "アプリでは禁じ手ルールのON/OFFをどう切り替えますか?", "acceptedAnswer": {"@type": "Answer", "text": "画面上部の「ゲーム設定」パネル内にある「禁じ手ルール」スイッチで切り替えます。設定はブラウザに保存され、次回アクセス時も引き継がれます。対局中の設定変更は確認ダイアログを経て、対局がリセットされます。"}}, {"@type": "Question", "name": "五目並べAIの強さはどのくらいですか?", "acceptedAnswer": {"@type": "Answer", "text": "初級・中級・上級・最強の4段階です。最強では最大12手先までの時間制限付き探索に加え、連続四で勝ちを決める手順(VCF)などの戦術読みを備えています。AI思考はWeb Worker上で動くため、思考中も画面は固まりません。"}}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "五目並べ", "item": "https://gomoku-pink.vercel.app/"}, {"@type": "ListItem", "position": 2, "name": "禁じ手図解ガイド", "item": "https://gomoku-pink.vercel.app/guide/kinjite.html"}]}</script>
+<style>
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:#f3ede2;color:#2c2620;
+ font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI",Meiryo,sans-serif;
+ line-height:1.9;-webkit-font-smoothing:antialiased;letter-spacing:.01em}
+.wrap{max-width:760px;margin:0 auto;padding:0 20px}
+a{color:#b45309}
+strong{color:#8a4b08}
+.pt{color:#e11d48;font-weight:800}
+/* トップバー */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 0 0}
+.brand{display:flex;align-items:baseline;gap:8px;text-decoration:none;color:#5c3a1e;font-weight:900;
+ text-transform:uppercase;letter-spacing:.06em;font-size:1.05rem}
+.brand small{font-size:.68rem;font-weight:700;letter-spacing:.28em;color:#9b7a4f;text-transform:none}
+.toplink{font-size:.85rem;font-weight:700;color:#5c3a1e;background:#fffbeb;border:1px solid #e0cfa5;
+ padding:6px 14px;border-radius:999px;text-decoration:none;white-space:nowrap}
+.toplink:hover{background:#fde68a}
+/* ヒーロー */
+.hero{background:linear-gradient(140deg,#5c3a1e 0%,#3d2611 100%);color:#fffbeb;border-radius:22px;
+ padding:38px 30px 30px;margin:20px 0 34px;box-shadow:0 25px 60px -15px rgba(44,38,32,.45)}
+.hero .kicker{display:inline-block;font-size:.75rem;font-weight:800;letter-spacing:.22em;color:#3d2611;
+ background:#f0dcaa;padding:4px 12px;border-radius:999px;margin-bottom:16px}
+.hero h1{margin:0;font-size:1.72rem;line-height:1.5;font-weight:900;letter-spacing:.02em}
+.hero .h1sub{display:block;font-size:1rem;font-weight:700;color:#e7c98d;margin-top:10px;line-height:1.7}
+.hero .lead{color:#efe3c8;font-size:.92rem;margin:18px 0 0;line-height:2}
+.hero figure{max-width:330px;margin:26px auto 0}
+.hero .boardfr{box-shadow:0 14px 34px -10px rgba(0,0,0,.55)}
+.hero figcaption{color:#c9b28a}
+/* 目次 */
+.toc{background:#fffdf7;border:1px solid #ead9b0;border-radius:16px;padding:20px 26px;margin:0 0 10px}
+.toc .toc-t{font-weight:900;font-size:.95rem;color:#5c3a1e;margin-bottom:8px}
+.toc ol{margin:0;padding-left:1.5em;font-size:.92rem}
+.toc li{margin:3px 0}
+.toc a{text-decoration:none}
+.toc a:hover{text-decoration:underline}
+/* 見出し */
+h2{position:relative;font-size:1.4rem;font-weight:900;line-height:1.55;margin:3.2em 0 1em;padding-left:18px;color:#3d2611}
+h2::before{content:"";position:absolute;left:0;top:.3em;bottom:.3em;width:8px;border-radius:4px;
+ background:linear-gradient(180deg,#dfa85a,#c98f3f)}
+h3{font-size:1.08rem;font-weight:900;margin:2.2em 0 .8em;color:#4a2f14;
+ border-bottom:2px solid #ead9b0;padding-bottom:.4em}
+/* 図 */
+.boardwrap{margin:1.8em auto;text-align:center;max-width:430px}
+.boardfr{background:#5c3a1e;padding:7px;border-radius:12px;display:inline-block;
+ box-shadow:0 12px 30px -10px rgba(44,38,32,.45)}
+.boardfr.sm{padding:5px;border-radius:10px}
+.boardin{background:#3d2611;padding:9px;border-radius:7px;width:100%}
+.boardfr.sm .boardin{padding:7px;min-width:250px}
+.boardwrap figcaption,.stripwrap figcaption{font-size:.82rem;color:#6f5c42;margin-top:12px;line-height:1.8;text-align:center}
+.stripwrap{margin:1.6em auto;text-align:center;max-width:400px}
+.legend{font-size:.8rem;color:#8a7455;text-align:center;margin:-4px 0 18px}
+/* カード・注記 */
+.cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:1.5em 0}
+.cards3 .card{background:#fffdf7;border:1px solid #e7d9b8;border-radius:14px;padding:16px 14px;text-align:center}
+.cards3 .card .t{font-weight:900;color:#b45309;font-size:1.02rem;margin-bottom:6px}
+.cards3 .card .d{font-size:.8rem;color:#5c4a33;line-height:1.7}
+.callout{background:#fff8e6;border-left:5px solid #dfa85a;padding:14px 18px;border-radius:0 12px 12px 0;margin:1.5em 0;font-size:.93rem}
+.callout.warn{background:#fff1f2;border-left-color:#fb7185}
+.callout.ok{background:#f0fdf4;border-left-color:#4ade80}
+.callout .ct{font-weight:900;display:block;margin-bottom:4px}
+.note{font-size:.82rem;color:#7a6a55;background:#f7f1e3;border-radius:10px;padding:10px 14px;margin:1.4em 0}
+/* 表 */
+.tblwrap{overflow-x:auto;margin:1.5em 0}
+table{width:100%;border-collapse:collapse;font-size:.9rem;background:#fffdf7;min-width:480px}
+th,td{border:1px solid #e0cfa5;padding:10px 13px;text-align:left;vertical-align:top;line-height:1.75}
+thead th{background:#f0dcaa;font-weight:900;color:#4a2f14}
+td .ok{color:#15803d;font-weight:800}
+td .ng{color:#e11d48;font-weight:800}
+/* kbd */
+.kbd{display:inline-block;background:#fffdf7;border:1px solid #d8c9a8;border-bottom-width:2.5px;border-radius:6px;
+ padding:0 8px;font-size:.86em;font-weight:800;color:#5c3a1e;white-space:nowrap}
+/* 手順 */
+.steps{counter-reset:step;list-style:none;padding:0;margin:1.4em 0}
+.steps li{counter-increment:step;position:relative;padding:0 0 18px 52px;margin:0}
+.steps li::before{content:counter(step);position:absolute;left:0;top:0;width:34px;height:34px;border-radius:50%;
+ background:linear-gradient(140deg,#dfa85a,#c98f3f);color:#fffbeb;font-weight:900;display:flex;align-items:center;
+ justify-content:center;font-size:.95rem;box-shadow:0 4px 10px -3px rgba(92,58,30,.5)}
+.steps li:not(:last-child)::after{content:"";position:absolute;left:16.5px;top:38px;bottom:2px;width:1.5px;background:#e0cfa5}
+/* クイズ */
+.quiz{background:#fff;border:1px solid #e7d9b8;border-radius:18px;padding:22px 22px 16px;margin:26px 0;
+ box-shadow:0 8px 22px -10px rgba(44,38,32,.18)}
+.quiz h3{margin:0 0 6px;border:none;padding:0;font-size:1.02rem}
+.quiz .qtext{font-size:.92rem;color:#5c4a33;margin:0 0 4px}
+.quiz figure{margin:14px auto}
+details.qa{background:#fffdf7;border:1px solid #ead9b0;border-radius:12px;margin:12px 0 6px;overflow:hidden}
+details.qa summary{cursor:pointer;padding:12px 18px;font-weight:800;font-size:.92rem;list-style:none;
+ display:flex;justify-content:space-between;align-items:center;gap:10px;color:#5c3a1e;user-select:none}
+details.qa summary::-webkit-details-marker{display:none}
+details.qa summary::after{content:"+";font-size:1.2rem;color:#b45309;font-weight:900;line-height:1}
+details.qa[open] summary::after{content:"−"}
+details.qa[open] summary{background:#faf3df;border-bottom:1px solid #ead9b0}
+.answer{padding:14px 18px 16px;font-size:.92rem}
+.answer .verdict{display:inline-block;font-weight:900;border-radius:999px;padding:3px 14px;margin-bottom:10px;font-size:.9rem}
+.verdict.ng{background:#ffe4e6;color:#be123c}
+.verdict.ok{background:#dcfce7;color:#15803d}
+/* CTA */
+.cta{background:linear-gradient(140deg,#5c3a1e 0%,#3d2611 100%);color:#fffbeb;border-radius:22px;
+ padding:36px 28px;text-align:center;margin:44px 0;box-shadow:0 25px 60px -15px rgba(44,38,32,.45)}
+.cta .t{font-size:1.22rem;font-weight:900;margin:0 0 8px}
+.cta .d{color:#e2cfa6;font-size:.9rem;margin:0 0 22px;line-height:1.9}
+.cta .btn{display:inline-block;background:#fffbeb;color:#5c3a1e;font-weight:900;font-size:1.02rem;
+ padding:14px 38px;border-radius:999px;text-decoration:none;box-shadow:0 10px 24px -8px rgba(0,0,0,.55)}
+.cta .btn:hover{background:#fde68a}
+.cta .sub{color:#c9b28a;font-size:.78rem;margin-top:14px}
+.inline-cta{display:block;text-align:center;margin:26px 0}
+.inline-cta .btn{display:inline-block;background:#5c3a1e;color:#fffbeb;font-weight:800;font-size:.92rem;
+ padding:10px 26px;border-radius:999px;text-decoration:none;box-shadow:0 8px 18px -8px rgba(61,38,17,.6)}
+.inline-cta .btn:hover{background:#7c5a2e}
+/* FAQ */
+.faq details.qa{background:#fff}
+/* フッター */
+footer{border-top:1px solid #e0cfa5;margin-top:60px;padding:28px 0 44px;text-align:center;
+ font-size:.8rem;color:#8a7455;line-height:2}
+footer a{color:#8a5a1e}
+@media (max-width:640px){
+ .hero{padding:28px 20px 22px;border-radius:18px}
+ .hero h1{font-size:1.35rem}
+ .hero .h1sub{font-size:.9rem}
+ h2{font-size:1.2rem}
+ .cards3{grid-template-columns:1fr}
+ .wrap{padding:0 16px}
+ .quiz{padding:16px 14px 10px}
+}
+</style>
+<!--
+  ガイドページのアクセス計測(任意):
+  アプリ本体と同じ GA4 測定 ID(環境変数 VITE_GA_MEASUREMENT_ID の値)に置き換えて、
+  コメントを解除するとこのページ単体の閲覧数を計測できます。
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX');
+</script>
+-->
+</head>
+<body>
+
+<div class="wrap">
+
+<div class="topbar">
+  <a class="brand" href="https://gomoku-pink.vercel.app/">Gomoku<small>五目並べ</small></a>
+  <a class="toplink" href="https://gomoku-pink.vercel.app/">▶ すぐ遊ぶ(無料)</a>
+</div>
+
+<div class="hero">
+  <span class="kicker">連珠ルール解説</span>
+  <h1>五目並べの禁じ手、<br>図解ガイド。
+    <span class="h1sub">三三・四四・長連 —— 判定基準・例外・練習問題6選</span>
+  </h1>
+  <p class="lead">
+    「それ三三じゃない?」「いや、これはセーフ」——。禁じ手まわりは、五目並べ(連珠)でいちばん揉めて、いちばん混乱するポイントです。
+    このガイドでは、3種類の禁じ手の判定基準を図で正確に整理し、間違えやすい例外(四三は合法/五連は最優先/白は制限なし)までカバー。
+    仕上げに練習問題6問で判定眼を試せます。後半では、<b>盤面に禁じ手ポイントが表示される無料ブラウザ五目並べ</b>を使って、
+    実盤で判定を確かめる方法も紹介します。
+  </p>
+  <figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 324 324" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g1wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g1black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g1white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="324" height="324" rx="4" fill="url(#g1wood)"/><line x1="15" y1="15" x2="309" y2="15" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="15" x2="15" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="36" x2="309" y2="36" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="36" y1="15" x2="36" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="57" x2="309" y2="57" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="57" y1="15" x2="57" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="78" x2="309" y2="78" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="78" y1="15" x2="78" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="99" x2="309" y2="99" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="99" y1="15" x2="99" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="120" x2="309" y2="120" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="120" y1="15" x2="120" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="141" x2="309" y2="141" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="141" y1="15" x2="141" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="162" x2="309" y2="162" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="162" y1="15" x2="162" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="183" x2="309" y2="183" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="183" y1="15" x2="183" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="204" x2="309" y2="204" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="204" y1="15" x2="204" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="225" x2="309" y2="225" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="225" y1="15" x2="225" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="246" x2="309" y2="246" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="246" y1="15" x2="246" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="267" x2="309" y2="267" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="267" y1="15" x2="267" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="288" x2="309" y2="288" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="288" y1="15" x2="288" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="15" y1="309" x2="309" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="309" y1="15" x2="309" y2="309" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="78" cy="78" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="162" cy="78" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="246" cy="78" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="78" cy="162" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="162" cy="162" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="246" cy="162" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="78" cy="246" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="162" cy="246" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="246" cy="246" r="2.4" fill="rgba(69,26,3,0.40)"/><circle cx="120" cy="162" r="9.03" fill="url(#g1black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.291" cy="158.8395" rx="2.8895999999999997" ry="1.806" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.291 158.8395)"/><circle cx="141" cy="162" r="9.03" fill="url(#g1black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="138.291" cy="158.8395" rx="2.8895999999999997" ry="1.806" fill="rgba(255,255,255,0.18)" transform="rotate(-24 138.291 158.8395)"/><circle cx="162" cy="120" r="9.03" fill="url(#g1black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="159.291" cy="116.8395" rx="2.8895999999999997" ry="1.806" fill="rgba(255,255,255,0.18)" transform="rotate(-24 159.291 116.8395)"/><circle cx="162" cy="141" r="9.03" fill="url(#g1black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="159.291" cy="137.8395" rx="2.8895999999999997" ry="1.806" fill="rgba(255,255,255,0.18)" transform="rotate(-24 159.291 137.8395)"/><circle cx="99" cy="204" r="9.03" fill="url(#g1black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="96.291" cy="200.8395" rx="2.8895999999999997" ry="1.806" fill="rgba(255,255,255,0.18)" transform="rotate(-24 96.291 200.8395)"/><circle cx="225" cy="225" r="9.03" fill="url(#g1black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="222.291" cy="221.8395" rx="2.8895999999999997" ry="1.806" fill="rgba(255,255,255,0.18)" transform="rotate(-24 222.291 221.8395)"/><circle cx="204" cy="99" r="9.03" fill="url(#g1black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="201.291" cy="95.8395" rx="2.8895999999999997" ry="1.806" fill="rgba(255,255,255,0.18)" transform="rotate(-24 201.291 95.8395)"/><circle cx="204" cy="204" r="9.03" fill="url(#g1white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="201.291" cy="200.8395" rx="2.7089999999999996" ry="1.6253999999999997" fill="rgba(255,255,255,0.85)" transform="rotate(-24 201.291 200.8395)"/><circle cx="225" cy="99" r="9.03" fill="url(#g1white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="222.291" cy="95.8395" rx="2.7089999999999996" ry="1.6253999999999997" fill="rgba(255,255,255,0.85)" transform="rotate(-24 222.291 95.8395)"/><circle cx="99" cy="225" r="9.03" fill="url(#g1white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="96.291" cy="221.8395" rx="2.7089999999999996" ry="1.6253999999999997" fill="rgba(255,255,255,0.85)" transform="rotate(-24 96.291 221.8395)"/><circle cx="183" cy="246" r="9.03" fill="url(#g1white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="180.291" cy="242.8395" rx="2.7089999999999996" ry="1.6253999999999997" fill="rgba(255,255,255,0.85)" transform="rotate(-24 180.291 242.8395)"/><circle cx="99" cy="141" r="9.03" fill="url(#g1white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="96.291" cy="137.8395" rx="2.7089999999999996" ry="1.6253999999999997" fill="rgba(255,255,255,0.85)" transform="rotate(-24 96.291 137.8395)"/><circle cx="225" cy="183" r="9.03" fill="url(#g1white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="222.291" cy="179.8395" rx="2.7089999999999996" ry="1.6253999999999997" fill="rgba(255,255,255,0.85)" transform="rotate(-24 222.291 179.8395)"/><circle cx="120" cy="78" r="9.03" fill="url(#g1white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="117.291" cy="74.8395" rx="2.7089999999999996" ry="1.6253999999999997" fill="rgba(255,255,255,0.85)" transform="rotate(-24 117.291 74.8395)"/><circle cx="162" cy="162" r="7.0434" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="1.6" opacity="0.95"/><g stroke="#e11d48" stroke-width="2.6" stroke-linecap="round"><line x1="158.4783" y1="158.4783" x2="165.5217" y2="165.5217"/><line x1="165.5217" y1="158.4783" x2="158.4783" y2="165.5217"/></g></svg></div></div><figcaption>黒番。中央の点は横にも縦にも活三を作る三三禁点。赤い×はゲーム内での禁じ手ポイント表示のイメージ</figcaption></figure>
+</div>
+
+<div class="toc">
+  <div class="toc-t">目次</div>
+  <ol>
+    <li><a href="#s1">禁じ手とは?【まず結論】</a></li>
+    <li><a href="#s2">なぜ禁じ手があるのか</a></li>
+    <li><a href="#s3">自由五目と連珠の違い</a></li>
+    <li><a href="#s4">土台:「三」と「四」を正しく覚える</a></li>
+    <li><a href="#s5">禁じ手① 三三(さんさん)</a></li>
+    <li><a href="#s6">禁じ手② 四四(しし)</a></li>
+    <li><a href="#s7">禁じ手③ 長連(ちょうれん)</a></li>
+    <li><a href="#s8">間違えやすい3つの例外</a></li>
+    <li><a href="#s9">練習問題【6問】</a></li>
+    <li><a href="#s10">実盤で確かめる:禁じ手表示付き五目並べ</a></li>
+    <li><a href="#s11">よくある質問(FAQ)</a></li>
+  </ol>
+</div>
+
+<h2 id="s1">1. 禁じ手とは?【まず結論】</h2>
+<p>
+禁じ手とは、<b>連珠(れんじゅ)ルールで黒番(先手)だけが禁止されている手</b>のこと。次の3種類があります。
+</p>
+<div class="cards3">
+  <div class="card"><div class="t">三三</div><div class="d">1手で「活三」を<br>2つ以上同時に作る手</div></div>
+  <div class="card"><div class="t">四四</div><div class="d">1手で「四」を<br>2つ以上同時に作る手</div></div>
+  <div class="card"><div class="t">長連</div><div class="d">石が6個以上<br>連続で並ぶ形</div></div>
+</div>
+<p>まず押さえるべきポイントは4つだけです。</p>
+<ul>
+  <li><b>制限されるのは黒だけ。</b>白には三三も四四も長連も一切ありません(白の長連は勝ち)。</li>
+  <li><b>四三(四1つ+三1つ)は禁じ手ではない。</b>それどころか連珠で最も重要な勝ちの手筋です。</li>
+  <li><b>ちょうど五連を完成させる手は常に勝ち。</b>同時に三三・四四の形ができても、五連が最優先されます。</li>
+  <li><b>公式の連珠では、黒が禁じ手を打つと負け。</b>「打っても、打たされても負け」です。</li>
+</ul>
+<div class="callout">
+  <span class="ct">友達とカジュアルに遊ぶだけなら?</span>
+  禁じ手なしの「自由五目」で遊ぶ分には、三三も四四も合法の強力な攻め手です。禁じ手は「五目並べを競技として楽しむ(連珠)」場合にだけ存在するルール。とはいえ、知っておくと対局の駆け引きが一段深くなるのは間違いありません。
+</div>
+
+<h2 id="s2">2. なぜ禁じ手があるのか</h2>
+<p>
+理由はシンプルで、<b>制限なしの五目並べは先手(黒)が有利すぎる</b>からです。禁じ手を一切設けない「自由五目」では、真剣に打ち合うと黒に必勝手順が存在することが知られており、1993年にはコンピュータ探索によって先手必勝が証明されました。
+</p>
+<p>
+これでは競技として成立しません。そこで連珠では、黒にだけ<b>三三・四四・長連という「最強クラスの手」を禁止</b>して、先手の利点をほどよく削ぎ、勝負のバランスを取っています。二重の脅威(相手が一手では受けきれない形)を黒だけが封じられる——この非対称性こそが連珠の戦略の核です。
+</p>
+<p>
+なお、禁じ手を設けてもなお黒の有利は残るとされ、競技会レベルでは序盤数手の進行を定めるオープニングルールも併用されます。
+</p>
+
+<h2 id="s3">3. 自由五目と連珠の違い</h2>
+<div class="tblwrap">
+<table>
+<thead><tr><th style="width:26%"></th><th>自由五目(禁じ手なし)</th><th>連珠(禁じ手あり)</th></tr></thead>
+<tbody>
+<tr><td><b>三三・四四</b></td><td>黒白とも<span class="ok">合法</span>(最強の攻め手)</td><td>黒は<span class="ng">禁じ手</span>/白は合法</td></tr>
+<tr><td><b>長連(6個以上)</b></td><td>一般的には黒白とも勝ち</td><td>黒は<span class="ng">禁じ手</span>/白は<span class="ok">勝ち</span></td></tr>
+<tr><td><b>黒の勝ち</b></td><td>五連以上</td><td><b>ちょうど五連</b>のみ</td></tr>
+<tr><td><b>向いている人</b></td><td>初心者同士・気軽に遊びたい</td><td>真剣勝負・競技ルールを学びたい</td></tr>
+</tbody>
+</table>
+</div>
+<p>
+後半(<a href="#s10">セクション10</a>)で紹介するブラウザ五目並べでは、この2つのルールセットを<b>「禁じ手ルール」スイッチひとつで切り替え</b>られます。まずは自由五目で三三・四四の威力を体感し、慣れてきたら連珠ルールに切り替える——という順で遊ぶのがおすすめです。
+</p>
+
+<h2 id="s4">4. 土台:「三」と「四」を正しく覚える</h2>
+<p>
+禁じ手判定でつまずく人の多くは、実は「三」「四」の定義があいまいなままです。ここを正確に押さえると、三三・四四の判定は一気に簡単になります。
+</p>
+
+<h3>「四」=あと1手で五連になる形</h3>
+<p>四(し)は、<b>あと1石でちょうど五連が完成する形</b>のこと。「どこに打てば五連になるか(五連完成点)」が四1つにつき1か所以上あれば四です。両端が開いていれば<b>達四(活四)</b>、片側が塞がれていれば<b>眠り四</b>、間に隙間があれば<b>飛び四</b>と呼びます。</p>
+<figure class="stripwrap"><div class="boardfr sm"><div class="boardin"><svg viewBox="0 0 266 62" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;max-width:266px;height:auto;display:block;margin:0 auto;border-radius:4px;">
+  <defs>
+    <linearGradient id="s5wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="s5black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="s5white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="266" height="62" rx="4" fill="url(#s5wood)"/><line x1="14" y1="31.0" x2="252" y2="31.0" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="48" cy="31.0" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="48" cy="31.0" r="2.448" fill="#e11d48"/><circle cx="82" cy="31.0" r="13.600000000000001" fill="url(#s5black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="77.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 77.92 26.240000000000002)"/><circle cx="116" cy="31.0" r="13.600000000000001" fill="url(#s5black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="111.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 111.92 26.240000000000002)"/><circle cx="150" cy="31.0" r="13.600000000000001" fill="url(#s5black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="145.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 145.92 26.240000000000002)"/><circle cx="184" cy="31.0" r="13.600000000000001" fill="url(#s5black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="179.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 179.92 26.240000000000002)"/><circle cx="218" cy="31.0" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="218" cy="31.0" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>達四(活四):両端◎が五連完成点。1手では受けきれない=実質勝ちの形</figcaption></figure>
+<figure class="stripwrap"><div class="boardfr sm"><div class="boardin"><svg viewBox="0 0 266 62" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;max-width:266px;height:auto;display:block;margin:0 auto;border-radius:4px;">
+  <defs>
+    <linearGradient id="s6wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="s6black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="s6white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="266" height="62" rx="4" fill="url(#s6wood)"/><line x1="14" y1="31.0" x2="252" y2="31.0" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="48" cy="31.0" r="13.600000000000001" fill="url(#s6white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="43.92" cy="26.240000000000002" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 43.92 26.240000000000002)"/><circle cx="82" cy="31.0" r="13.600000000000001" fill="url(#s6black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="77.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 77.92 26.240000000000002)"/><circle cx="116" cy="31.0" r="13.600000000000001" fill="url(#s6black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="111.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 111.92 26.240000000000002)"/><circle cx="150" cy="31.0" r="13.600000000000001" fill="url(#s6black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="145.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 145.92 26.240000000000002)"/><circle cx="184" cy="31.0" r="13.600000000000001" fill="url(#s6black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="179.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 179.92 26.240000000000002)"/><circle cx="218" cy="31.0" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="218" cy="31.0" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>眠り四:五連完成点が◎の1か所だけ。相手はそこを塞げる</figcaption></figure>
+<figure class="stripwrap"><div class="boardfr sm"><div class="boardin"><svg viewBox="0 0 232 62" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;max-width:232px;height:auto;display:block;margin:0 auto;border-radius:4px;">
+  <defs>
+    <linearGradient id="s7wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="s7black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="s7white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="232" height="62" rx="4" fill="url(#s7wood)"/><line x1="14" y1="31.0" x2="218" y2="31.0" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="48" cy="31.0" r="13.600000000000001" fill="url(#s7black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="43.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 43.92 26.240000000000002)"/><circle cx="82" cy="31.0" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="82" cy="31.0" r="2.448" fill="#e11d48"/><circle cx="116" cy="31.0" r="13.600000000000001" fill="url(#s7black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="111.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 111.92 26.240000000000002)"/><circle cx="150" cy="31.0" r="13.600000000000001" fill="url(#s7black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="145.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 145.92 26.240000000000002)"/><circle cx="184" cy="31.0" r="13.600000000000001" fill="url(#s7black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="179.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 179.92 26.240000000000002)"/></svg></div></div><figcaption>飛び四:間の◎を埋めれば五連。れっきとした「四」</figcaption></figure>
+<div class="callout warn">
+<span class="ct">達四は「実質勝ち」の形</span>
+◎(五連完成点)が2か所ある達四は、相手が1手では必ず受けきれないため、作った時点で勝ち確定です。だからこそ<b>四は攻撃の基本</b>であり、2つ同時に作る四四が黒だけ禁じ手になっている理由でもあります。
+</div>
+
+<h3>「三」=あと1手で達四にできる形</h3>
+<p>
+三三判定での「三」は、単なる3連ではありません。<b>あと1手で「達四」にできる三(=活三)</b>だけがカウントされます。片側が塞がれていて達四にできない三(眠り三)は、三三には含まれません。
+</p>
+<figure class="stripwrap"><div class="boardfr sm"><div class="boardin"><svg viewBox="0 0 232 62" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;max-width:232px;height:auto;display:block;margin:0 auto;border-radius:4px;">
+  <defs>
+    <linearGradient id="s2wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="s2black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="s2white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="232" height="62" rx="4" fill="url(#s2wood)"/><line x1="14" y1="31.0" x2="218" y2="31.0" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="48" cy="31.0" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="48" cy="31.0" r="2.448" fill="#e11d48"/><circle cx="82" cy="31.0" r="13.600000000000001" fill="url(#s2black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="77.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 77.92 26.240000000000002)"/><circle cx="116" cy="31.0" r="13.600000000000001" fill="url(#s2black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="111.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 111.92 26.240000000000002)"/><circle cx="150" cy="31.0" r="13.600000000000001" fill="url(#s2black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="145.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 145.92 26.240000000000002)"/><circle cx="184" cy="31.0" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="184" cy="31.0" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>活三:両端が開いた三。◎のどちらかに打てば「達四」になる</figcaption></figure>
+<figure class="stripwrap"><div class="boardfr sm"><div class="boardin"><svg viewBox="0 0 198 62" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;max-width:198px;height:auto;display:block;margin:0 auto;border-radius:4px;">
+  <defs>
+    <linearGradient id="s3wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="s3black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="s3white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="198" height="62" rx="4" fill="url(#s3wood)"/><line x1="14" y1="31.0" x2="184" y2="31.0" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="48" cy="31.0" r="13.600000000000001" fill="url(#s3black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="43.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 43.92 26.240000000000002)"/><circle cx="82" cy="31.0" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="82" cy="31.0" r="2.448" fill="#e11d48"/><circle cx="116" cy="31.0" r="13.600000000000001" fill="url(#s3black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="111.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 111.92 26.240000000000002)"/><circle cx="150" cy="31.0" r="13.600000000000001" fill="url(#s3black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="145.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 145.92 26.240000000000002)"/></svg></div></div><figcaption>飛び三:間に隙間があっても、◎を埋めて達四にできるなら「三」としてカウント</figcaption></figure>
+<figure class="stripwrap"><div class="boardfr sm"><div class="boardin"><svg viewBox="0 0 232 62" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;max-width:232px;height:auto;display:block;margin:0 auto;border-radius:4px;">
+  <defs>
+    <linearGradient id="s4wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="s4black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="s4white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="232" height="62" rx="4" fill="url(#s4wood)"/><line x1="14" y1="31.0" x2="218" y2="31.0" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="48" cy="31.0" r="13.600000000000001" fill="url(#s4white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="43.92" cy="26.240000000000002" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 43.92 26.240000000000002)"/><circle cx="82" cy="31.0" r="13.600000000000001" fill="url(#s4black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="77.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 77.92 26.240000000000002)"/><circle cx="116" cy="31.0" r="13.600000000000001" fill="url(#s4black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="111.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 111.92 26.240000000000002)"/><circle cx="150" cy="31.0" r="13.600000000000001" fill="url(#s4black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="145.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 145.92 26.240000000000002)"/><circle cx="184" cy="31.0" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="184" cy="31.0" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>眠り三:片側を塞がれた三。どう伸ばしても達四にできないので三三には含まれない</figcaption></figure>
+<p>まとめると、判定のコツは次の3つです。</p>
+<ul>
+  <li>「三」は<b>活三(達四に伸ばせる三)</b>だけ。塞がれた三は数えない</li>
+  <li><b>飛び三・飛び四もカウントされる</b>(隙間を埋めて達四/五連にできるなら立派な三・四)</li>
+  <li><b>盤の端は「塞がれている」扱い</b>(端に沿った三は達四にできないので活三にならない)</li>
+</ul>
+
+<h2 id="s5">5. 禁じ手① 三三(さんさん)</h2>
+<p>
+三三は、<b>1手で活三を2つ以上同時に作る手</b>です。
+</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g9wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g9black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g9white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g9wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g9black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g9black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="156" cy="88" r="13.600000000000001" fill="url(#g9black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 83.24)"/><circle cx="156" cy="122" r="13.600000000000001" fill="url(#g9black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 117.24)"/><circle cx="224" cy="224" r="13.600000000000001" fill="url(#g9white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 219.24)"/><circle cx="54" cy="88" r="13.600000000000001" fill="url(#g9white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="83.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 83.24)"/><circle cx="122" cy="258" r="13.600000000000001" fill="url(#g9white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="117.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 117.92 253.24)"/><circle cx="54" cy="224" r="13.600000000000001" fill="url(#g9white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 219.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>三三の基本形。◎で横と縦に活三が同時完成(図は盤面の一部抜粋)</figcaption></figure>
+<p class="legend">◎(赤い円マーク)=黒の次の着手候補</p>
+<p>
+黒が◎に打つと、横の三(●●◎)と縦の三(●●◎)が同時に完成します。どちらも両端が開いた活三なので、白は次の1手では片方しか止められません。残った活三は達四に育って勝ち——つまり三三は<b>打てばほぼ勝ちになるほど強い手</b>だからこそ、黒には禁じられています。自由五目では合法で、初心者同士の対局では最強の攻め手です。
+</p>
+
+<h3>これは三三「ではない」——最重要の誤判定ポイント</h3>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g10wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g10black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g10white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g10wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g10black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g10black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="156" cy="88" r="13.600000000000001" fill="url(#g10black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 83.24)"/><circle cx="156" cy="122" r="13.600000000000001" fill="url(#g10black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 117.24)"/><circle cx="54" cy="156" r="13.600000000000001" fill="url(#g10white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="151.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 151.24)"/><circle cx="224" cy="224" r="13.600000000000001" fill="url(#g10white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 219.24)"/><circle cx="258" cy="88" r="13.600000000000001" fill="url(#g10white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="83.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 83.24)"/><circle cx="224" cy="190" r="13.600000000000001" fill="url(#g10white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="185.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 185.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>三三にならない例。横の三は白に塞がれた眠り三(図は盤面の一部抜粋)</figcaption></figure>
+<p class="legend">◎(赤い円マーク)=黒の次の着手候補</p>
+<p>
+前の図とそっくりですが、こちらは<b>横の三の左端を白に塞がれています</b>。この横の三は、どう伸ばしても達四にできない<b>眠り三</b>なので「三」にカウントされません。活三は縦の1つだけ → <b>三三ではないので、黒は◎に打てます</b>。
+</p>
+<p>三三判定で迷ったら、次の順で確認するのが確実です。</p>
+<ol class="steps">
+  <li>◎に打ってできる<b>各方向の三</b>を洗い出す(飛び三も含む)</li>
+  <li>それぞれの三が<b>「あと1手で達四にできるか」</b>をチェック(両端が本当に開いているか。盤端・相手の石に注意)</li>
+  <li>達四にできる三が<b>2つ以上</b>なら三三の禁じ手。1つ以下なら合法</li>
+</ol>
+
+<h2 id="s6">6. 禁じ手② 四四(しし)</h2>
+<p>
+四四は、<b>1手で四を2つ以上同時に作る手</b>です。
+</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g11wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g11black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g11white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g11wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="54" cy="156" r="13.600000000000001" fill="url(#g11black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 151.24)"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g11black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g11black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="156" cy="54" r="13.600000000000001" fill="url(#g11black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="49.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 49.24)"/><circle cx="156" cy="88" r="13.600000000000001" fill="url(#g11black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 83.24)"/><circle cx="156" cy="122" r="13.600000000000001" fill="url(#g11black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 117.24)"/><circle cx="224" cy="224" r="13.600000000000001" fill="url(#g11white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 219.24)"/><circle cx="292" cy="20" r="13.600000000000001" fill="url(#g11white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="15.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 15.24)"/><circle cx="20" cy="292" r="13.600000000000001" fill="url(#g11white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="15.92" cy="287.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 15.92 287.24)"/><circle cx="258" cy="258" r="13.600000000000001" fill="url(#g11white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 253.24)"/><circle cx="258" cy="20" r="13.600000000000001" fill="url(#g11white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="15.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 15.24)"/><circle cx="292" cy="292" r="13.600000000000001" fill="url(#g11white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="287.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 287.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>四四の基本形。◎で横と縦に四が同時完成(図は盤面の一部抜粋)</figcaption></figure>
+<p class="legend">◎(赤い円マーク)=黒の次の着手候補</p>
+<p>
+黒が◎に打つと、横に四(●●●◎)、縦に四(●●●◎)が同時にできます。どちらも五連完成点を持つ「四」なので、合計2つで<b>四四の禁じ手</b>です。白は五連完成点を1か所しか塞げないため、四四も三三と同様「ほぼ勝ち」の形。だから黒には禁止されています。
+</p>
+<ul>
+  <li>達四+達四、達四+眠り四、飛び四+四…など、<b>四の種類・組み合わせを問わず2つ以上で四四</b></li>
+  <li>「四1つ+三1つ」は<b>四三</b>であり、禁じ手ではない(<a href="#s8">例外①</a>参照)</li>
+  <li>同じ方向に複数の五連完成点があっても、<b>四は方向ごとに1つ</b>と数える(横の四+縦の四=四四。横の達四だけでは四四にならない)</li>
+</ul>
+
+<h2 id="s7">7. 禁じ手③ 長連(ちょうれん)</h2>
+<p>
+長連は、<b>黒の石が6個以上連続で並ぶ形</b>。「5個より多いのだから当然勝ち」に思えますが、連珠では<b>黒はちょうど五連でしか勝てず</b>、6個以上は禁じ手(公式ルールでは打ったら負け)です。
+</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g12wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g12black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g12white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g12wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="54" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 151.24)"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="156" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 151.24)"/><circle cx="224" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="219.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 219.92 151.24)"/><circle cx="20" cy="156" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="15.92" cy="151.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 15.92 151.24)"/><circle cx="88" cy="88" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="83.92" cy="83.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 83.92 83.24)"/><circle cx="190" cy="224" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="185.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 185.92 219.24)"/><circle cx="224" cy="88" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="83.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 83.24)"/><circle cx="88" cy="224" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="83.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 83.92 219.24)"/><circle cx="190" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="190" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>長連のワナ。◎で繋ぐと6連続になってしまう(図は盤面の一部抜粋)</figcaption></figure>
+<p class="legend">◎(赤い円マーク)=黒の次の着手候補</p>
+<p>
+図は長連の典型的なワナです。黒の四(●●●●)は白○に止められ、一見「右の孤立石と◎で繋ぎ直せば五連!」に見えますが、繋ぐと<b>4+1+◎=6連続</b>になってしまい、打てません。
+</p>
+<figure class="stripwrap"><div class="boardfr sm"><div class="boardin"><svg viewBox="0 0 266 62" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;max-width:266px;height:auto;display:block;margin:0 auto;border-radius:4px;">
+  <defs>
+    <linearGradient id="s8wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="s8black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="s8white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="266" height="62" rx="4" fill="url(#s8wood)"/><line x1="14" y1="31.0" x2="252" y2="31.0" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="48" cy="31.0" r="13.600000000000001" fill="url(#s8black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="43.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 43.92 26.240000000000002)"/><circle cx="82" cy="31.0" r="13.600000000000001" fill="url(#s8black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="77.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 77.92 26.240000000000002)"/><circle cx="116" cy="31.0" r="13.600000000000001" fill="url(#s8black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="111.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 111.92 26.240000000000002)"/><circle cx="150" cy="31.0" r="13.600000000000001" fill="url(#s8black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="145.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 145.92 26.240000000000002)"/><circle cx="184" cy="31.0" r="13.600000000000001" fill="url(#s8black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="179.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 179.92 26.240000000000002)"/><circle cx="218" cy="31.0" r="13.600000000000001" fill="url(#s8black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="213.92" cy="26.240000000000002" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 213.92 26.240000000000002)"/></svg></div></div><figcaption>長連:6個以上の連続。黒は禁じ手、白は勝ち</figcaption></figure>
+<div class="callout ok">
+<span class="ct">白の長連は「勝ち」</span>
+6個以上禁止は黒だけの制限です。<b>白は6個以上並べても五連とみなされて勝ち</b>になります。同じ形でも石の色で結論が真逆になる——連珠の非対称ルールを象徴する一例です。
+</div>
+<p>
+長連は三三・四四と違い「形の名前」ではなく<b>石数の問題</b>なので、判定は簡単です。繋がったときに6個以上にならないか、接続前に数える習慣をつけましょう。特に、相手の石が自分のラインの延長線上にある局面では要注意です。
+</p>
+
+<h2 id="s8">8. 間違えやすい3つの例外</h2>
+<p>禁じ手の判定トラブルの大半は、次の3つの例外を知らないことから起きます。</p>
+
+<h3>例外① 四三は禁じ手ではない——むしろ勝ちの形</h3>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g13wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g13black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g13white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g13wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="54" cy="156" r="13.600000000000001" fill="url(#g13black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 151.24)"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g13black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g13black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="88" cy="88" r="13.600000000000001" fill="url(#g13black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 83.24)"/><circle cx="122" cy="122" r="13.600000000000001" fill="url(#g13black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 117.24)"/><circle cx="20" cy="156" r="13.600000000000001" fill="url(#g13white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="15.92" cy="151.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 15.92 151.24)"/><circle cx="258" cy="156" r="13.600000000000001" fill="url(#g13white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="151.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 151.24)"/><circle cx="224" cy="54" r="13.600000000000001" fill="url(#g13white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="49.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 49.24)"/><circle cx="54" cy="258" r="13.600000000000001" fill="url(#g13white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 253.24)"/><circle cx="224" cy="224" r="13.600000000000001" fill="url(#g13white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 219.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>四三:横の四(片端を塞がれた眠り四)+斜めの活三の組み合わせは禁じ手ではない(図は盤面の一部抜粋)</figcaption></figure>
+<p class="legend">◎(赤い円マーク)=黒の次の着手候補</p>
+<p>
+四1つ+活三1つを同時に作る<b>四三(しさん・よんさん)</b>は禁じ手ではありません。相手は四の受けを強制され、その間に活三が達四へ育って勝ちが決まります。連珠の黒は三三・四四が使えない分、<b>この四三を作って勝つのが基本の勝ち筋</b>です。「複数の脅威を作る」思想は三三と同じなのに、四+三の組み合わせだけ合法——この絶妙なラインが連珠のおもしろさでもあります。
+</p>
+
+<h3>例外② 五連はすべてに優先する</h3>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g14wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g14black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g14white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g14wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="20" cy="156" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="15.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 15.92 151.24)"/><circle cx="54" cy="156" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 151.24)"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="156" cy="88" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 83.24)"/><circle cx="156" cy="122" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 117.24)"/><circle cx="88" cy="88" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 83.24)"/><circle cx="122" cy="122" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 117.24)"/><circle cx="258" cy="258" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 253.24)"/><circle cx="292" cy="20" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="15.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 15.24)"/><circle cx="54" cy="292" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="287.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 287.24)"/><circle cx="156" cy="224" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="151.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 151.92 219.24)"/><circle cx="122" cy="54" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="117.92" cy="49.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 117.92 49.24)"/><circle cx="292" cy="190" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="185.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 185.24)"/><circle cx="156" cy="292" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="151.92" cy="287.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 151.92 287.24)"/><circle cx="292" cy="122" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="117.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 117.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>五連優先:横にちょうど五連が完成するため勝ち(図は盤面の一部抜粋)</figcaption></figure>
+<p class="legend">◎(赤い円マーク)=黒の次の着手候補</p>
+<p>
+<b>ちょうど5つの連続を完成させる手は、常に合法かつ勝ち</b>です。図の◎は、五連がなければ縦・斜めの活三2つ=三三になる形ですが、横に五連が完成するため三三判定より五連が優先されます。「これ三三では?」と議論になったら、まず<b>その手で五連ができるか</b>を確認する。これが判定の基本順序です。
+</p>
+
+<h3>例外③ 白には禁じ手が一切ない</h3>
+<p>
+三三・四四・長連はすべて<b>黒だけの制限</b>です。白は三三も四四も自由に打て、長連を作っても勝ちになります。黒が禁じ手で封じられている「二重の脅威」を白は使える——この非対称性が、連珠における先後の駆け引き(黒は制限下の攻めを、白は禁点絡みの攻めを狙う)を生んでいます。
+</p>
+<div class="note">
+※ 競技レベルの連珠には「縦三三」(禁じ手の点上に打たないと四にできない三は、活三として数えない)など、さらに細かい判定規定があります。この記事では標準的な基本ルール(三三・四四・長連)に絞って解説しています。
+</div>
+
+<h2 id="s9">9. 練習問題【6問】</h2>
+<p>
+判定眼を試しましょう。各問「◎の点に打てるか」を先に心の中で決めてから、答えを開いてください。禁じ手の種類・例外・白番まで、実戦でそのまま出る形を6問用意しました。
+</p>
+
+<div class="quiz" id="q1">
+<h3>第1問:斜めに交差するこの形は?</h3>
+<p class="qtext">黒番です。◎の点に打つと禁じ手でしょうか?禁じ手なら種類も答えてください。</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g15wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g15black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g15white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g15wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="88" cy="88" r="13.600000000000001" fill="url(#g15black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 83.24)"/><circle cx="122" cy="122" r="13.600000000000001" fill="url(#g15black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 117.24)"/><circle cx="224" cy="88" r="13.600000000000001" fill="url(#g15black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="219.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 219.92 83.24)"/><circle cx="190" cy="122" r="13.600000000000001" fill="url(#g15black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="185.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 185.92 117.24)"/><circle cx="88" cy="224" r="13.600000000000001" fill="url(#g15white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="83.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 83.92 219.24)"/><circle cx="122" cy="54" r="13.600000000000001" fill="url(#g15white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="117.92" cy="49.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 117.92 49.24)"/><circle cx="224" cy="258" r="13.600000000000001" fill="url(#g15white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 253.24)"/><circle cx="258" cy="190" r="13.600000000000001" fill="url(#g15white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="185.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 185.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>黒番。◎に打つと斜め2方向に石が伸びる(図は盤面の一部)</figcaption></figure>
+<details class="qa"><summary>答えと解説を見る</summary>
+<div class="answer">
+<span class="verdict ng">禁じ手(三三)</span>
+<p>◎に打つと、左上方向の三(●●◎)と右上方向の三(●●◎)が同時にできます。どちらの三も、あと1手で両端が開いた「達四」にできる<b>活三</b>です。活三が2つ同時にできるため、これは<b>三三の禁じ手</b>になります。縦横の交差だけでなく、斜め同士の交差でも三三になる点に注意してください。</p>
+</div>
+</details>
+</div>
+<div class="quiz" id="q2">
+<h3>第2問:横と斜め、それぞれの形は?</h3>
+<p class="qtext">黒番です。◎の点に打つと禁じ手でしょうか?禁じ手なら種類も答えてください。</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g16wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g16black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g16white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g16wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="54" cy="156" r="13.600000000000001" fill="url(#g16black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 151.24)"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g16black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g16black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="54" cy="54" r="13.600000000000001" fill="url(#g16black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="49.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 49.24)"/><circle cx="88" cy="88" r="13.600000000000001" fill="url(#g16black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 83.24)"/><circle cx="122" cy="122" r="13.600000000000001" fill="url(#g16black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 117.24)"/><circle cx="54" cy="258" r="13.600000000000001" fill="url(#g16white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 253.24)"/><circle cx="258" cy="54" r="13.600000000000001" fill="url(#g16white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="49.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 49.24)"/><circle cx="54" cy="224" r="13.600000000000001" fill="url(#g16white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 219.24)"/><circle cx="258" cy="258" r="13.600000000000001" fill="url(#g16white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 253.24)"/><circle cx="258" cy="20" r="13.600000000000001" fill="url(#g16white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="15.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 15.24)"/><circle cx="292" cy="292" r="13.600000000000001" fill="url(#g16white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="287.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 287.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>黒番。横3つ+斜め3つの石に◎を繋ぐと…(図は盤面の一部)</figcaption></figure>
+<details class="qa"><summary>答えと解説を見る</summary>
+<div class="answer">
+<span class="verdict ng">禁じ手(四四)</span>
+<p>◎に打つと、横は●●●◎の<b>四</b>(五連完成点が両端の2か所)、斜めは●●●◎の<b>四</b>(五連完成点が両端の2か所)が同時にできます。四が2つなので<b>四四の禁じ手</b>です。「三が2つ」ではなく「四が2つ」である点が三三との違い。四は三より一段強い形なので、見落としやすい場合はまず五連完成点の数を数えましょう。</p>
+</div>
+</details>
+</div>
+<div class="quiz" id="q3">
+<h3>第3問:止められた四を繋ぎ直すと…?</h3>
+<p class="qtext">黒番です。四(●●●●)を白に止められた局面。右の孤立石と◎で繋ぎたいところですが、打てるでしょうか?</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g12wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g12black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g12white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g12wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="54" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 151.24)"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="156" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 151.24)"/><circle cx="224" cy="156" r="13.600000000000001" fill="url(#g12black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="219.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 219.92 151.24)"/><circle cx="20" cy="156" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="15.92" cy="151.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 15.92 151.24)"/><circle cx="88" cy="88" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="83.92" cy="83.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 83.92 83.24)"/><circle cx="190" cy="224" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="185.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 185.92 219.24)"/><circle cx="224" cy="88" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="219.92" cy="83.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 219.92 83.24)"/><circle cx="88" cy="224" r="13.600000000000001" fill="url(#g12white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="83.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 83.92 219.24)"/><circle cx="190" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="190" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>黒番。左の四は白○に止められている。◎で右の●と繋ぐと…(図は盤面の一部)</figcaption></figure>
+<details class="qa"><summary>答えと解説を見る</summary>
+<div class="answer">
+<span class="verdict ng">禁じ手(長連)</span>
+<p>◎に打つと左の4つ+右の1つが繋がって<b>6連続</b>になり、<b>長連の禁じ手</b>です。黒の勝ちは「ちょうど5連続」だけ。6個以上は勝ちにならず、打つこともできません。「四を止められたから、もう一度繋いで五連を作ろう」という場面で踏みやすい、長連の代表的なワナです。白にこれを狙われる(繋がると長連になる形に誘導される)こともあるので、黒は接続前に必ず石数を数えましょう。</p>
+</div>
+</details>
+</div>
+<div class="quiz" id="q4">
+<h3>第4問:四と三が同時にできるこの形は?</h3>
+<p class="qtext">黒番です。◎の点に打つと禁じ手でしょうか?</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g17wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g17black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g17white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g17wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="190" cy="156" r="13.600000000000001" fill="url(#g17black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="185.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 185.92 151.24)"/><circle cx="224" cy="156" r="13.600000000000001" fill="url(#g17black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="219.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 219.92 151.24)"/><circle cx="258" cy="156" r="13.600000000000001" fill="url(#g17black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="253.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 253.92 151.24)"/><circle cx="156" cy="88" r="13.600000000000001" fill="url(#g17black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 83.24)"/><circle cx="156" cy="122" r="13.600000000000001" fill="url(#g17black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 117.24)"/><circle cx="292" cy="156" r="13.600000000000001" fill="url(#g17white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="151.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 151.24)"/><circle cx="54" cy="54" r="13.600000000000001" fill="url(#g17white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="49.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 49.24)"/><circle cx="258" cy="224" r="13.600000000000001" fill="url(#g17white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 219.24)"/><circle cx="292" cy="88" r="13.600000000000001" fill="url(#g17white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="83.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 83.24)"/><circle cx="88" cy="258" r="13.600000000000001" fill="url(#g17white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="83.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 83.92 253.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>黒番。横に四(右端は白に塞がれている)、縦に活三が同時にできる(図は盤面の一部)</figcaption></figure>
+<details class="qa"><summary>答えと解説を見る</summary>
+<div class="answer">
+<span class="verdict ok">禁じ手ではない(四三)</span>
+<p>◎に打つと、横に<b>四</b>(五連完成点は左の1か所。右端は白に塞がれた「眠り四」)、縦に<b>活三</b>(両端が開いた三)が同時にできる<b>四三</b>です。四と三の組み合わせは禁じ手ではありません。相手は四の受け(五連完成点の防御)を強制され、その間に活三を達四へ伸ばして勝ちが決まります——四三は<b>連珠における最も基本的な勝ちの手筋</b>です。禁じ手を覚えたら、次は「三三・四四にならない形で四三を作る」のが黒の攻略の中心になります。</p>
+</div>
+</details>
+</div>
+<div class="quiz" id="q5">
+<h3>第5問:三三に見えるけど…実は?</h3>
+<p class="qtext">黒番です。◎に打つと縦と斜めに活三が同時にでき、五連も完成します。この手の扱いは?</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g14wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g14black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g14white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g14wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="20" cy="156" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="15.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 15.92 151.24)"/><circle cx="54" cy="156" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 151.24)"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="151.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 151.24)"/><circle cx="156" cy="88" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 83.24)"/><circle cx="156" cy="122" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="151.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 151.92 117.24)"/><circle cx="88" cy="88" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="83.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 83.92 83.24)"/><circle cx="122" cy="122" r="13.600000000000001" fill="url(#g14black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="117.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 117.24)"/><circle cx="258" cy="258" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="253.92" cy="253.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 253.92 253.24)"/><circle cx="292" cy="20" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="15.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 15.24)"/><circle cx="54" cy="292" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="49.92" cy="287.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 49.92 287.24)"/><circle cx="156" cy="224" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="151.92" cy="219.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 151.92 219.24)"/><circle cx="122" cy="54" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="117.92" cy="49.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 117.92 49.24)"/><circle cx="292" cy="190" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="185.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 185.24)"/><circle cx="156" cy="292" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="151.92" cy="287.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 151.92 287.24)"/><circle cx="292" cy="122" r="13.600000000000001" fill="url(#g14white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="287.92" cy="117.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 287.92 117.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>黒番。◎で横の五連が完成する。同時に縦・斜めの三もできるが…(図は盤面の一部)</figcaption></figure>
+<details class="qa"><summary>答えと解説を見る</summary>
+<div class="answer">
+<span class="verdict ok">禁じ手ではない(五連完成=勝ち)</span>
+<p><b>ちょうど5つの連続(五連)を完成させる手は、常に優先されて勝ち</b>です。この手は五連がなければ縦・斜めの活三2つ=三三になる形ですが、五連完成の前では三三・四四の判定は行われません。「この点、三三では?」と迷ったら、まず<b>五連ができるかどうか</b>を確認する。これが禁じ手判定の基本順序です。</p>
+</div>
+</details>
+</div>
+<div class="quiz" id="q6">
+<h3>第6問:同じ形、でも白番なら?</h3>
+<p class="qtext">白番です。白が◎に打つと縦横に活三が同時にできます。これは禁じ手でしょうか?</p>
+<figure class="boardwrap"><div class="boardfr"><div class="boardin"><svg viewBox="0 0 312 312" xmlns="http://www.w3.org/2000/svg" role="img" style="width:100%;height:auto;display:block;border-radius:4px;">
+  <defs>
+    <linearGradient id="g18wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfa85a"/>
+      <stop offset="1" stop-color="#c98f3f"/>
+    </linearGradient>
+    <radialGradient id="g18black" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#52525b"/>
+      <stop offset="0.55" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </radialGradient>
+    <radialGradient id="g18white" cx="0.35" cy="0.32" r="0.85">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs><rect x="0" y="0" width="312" height="312" rx="4" fill="url(#g18wood)"/><line x1="20" y1="20" x2="292" y2="20" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="20" x2="20" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="54" x2="292" y2="54" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="54" y1="20" x2="54" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="88" x2="292" y2="88" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="88" y1="20" x2="88" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="122" x2="292" y2="122" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="122" y1="20" x2="122" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="156" x2="292" y2="156" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="156" y1="20" x2="156" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="190" x2="292" y2="190" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="190" y1="20" x2="190" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="224" x2="292" y2="224" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="224" y1="20" x2="224" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="258" x2="292" y2="258" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="258" y1="20" x2="258" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="20" y1="292" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><line x1="292" y1="20" x2="292" y2="292" stroke="rgba(69,26,3,0.55)" stroke-width="1"/><circle cx="88" cy="156" r="13.600000000000001" fill="url(#g18white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="83.92" cy="151.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 83.92 151.24)"/><circle cx="122" cy="156" r="13.600000000000001" fill="url(#g18white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="117.92" cy="151.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 117.92 151.24)"/><circle cx="156" cy="88" r="13.600000000000001" fill="url(#g18white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="151.92" cy="83.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 151.92 83.24)"/><circle cx="156" cy="122" r="13.600000000000001" fill="url(#g18white)" stroke="#94a3b8" stroke-width="0.8"/><ellipse cx="151.92" cy="117.24" rx="4.08" ry="2.448" fill="rgba(255,255,255,0.85)" transform="rotate(-24 151.92 117.24)"/><circle cx="224" cy="224" r="13.600000000000001" fill="url(#g18black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="219.92" cy="219.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 219.92 219.24)"/><circle cx="54" cy="88" r="13.600000000000001" fill="url(#g18black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="49.92" cy="83.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 49.92 83.24)"/><circle cx="122" cy="258" r="13.600000000000001" fill="url(#g18black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="253.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 253.24)"/><circle cx="122" cy="224" r="13.600000000000001" fill="url(#g18black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="117.92" cy="219.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 117.92 219.24)"/><circle cx="292" cy="54" r="13.600000000000001" fill="url(#g18black)" stroke="rgba(0,0,0,0.35)" stroke-width="0.5"/><ellipse cx="287.92" cy="49.24" rx="4.352" ry="2.7200000000000006" fill="rgba(255,255,255,0.18)" transform="rotate(-24 287.92 49.24)"/><circle cx="156" cy="156" r="9.792" fill="rgba(244,63,94,0.18)" stroke="#e11d48" stroke-width="2.2"/><circle cx="156" cy="156" r="2.448" fill="#e11d48"/></svg></div></div><figcaption>白番。第1問の三三と同じ形だが、打つのは白(図は盤面の一部)</figcaption></figure>
+<details class="qa"><summary>答えと解説を見る</summary>
+<div class="answer">
+<span class="verdict ok">禁じ手ではない(白に制限なし)</span>
+<p><b>白には三三・四四・長連の禁じ手が一切ありません。</b>同じ形でも、白が打てば完全な合法手であり、相手(黒)が一手では受けきれない強力な攻めになります。白は長連(6個以上)を作っても勝ち。「禁じ手=黒だけの制限」は、連珠の攻防を理解するうえで最重要の前提です。黒を持ったときは、この白の三三を警戒して受けましょう。</p>
+</div>
+</details>
+</div>
+<div class="inline-cta">
+  <a class="btn" href="#s10">▼ 答えを実際の盤面で確かめる方法へ</a>
+</div>
+
+<h2 id="s10">10. 実盤で確かめる:禁じ手ポイントが「見える」五目並べ</h2>
+<p>
+禁じ手の判定は、静止画の盤面図だけでは本当の意味で身につきません。かといって、無料で遊べるブラウザ五目並べの多くはそもそも禁じ手非対応。「連珠ルールで練習したくても場所がない」——これが禁じ手を学びたい人の共通の悩みです。
+</p>
+<p>
+そこで活用したいのが、このガイドと同じ運営元が公開している<b>無料のブラウザ五目並べ「Gomoku」</b>。禁じ手ルール対応なだけでなく、<b>黒番のとき盤面上で禁じ手ポイントをその場で確認できる</b>(マウスを乗せると赤い×が現れる)のが最大の特徴です。
+</p>
+<ul>
+  <li><b>登録・インストール不要。</b>ブラウザを開けばすぐ対局できます(スマホ/PC対応・無料)。</li>
+  <li><b>初期設定が「AI戦・先手(黒)・禁じ手ON」。</b>開いた時点ですでに連珠スタイルのルールで始まります。</li>
+  <li><b>禁じ手ポイントにマウスを乗せると赤い×印</b>が表示されます(PC)。「この点は三三では?」と思った点を、その場で確かめられます。</li>
+  <li><b>禁じ手の点を押すと、理由が盤面上部に警告表示</b>されます(「三三は禁じ手です」「四四は禁じ手です」「長連は禁じ手です」)。石は置かれません。スマホではタップで同様に確認できます。</li>
+  <li><b>AIも禁じ手ルールを考慮して着手</b>します。AIが黒を持つ場合も禁じ手は打たず、読み筋でも禁じ手を扱うため、ルール整合の本格的な連珠対局になります。</li>
+  <li><b>「待った」で何手でも戻せます</b>(AI戦では自分の手番までまとめて巻き戻し)。やり直し前提でいろいろな形を試せます。</li>
+  <li><b>AIの強さは初級・中級・上級・最強の4段階。</b>最強では最大12手先までの時間制限付き探索に、連続四で勝ちを証明する戦術読み(VCF)なども組み込まれています。対人戦モードも搭載。</li>
+</ul>
+
+<h3>禁じ手判定の練習手順</h3>
+<ol class="steps">
+  <li><b>AI戦・先手(黒)・禁じ手ONで対局を開始</b>(初期設定のまま進めるか、「ゲーム設定」パネルで確認)。この記事の練習問題で間違えた形を思い浮かべながら打ち進めます。</li>
+  <li><b>自分の手番で、三三になりそうな交差点にマウスをホバー</b>(スマホはタップ)。赤い×が出れば禁じ手、何も出なければ合法です。警告メッセージで種類(三三/四四/長連)も確認できます。</li>
+  <li><b>あえて三三・四四の形を狙って作り</b>、どの点がいつ禁じ手になるかを観察します。「自分の石が2方向に働く交点」に×が浮かぶ感覚がつかめたら、実戦での見落としは激減します。</li>
+</ol>
+<div class="callout warn">
+<span class="ct">公式連珠ルールとの違い(重要)</span>
+公式の連珠では「禁じ手を打つ=黒の負け」ですが、このアプリは<b>着手前に禁じ手をブロックする方式</b>(打とうとすると警告が出て、石は置かれません)。うっかり負けのリスクがないので、判定の練習にはむしろ最適です。なお、禁じ手OFF(自由五目)で遊んだ場合も、黒の勝ちは「ちょうど五連」判定になります。
+</div>
+<div class="cta">
+  <p class="t">読んだら、そのまま実盤で試せます</p>
+  <p class="d">Gomoku —— 登録不要・無料のブラウザ五目並べ。<br>連珠ルール(禁じ手ON)がすぐ遊べる状態で待っています。</p>
+  <a class="btn" href="https://gomoku-pink.vercel.app/">五目並べを今すぐ遊ぶ</a>
+  <div class="sub">インストール不要 / 登録不要 / スマホ・PC対応</div>
+</div>
+
+<h2 id="s11">11. よくある質問(FAQ)</h2>
+<div class="faq">
+<details class="qa"><summary>五目並べの禁じ手は黒だけですか?</summary><div class="answer"><p>はい。連珠ルールでは三三・四四・長連の禁じ手は黒(先手)だけに課されます。白には禁じ手が一切なく、白が6個以上並べる長連は勝ちになります。</p></div></details><details class="qa"><summary>四三が禁じ手ではないのはなぜですか?</summary><div class="answer"><p>禁じ手なのは「三が2つ(三三)」「四が2つ(四四)」だからです。四1つ+三1つの組み合わせ(四三)は合法で、相手が一手では受けきれないため、連珠では最も重要な勝ちの手筋になります。</p></div></details><details class="qa"><summary>三三と五連が同時にできるときはどうなりますか?</summary><div class="answer"><p>五連が優先され、その手で勝ちです。ちょうど5つの連続を作る手は、ほかの方向で三三や四四の形が同時にできても禁じ手になりません。</p></div></details><details class="qa"><summary>公式の連珠でうっかり禁じ手を打つとどうなりますか?</summary><div class="answer"><p>公式ルールでは禁じ手を打った時点で黒の負けです(打たされても負け)。本記事で紹介しているブラウザ五目並べは着手前に禁じ手を阻止する方式なので、うっかり負けの心配はありません。</p></div></details><details class="qa"><summary>自由五目(禁じ手なし)でも三三・四四は禁じ手ですか?</summary><div class="answer"><p>いいえ。禁じ手なしの自由五目では三三も四四も完全に合法で、強力な攻め手です。禁じ手は連珠(競技ルール)だけで存在する制限です。</p></div></details><details class="qa"><summary>アプリでは禁じ手ルールのON/OFFをどう切り替えますか?</summary><div class="answer"><p>画面上部の「ゲーム設定」パネル内にある「禁じ手ルール」スイッチで切り替えます。設定はブラウザに保存され、次回アクセス時も引き継がれます。対局中の設定変更は確認ダイアログを経て、対局がリセットされます。</p></div></details><details class="qa"><summary>五目並べAIの強さはどのくらいですか?</summary><div class="answer"><p>初級・中級・上級・最強の4段階です。最強では最大12手先までの時間制限付き探索に加え、連続四で勝ちを決める手順(VCF)などの戦術読みを備えています。AI思考はWeb Worker上で動くため、思考中も画面は固まりません。</p></div></details>
+</div>
+
+<h2 id="s12">まとめ</h2>
+<ul>
+  <li>禁じ手は<b>三三・四四・長連</b>の3種類で、<b>黒(先手)だけの制限</b></li>
+  <li>「三」は<b>あと1手で達四にできる活三</b>だけを数える(塞がれた三・盤端はダメ、飛び三はOK)</li>
+  <li><b>四三は合法</b>(連珠の基本の勝ち筋)/<b>五連完成は常に優先</b>/<b>白は制限なし</b>(白の長連は勝ち)</li>
+  <li>公式連珠では<b>禁じ手を打つと黒の負け</b>。打たされる展開も含めて攻防になる</li>
+  <li>判定は頭の中だけでは身につきません。<b>禁じ手ポイントが表示される実盤</b>で触って覚えるのが最短ルートです</li>
+</ul>
+<div class="cta">
+  <p class="t">禁じ手を覚えたら、次は実盤で。</p>
+  <p class="d">AI戦4段階・禁じ手ON/OFF切替・待った機能付き。<br>連珠ルール対応の五目並べが、ブラウザですぐ遊べます。</p>
+  <a class="btn" href="https://gomoku-pink.vercel.app/">五目並べの盤面へ →</a>
+  <div class="sub">https://gomoku-pink.vercel.app/</div>
+</div>
+
+<footer>
+  <p>
+    <a href="https://gomoku-pink.vercel.app/"><b>Gomoku — 無料で遊べるAI対戦の五目並べ</b></a><br>
+    対人戦・AI戦(4段階)/ 連珠ルール(禁じ手)対応 / 登録・インストール不要
+  </p>
+  <p>盤面図はすべて15×15盤の一部を抜粋した模式図です。赤い円マーク=次の着手候補(問いの点)、赤い×=禁じ手ポイントの表示イメージ。</p>
+</footer>
+
+</div>
+
+</body>
+</html>

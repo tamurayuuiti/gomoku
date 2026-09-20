@@ -289,6 +289,18 @@ const App = () => {
         </button>
       </div>
 
+      {/* 禁じ手ガイドへの導線(盤面状態は非永続のため新規タブで開く) */}
+      <p className="mt-4 w-full max-w-[min(92vw,600px)] text-center text-xs font-semibold">
+        <a
+          href="/guide/kinjite.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-slate-400 underline decoration-dotted underline-offset-4 transition-colors hover:text-slate-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+        >
+          禁じ手(三三・四四・長連)の図解ガイド
+        </a>
+      </p>
+
       {/* 対局中の設定変更確認ダイアログ */}
       <SettingChangeConfirmDialog
         open={pendingSettingChange !== null}
