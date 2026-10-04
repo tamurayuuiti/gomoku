@@ -21,7 +21,10 @@ const GuideCards = () => {
   const entries = sortedContent();
 
   return (
-    <section aria-labelledby="guide-cards-label" className="w-full">
+    <section
+      aria-labelledby="guide-cards-label"
+      className="mt-8 w-full max-w-[min(92vw,600px)]"
+    >
       <div className="mb-2 flex items-baseline justify-between px-1">
         <h2 id="guide-cards-label" className="section-label">
           ガイド
@@ -36,7 +39,7 @@ const GuideCards = () => {
         </a>
       </div>
       {/* 表示は上位4件まで(それ以上はハブへ委譲=拡張時の散らかり防止) */}
-      <div className="grid gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {entries.slice(0, 4).map((entry) => {
           const Icon = CATEGORY_ICON[entry.category];
           return (
