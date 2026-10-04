@@ -34,9 +34,8 @@ strong{color:#8a4b08}
 .toc a{text-decoration:none}
 .toc a:hover{text-decoration:underline}
 /* 見出し */
-h2{position:relative;font-size:1.4rem;font-weight:900;line-height:1.55;margin:3.2em 0 1em;padding-left:18px;color:#3d2611}
-h2::before{content:"";position:absolute;left:0;top:.3em;bottom:.3em;width:8px;border-radius:4px;
- background:linear-gradient(180deg,#dfa85a,#c98f3f)}
+h2{font-size:1.4rem;font-weight:900;line-height:1.55;margin:3.2em 0 1em;color:#3d2611;
+ border-bottom:1px solid #e3d3ab;padding-bottom:.45em}
 h3{font-size:1.08rem;font-weight:900;margin:2.2em 0 .8em;color:#4a2f14;
  border-bottom:2px solid #ead9b0;padding-bottom:.4em}
 /* 図 */
@@ -54,9 +53,9 @@ h3{font-size:1.08rem;font-weight:900;margin:2.2em 0 .8em;color:#4a2f14;
 .cards3 .card{background:#fffdf7;border:1px solid #e7d9b8;border-radius:14px;padding:16px 14px;text-align:center}
 .cards3 .card .t{font-weight:900;color:#b45309;font-size:1.02rem;margin-bottom:6px}
 .cards3 .card .d{font-size:.8rem;color:#5c4a33;line-height:1.7}
-.callout{background:#fff8e6;border-left:5px solid #dfa85a;padding:14px 18px;border-radius:0 12px 12px 0;margin:1.5em 0;font-size:.93rem}
-.callout.warn{background:#fff1f2;border-left-color:#fb7185}
-.callout.ok{background:#f0fdf4;border-left-color:#4ade80}
+.callout{background:#fff8e6;border:1px solid #ecd9a8;padding:14px 18px;border-radius:12px;margin:1.5em 0;font-size:.93rem}
+.callout.warn{background:#fff1f2;border-color:#f3ccd4}
+.callout.ok{background:#f0fdf4;border-color:#cbe7d2}
 .callout .ct{font-weight:900;display:block;margin-bottom:4px}
 .note{font-size:.82rem;color:#7a6a55;background:#f7f1e3;border-radius:10px;padding:10px 14px;margin:1.4em 0}
 /* 表 */
