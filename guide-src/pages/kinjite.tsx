@@ -11,10 +11,12 @@
 //     AI_LEVEL_TABLE / DEFAULT_SETTINGS)と突合済み。変更時は実装と突合すること。
 
 import { BoardDiagram, StripDiagram } from '../components/BoardDiagram';
+import { GuideFooter } from '../components/GuideFooter';
+import { TopBar } from '../components/TopBar';
 import type { StoneMap, StripCell } from '../components/BoardDiagram';
 import { Callout, Cta, FaqList, Figure, InlineCta, Legend, Quiz } from '../components/blocks';
 import type { QuizData } from '../components/blocks';
-import { APP_URL, appHref, guideHref } from '../layout';
+import { APP_URL, appHref } from '../layout';
 import type { GuidePage } from '../layout';
 
 const CANONICAL = `${APP_URL}guide/kinjite.html`;
@@ -201,14 +203,7 @@ export const kinjitePage = (): GuidePage => ({
   meta: { file: 'kinjite.html', title: TITLE, description: DESCRIPTION, canonical: CANONICAL, jsonLd: jsonLd() },
   body: (
     <div className="wrap">
-      <div className="topbar">
-        <a className="brand" href={appHref()}>
-          Gomoku<small>五目並べ</small>
-        </a>
-        <a className="toplink" href={appHref()}>
-          ▶ すぐ遊ぶ(無料)
-        </a>
-      </div>
+      <TopBar />
 
       <div className="hero">
         <span className="kicker">連珠ルール解説</span>
@@ -453,19 +448,7 @@ export const kinjitePage = (): GuidePage => ({
         sub={APP_URL}
       />
 
-      <footer>
-        <p>
-          <a href={guideHref('kachikata.html')}>続き:五目並べの勝ち方図解(四三・追い勝ち・練習ラダー)</a>
-        </p>
-        <p>
-          <a href={appHref()}>
-            <b>Gomoku — 無料で遊べるAI対戦の五目並べ</b>
-          </a>
-          <br />
-          対人戦・AI戦(4段階)/ 連珠ルール(禁じ手)対応 / 登録・インストール不要
-        </p>
-        <p>盤面図はすべて15×15盤の一部を抜粋した模式図です。赤い円マーク=次の着手候補(問いの点)、赤い×=禁じ手ポイントの表示イメージ。</p>
-      </footer>
+      <GuideFooter currentId="kinjite" />
     </div>
   ),
 });

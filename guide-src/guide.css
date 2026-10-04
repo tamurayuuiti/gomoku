@@ -121,3 +121,29 @@ footer a{color:#8a5a1e}
  .wrap{padding:0 16px}
  .quiz{padding:16px 14px 10px}
 }
+
+/* ==================================================
+   共通トップバー(右側アクション群)
+   ================================================== */
+.topbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+/* ==================================================
+   ハブページのカードグリッド
+   ================================================== */
+.hubgrid{display:grid;grid-template-columns:1fr;gap:14px;margin:26px 0}
+@media (min-width:640px){.hubgrid{grid-template-columns:1fr 1fr}}
+.hubcard{display:flex;flex-direction:column;background:#fffdf7;border:1px solid #e7d9b8;border-radius:16px;
+ padding:18px;text-decoration:none;color:#2c2620;transition:transform .15s ease,box-shadow .15s ease}
+.hubcard:hover{transform:translateY(-2px);box-shadow:0 10px 24px -12px rgba(44,38,32,.35)}
+.hubcard .cat{align-self:flex-start;font-size:.68rem;font-weight:800;color:#5c3a1e;background:rgba(92,58,30,.08);
+ border-radius:999px;padding:3px 10px;margin-bottom:10px}
+.hubcard .t{font-weight:900;font-size:1rem;color:#5c3a1e;line-height:1.6}
+.hubcard .d{margin-top:8px;font-size:.83rem;color:#5c4a33;line-height:1.8;flex:1}
+.hubcard .go{display:block;margin-top:12px;font-size:.78rem;font-weight:800;color:#b45309}
+
+/* ==================================================
+   ガイドフッターのクロスリンク
+   ================================================== */
+.footer-links{margin-top:6px}
+.footer-links a{color:#8a5a1e;text-decoration:none;border-bottom:1px dotted #c9a86a}
+.footer-links a:hover{color:#5c3a1e}
