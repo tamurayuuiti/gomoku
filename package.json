@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:guide && tsc -b && tsc -p tsconfig.guide.json --noEmit && vite build",
+    "build:guide": "vite build --ssr guide-src/main.tsx --outDir .guide-build --emptyOutDir && node .guide-build/main.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
