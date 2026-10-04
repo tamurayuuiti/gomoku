@@ -12,11 +12,12 @@ import { join } from 'node:path';
 import { renderPage } from './layout';
 import type { GuidePage } from './layout';
 import { kinjitePage } from './pages/kinjite';
+import { kachikataPage } from './pages/kachikata';
 
 const outDir = join(process.cwd(), 'guide');
 mkdirSync(outDir, { recursive: true });
 
-const pages: GuidePage[] = [kinjitePage()];
+const pages: GuidePage[] = [kinjitePage(), kachikataPage()];
 for (const page of pages) {
   const html = renderPage(page.meta, page.body);
   writeFileSync(join(outDir, page.meta.file), html, 'utf-8');

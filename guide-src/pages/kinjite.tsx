@@ -14,7 +14,7 @@ import { BoardDiagram, StripDiagram } from '../components/BoardDiagram';
 import type { StoneMap, StripCell } from '../components/BoardDiagram';
 import { Callout, Cta, FaqList, Figure, InlineCta, Legend, Quiz } from '../components/blocks';
 import type { QuizData } from '../components/blocks';
-import { APP_URL, appHref } from '../layout';
+import { APP_URL, appHref, guideHref } from '../layout';
 import type { GuidePage } from '../layout';
 
 const CANONICAL = `${APP_URL}guide/kinjite.html`;
@@ -454,6 +454,9 @@ export const kinjitePage = (): GuidePage => ({
       />
 
       <footer>
+        <p>
+          <a href={guideHref('kachikata.html')}>続き:五目並べの勝ち方図解(四三・追い勝ち・練習ラダー)</a>
+        </p>
         <p>
           <a href={appHref()}>
             <b>Gomoku — 無料で遊べるAI対戦の五目並べ</b>
