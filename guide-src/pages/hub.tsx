@@ -1,7 +1,7 @@
 // guide-src/pages/hub.tsx
 // ガイド一覧ハブページ(guide/index.html)。
 // 責務:
-//   - 登録簿(src/content/registry.ts)駆動で全ガイドの一覧カードを提供する
+//   - 登録簿(src/content/registry.ts)駆動で全ガイドをカテゴリ別に一覧表示する
 //   - 将来コンテンツが増えた際の「自然な着地先」として機能する(テンプレート規約 = guide-src/README.md)
 //
 // 注意:
@@ -13,6 +13,7 @@ import { TopBar } from '../components/TopBar';
 import { APP_URL, appHref } from '../layout';
 import type { GuidePage } from '../layout';
 import { CATEGORY_LABEL, sortedContent } from '../../src/content/registry';
+import type { ContentCategory } from '../../src/content/registry';
 
 const CANONICAL = `${APP_URL}guide/`;
 const TITLE = '五目並べガイド一覧|ルールと勝ち方の図解まとめ';
@@ -69,20 +70,35 @@ export const hubPage = (): GuidePage => ({
         </p>
       </div>
 
-      <div className="hubgrid">
-        {sortedContent().map((e) => (
-          <a key={e.id} className="hubcard" href={e.path}>
-            <span className="cat">{CATEGORY_LABEL[e.category]}</span>
-            <span className="t">{e.title}</span>
-            <span className="d">{e.description}</span>
-            <span className="go">読む →</span>
-          </a>
-        ))}
-      </div>
+      {(Object.keys(CATEGORY_LABEL) as ContentCategory[]).map((cat) => {
+        const list = sortedContent().filter((e) => e.category === cat);
+        if (list.length === 0) return null;
+        return (
+          <section key={cat} aria-label={`${CATEGORY_LABEL[cat]}のガイド`}>
+            <h2 className="hub-h2">{CATEGORY_LABEL[cat]}</h2>
+            <div className="hubgrid">
+              {list.map((e) => (
+                <a key={e.id} className="hubcard" href={e.path}>
+                  <span className="cat">{CATEGORY_LABEL[e.category]}</span>
+                  <span className="t">{e.title}</span>
+                  <span className="d">{e.description}</span>
+                  <span className="go">読む →</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       <Cta
         title="読んだら、そのまま実盤で。"
-        desc={<>登録不要・無料のブラウザ五目並べ。<br />連珠ルール(禁じ手ON)・AI戦4段階がすぐ遊べます。</>}
+        desc={
+          <>
+            登録不要・無料のブラウザ五目並べ。
+            <br />
+            連珠ルール(禁じ手ON)・AI戦4段階がすぐ遊べます。
+          </>
+        }
         href={appHref()}
         label="五目並べを今すぐ遊ぶ"
         sub="インストール不要 / スマホ・PC対応"

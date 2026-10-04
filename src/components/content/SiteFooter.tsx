@@ -13,11 +13,11 @@ const SiteFooter = () => {
   const entries = sortedContent();
 
   return (
-    <footer className="mt-10 w-full max-w-[min(92vw,600px)] border-t border-board-frame/10 pb-2 pt-5 text-center dark:border-zinc-800">
+    <footer className="mt-10 w-full max-w-[min(94vw,980px)] border-t border-board-frame/10 pb-2 pt-5 text-center dark:border-zinc-800">
       <p className="text-xs font-semibold text-slate-400 dark:text-zinc-500">
         Gomoku — 無料で遊べるAI対戦のブラウザ五目並べ。対人戦・AI戦(4段階)・連珠ルール(禁じ手)対応
       </p>
-      <p className="mt-1.5 text-[11px] text-slate-400/90 dark:text-zinc-600">
+      <nav aria-label="フッター" className="mt-1.5 text-[11px] text-slate-400/90 dark:text-zinc-600">
         {entries.map((entry, i) => (
           <span key={entry.id}>
             {i > 0 && <span className="mx-1.5 opacity-60">/</span>}
@@ -31,7 +31,7 @@ const SiteFooter = () => {
             </a>
           </span>
         ))}
-      </p>
+      </nav>
     </footer>
   );
 };

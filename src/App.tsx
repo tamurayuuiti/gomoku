@@ -217,7 +217,7 @@ const App = () => {
   return (
     <div className="flex min-h-screen flex-col items-center bg-transparent px-4 py-10 font-sans text-ink sm:py-14">
       {/* メインヘッダー: アプリタイトルとテーマ切替を統合する */}
-      <header className="mb-6 flex w-full max-w-[min(92vw,600px)] items-center justify-between">
+      <header className="mb-6 flex w-full max-w-[min(94vw,980px)] items-center justify-between">
         <div>
           <h1 className="text-4xl font-black uppercase tracking-tighter text-board-frame dark:text-amber-200 sm:text-5xl">
             Gomoku
@@ -234,7 +234,8 @@ const App = () => {
       </header>
 
       {/* 設定カード: モード・禁じ手・AIレベル・先後を 1 枚のカードに統合する */}
-      <div className="mb-6 w-full max-w-[min(92vw,600px)]">
+      <main className="grid w-full max-w-[min(94vw,980px)] gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="order-1 w-full lg:order-2 lg:col-start-2 lg:row-start-1">
         <SettingsPanel
           gameMode={gameMode}
           useForbiddenRule={useForbiddenRule}
@@ -247,6 +248,8 @@ const App = () => {
         />
       </div>
 
+      {/* 対局カラム: PC では左側に配置し、盤面を主役のまま横幅を活用する */}
+      <section className="order-2 flex min-w-0 flex-col items-center lg:order-1 lg:col-start-1 lg:row-start-1 lg:row-span-2">
       {/* 対局エリア: ゲームヘッダーと盤面を一体化して視線を誘導 */}
       <div className="flex w-full max-w-[min(92vw,600px)] flex-col items-center">
         <GameHeader
@@ -290,10 +293,17 @@ const App = () => {
           対局をリセット
         </button>
       </div>
+      </section>
 
-      {/* コンテンツハブ: ガイドカードとサイトフッター(登録簿駆動=拡張時は registry のみ編集) */}
-      <GuideCards />
+      {/* ガイドカード(PC では右カラムへ。登録簿駆動=拡張時は registry のみ編集) */}
+      <div className="order-3 w-full lg:col-start-2 lg:row-start-2">
+        <GuideCards />
+      </div>
+      </main>
+
       <SiteFooter />
+
+      
 
       {/* 対局中の設定変更確認ダイアログ */}
       <SettingChangeConfirmDialog

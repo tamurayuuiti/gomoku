@@ -14,6 +14,8 @@ import { appHref, guideHref } from '../layout';
 
 export const GuideFooter = ({ currentId }: { currentId: string }): ReactElement => {
   const others = currentId === 'index' ? [] : sortedContent().filter((e) => e.id !== currentId);
+  // クロスリンクは4件まで。それを超える場合はハブへ委譲し、フッターの散らかりを防ぐ(規約 = guide-src/README.md)
+  const showList = others.length <= 4;
 
   return (
     <footer>
@@ -24,17 +26,17 @@ export const GuideFooter = ({ currentId }: { currentId: string }): ReactElement 
         <br />
         対人戦・AI戦(4段階)/ 連珠ルール(禁じ手)対応 / 登録・インストール不要
       </p>
-      {others.length > 0 && (
-        <p className="footer-links">
+      {showList && others.length > 0 && (
+        <nav aria-label="その他のガイド" className="footer-links">
           {others.map((e, i) => (
             <span key={e.id}>
               {i > 0 && ' / '}
               <a href={e.path}>{e.title}</a>
             </span>
           ))}
-        </p>
+        </nav>
       )}
-      {currentId !== 'index' && (
+      {currentId !== 'index' && (!showList || others.length > 0) && (
         <p className="footer-links">
           <a href={guideHref('index.html')}>ガイド一覧ですべて見る</a>
         </p>

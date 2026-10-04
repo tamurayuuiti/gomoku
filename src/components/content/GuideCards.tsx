@@ -21,15 +21,23 @@ const GuideCards = () => {
   const entries = sortedContent();
 
   return (
-    <section
-      aria-labelledby="guide-cards-label"
-      className="mt-8 w-full max-w-[min(92vw,600px)]"
-    >
-      <h2 id="guide-cards-label" className="section-label mb-2 px-1">
-        ガイド
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {entries.map((entry) => {
+    <section aria-labelledby="guide-cards-label" className="w-full">
+      <div className="mb-2 flex items-baseline justify-between px-1">
+        <h2 id="guide-cards-label" className="section-label">
+          ガイド
+        </h2>
+        <a
+          href="/guide/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] font-bold text-slate-400 underline decoration-dotted underline-offset-4 transition-colors hover:text-slate-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+        >
+          一覧を見る
+        </a>
+      </div>
+      {/* 表示は上位4件まで(それ以上はハブへ委譲=拡張時の散らかり防止) */}
+      <div className="grid gap-3">
+        {entries.slice(0, 4).map((entry) => {
           const Icon = CATEGORY_ICON[entry.category];
           return (
             <a

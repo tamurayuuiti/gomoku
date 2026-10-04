@@ -10,13 +10,13 @@ export const TopBar = (): ReactElement => (
     <a className="brand" href={appHref()}>
       Gomoku<small>五目並べ</small>
     </a>
-    <div className="topbar-actions">
+    <nav className="topbar-actions" aria-label="サイトナビゲーション">
       <a className="toplink" href={guideHref('index.html')}>
         ガイド一覧
       </a>
       <a className="toplink" href={appHref()}>
         ▶ すぐ遊ぶ(無料)
       </a>
-    </div>
+    </nav>
   </div>
 );
