@@ -11,6 +11,8 @@
 //   - 禁じ手の判定基準自体は kinjite.html が正典。本ページはdeep linkで参照する。
 
 import { BoardDiagram, StripDiagram } from '../components/BoardDiagram';
+import { GuideFooter } from '../components/GuideFooter';
+import { TopBar } from '../components/TopBar';
 import type { StripCell } from '../components/BoardDiagram';
 import { Callout, Cta, FaqList, Figure, Legend } from '../components/blocks';
 import { APP_URL, appHref, guideHref } from '../layout';
@@ -93,14 +95,7 @@ export const kachikataPage = (): GuidePage => ({
   meta: { file: 'kachikata.html', title: TITLE, description: DESCRIPTION, canonical: CANONICAL, jsonLd: jsonLd() },
   body: (
     <div className="wrap">
-      <div className="topbar">
-        <a className="brand" href={appHref()}>
-          Gomoku<small>五目並べ</small>
-        </a>
-        <a className="toplink" href={appHref()}>
-          ▶ すぐ遊ぶ(無料)
-        </a>
-      </div>
+      <TopBar />
 
       <div className="hero">
         <span className="kicker">勝ち方・実戦講座</span>
@@ -264,16 +259,7 @@ export const kachikataPage = (): GuidePage => ({
         sub={APP_URL}
       />
 
-      <footer>
-        <p>
-          <a href={appHref()}>
-            <b>Gomoku — 無料で遊べるAI対戦の五目並べ</b>
-          </a>
-          <br />
-          対人戦・AI戦(4段階)/ 連珠ルール(禁じ手)対応 / 登録・インストール不要
-        </p>
-        <p>盤面図はすべて15×15盤の一部を抜粋した模式図です。赤い円マーク=次の着手候補(図により白の受け候補)。</p>
-      </footer>
+      <GuideFooter currentId="kachikata" />
     </div>
   ),
 });
